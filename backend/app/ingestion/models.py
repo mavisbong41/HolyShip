@@ -40,6 +40,24 @@ class EmailMessage(BaseModel):
     content_hash: str
 
 
+class IncomingAttachmentInput(BaseModel):
+    filename: str
+    source_reference: str | None = None
+    content_type: str | None = None
+    external_attachment_id: str | None = None
+
+
+class IncomingEmailPayload(BaseModel):
+    external_message_id: str | None = None
+    sender: str | None = None
+    recipients: list[str] = Field(default_factory=list)
+    subject: str
+    body: str = ""
+    received_at: datetime | None = None
+    attachments: list[IncomingAttachmentInput] = Field(default_factory=list)
+    source_metadata: dict[str, Any] = Field(default_factory=dict)
+
+
 def build_content_hash(
     *,
     source_type: SourceType,
@@ -57,4 +75,3 @@ def build_content_hash(
     }
     canonical = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
     return hashlib.sha256(canonical.encode("utf-8")).hexdigest()
-
