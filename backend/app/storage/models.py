@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -27,6 +27,7 @@ class EmailMessageRecord(TimestampMixin, Base):
     __tablename__ = "email_messages"
     __table_args__ = (
         UniqueConstraint("source_type", "external_message_id", name="uq_email_source_external_id"),
+        CheckConstraint("processing_status IN ('NEW','QUEUED','CLASSIFYING','CLASSIFIED','AWAITING_DOCUMENTS','RETRIEVING_ATTACHMENTS','EXTRACTING','COMPARING','COMPLETED','BLOCKED','FAILED')", name="ck_email_processing_status"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -39,6 +40,7 @@ class EmailMessageRecord(TimestampMixin, Base):
     received_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
     source_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    processing_status: Mapped[str] = mapped_column(String(50), nullable=False, default="NEW")
 
     attachments: Mapped[list[AttachmentRecord]] = relationship(
         back_populates="email",
@@ -53,6 +55,18 @@ class EmailMessageRecord(TimestampMixin, Base):
     processing_jobs: Mapped[list[ProcessingJobRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     classification_results: Mapped[list[ClassificationResultRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     human_review_cases: Mapped[list[HumanReviewCaseRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
+    processing_events: Mapped[list[ProcessingEventRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
+
+
+class ProcessingEventRecord(Base):
+    __tablename__ = "processing_events"
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    old_status: Mapped[str | None] = mapped_column(String(50))
+    new_status: Mapped[str] = mapped_column(String(50), nullable=False)
+    reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    email: Mapped[EmailMessageRecord] = relationship(back_populates="processing_events")
 
 
 class AttachmentRecord(Base):
@@ -85,6 +99,20 @@ class ProcessingJobRecord(TimestampMixin, Base):
 
 class ClassificationResultRecord(Base):
     __tablename__ = "classification_results"
+    __table_args__ = (
+        CheckConstraint(
+            "category IN ('document_comparison','new_si_request','invoice_query','general_message','spam')",
+            name="ck_classification_category",
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="ck_classification_confidence",
+        ),
+        CheckConstraint(
+            "comparison_readiness IS NULL OR comparison_readiness IN ('READY_FOR_COMPARISON','AWAITING_DOCUMENTS','UNRESOLVED')",
+            name="ck_classification_readiness",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -92,9 +120,11 @@ class ClassificationResultRecord(Base):
     confidence: Mapped[float] = mapped_column(Float, nullable=False)
     candidate_scores: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    reason_code: Mapped[str] = mapped_column(String(80), nullable=False, default="CLASSIFICATION_RESOLVED")
     evidence_summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     conflict_detected: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
     resolved_at_stage: Mapped[str] = mapped_column(String(50), nullable=False)
+    comparison_readiness: Mapped[str | None] = mapped_column(String(50))
     classifier_version: Mapped[str] = mapped_column(String(80), nullable=False, default="batch1-rule-v1")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 

@@ -19,7 +19,7 @@ Flow:
             ↓
          Decision Gate
            ├─ resolved → Stage 2 Final
-           └─ unresolved → UNCERTAIN + Human Review
+           └─ low confidence → best supported category + diagnostic reason
 """
 
 from backend.app.classification.models import (
@@ -36,16 +36,19 @@ from backend.app.classification.models import (
     ClassificationOutput,
 )
 from backend.app.classification.signals import EmailCategory
+from backend.app.classification.readiness import evaluate_readiness
 from backend.app.classification.stage1 import Stage1Scores, normalise_to_probabilities, score_email
 from backend.app.classification.stage2 import Stage2Resolver
+from backend.app.classification.config import STAGE1_CONFIDENCE_THRESHOLD, STAGE1_MARGIN_THRESHOLD
+import math
 
 
 _DEFAULT_STAGE2 = Stage2Resolver()
 
 # Minimum normalised probability for Stage 1 to commit
-DEFAULT_CONFIDENCE_THRESHOLD = 0.80
+DEFAULT_CONFIDENCE_THRESHOLD = STAGE1_CONFIDENCE_THRESHOLD
 # Minimum gap between #1 and #2 candidate for Stage 1 to commit
-DEFAULT_MARGIN_THRESHOLD = 0.25
+DEFAULT_MARGIN_THRESHOLD = STAGE1_MARGIN_THRESHOLD
 
 
 def classify_email(
@@ -108,7 +111,7 @@ def classify_email(
         and margin >= margin_threshold
         and body_is_sufficient
     ):
-        return ClassificationOutput(
+        return _with_readiness(ClassificationOutput(
             category=top_cat,
             confidence=top_conf,
             candidate_scores=probs,
@@ -116,7 +119,8 @@ def classify_email(
             evidence_summary=evidence,
             conflict_detected=False,
             resolved_at_stage=STAGE_1,
-        )
+            reason_code="STAGE1_CONFIDENT",
+        ), email)
 
     # If body was the only missing piece, surface that in the conflict reason
     if not conflict_detected and not body_is_sufficient:
@@ -136,9 +140,10 @@ def classify_email(
         subject=email.subject,
         body=email.body,
     )
+    _validate_stage2_result(s2)
 
     if s2.resolved:
-        return ClassificationOutput(
+        return _with_readiness(ClassificationOutput(
             category=s2.category,
             confidence=s2.confidence,
             candidate_scores=s2.candidate_scores,
@@ -146,22 +151,27 @@ def classify_email(
             evidence_summary=evidence,
             conflict_detected=s2.conflict_detected,
             resolved_at_stage=STAGE_2,
-        )
+            reason_code=s2.reason_code,
+        ), email)
 
     # ------------------------------------------------------------------ #
-    # Stage 2 unresolved → UNCERTAIN + Human Review — Case I
-    # ------------------------------------------------------------------ #
-    return ClassificationOutput(
-        category=EmailCategory.UNCERTAIN.value,
-        confidence=s2.confidence,
-        candidate_scores=s2.candidate_scores,
-        reason=s2.reason,
-        evidence_summary=evidence,
-        conflict_detected=s2.conflict_detected,
-        resolved_at_stage=HUMAN_REVIEW,
-        human_review_reason_code=s2.human_review_reason_code or REASON_STAGE2_UNRESOLVED,
-        human_review_reason_text=s2.human_review_reason_text or s2.reason,
-    )
+def _with_readiness(result: ClassificationOutput, email: ClassificationInput) -> ClassificationOutput:
+    if result.category == EmailCategory.DOCUMENT_COMPARISON.value:
+        result.comparison_readiness = evaluate_readiness(email, result.category)
+    return result
+
+
+def _validate_stage2_result(result: object) -> None:
+    """Reject malformed resolver output before it can become a final result."""
+    category = getattr(result, "category", None)
+    confidence = getattr(result, "confidence", None)
+    reason_code = getattr(result, "reason_code", None)
+    if category not in {item.value for item in EmailCategory}:
+        raise ValueError("Stage 2 returned an unsupported final category")
+    if not isinstance(confidence, (int, float)) or isinstance(confidence, bool) or not math.isfinite(confidence) or not 0.0 <= confidence <= 1.0:
+        raise ValueError("Stage 2 returned an invalid confidence")
+    if not isinstance(reason_code, str) or not reason_code.strip():
+        raise ValueError("Stage 2 returned an invalid reason code")
 
 
 # ---------------------------------------------------------------------------
@@ -187,7 +197,7 @@ def _detect_conflict(
     subject_scores = stage1.subject_scores
     body_scores = stage1.body_scores
 
-    # Find top subject category (excluding UNCERTAIN)
+    # Find the top category with positive evidence.
     top_subject_cat = _top_category(subject_scores)
     top_body_cat = _top_category(body_scores)
 

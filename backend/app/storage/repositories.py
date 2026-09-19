@@ -97,7 +97,9 @@ class ClassificationResultRepository:
         evidence_summary: dict,
         conflict_detected: bool,
         resolved_at_stage: str,
+        comparison_readiness: str | None = None,
         classifier_version: str = "batch1-rule-v1",
+        reason_code: str = "CLASSIFICATION_RESOLVED",
     ) -> ClassificationResultRecord:
         record = ClassificationResultRecord(
             email_id=email_id,
@@ -105,9 +107,11 @@ class ClassificationResultRepository:
             confidence=confidence,
             candidate_scores=candidate_scores,
             reason=reason,
+            reason_code=reason_code,
             evidence_summary=evidence_summary,
             conflict_detected=conflict_detected,
             resolved_at_stage=resolved_at_stage,
+            comparison_readiness=comparison_readiness,
             classifier_version=classifier_version,
         )
         self.session.add(record)

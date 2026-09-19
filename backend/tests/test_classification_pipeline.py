@@ -89,7 +89,7 @@ def test_clear_general_mail():
         body="Operational update: please find the update summary for this week. FYI.",
     )
     result = classify_email(email)
-    assert result.category == EmailCategory.GENERAL_MAIL.value
+    assert result.category == EmailCategory.GENERAL_MESSAGE.value
 
 
 # ---------------------------------------------------------------------------
@@ -169,7 +169,7 @@ def test_attachments_conflict_with_action():
     # Body clearly asks about billing — INVOICE_QUERY should win or go to Stage 2
     assert result.category in (
         EmailCategory.INVOICE_QUERY.value,
-        EmailCategory.UNCERTAIN.value,
+        EmailCategory.GENERAL_MESSAGE.value,
     )
     # Must NOT auto-classify as DOCUMENT_COMPARISON from filenames
     assert result.category != EmailCategory.DOCUMENT_COMPARISON.value or result.resolved_at_stage != STAGE_1
@@ -196,7 +196,7 @@ def test_close_candidate_scores_go_to_stage2():
     # We just assert it does not produce extremely high Stage-1 confidence with
     # the wrong category.  The exact outcome depends on scorer weighting.
     assert result.resolved_at_stage in (STAGE_1, STAGE_2, HUMAN_REVIEW)
-    # The result must be one of the real categories or UNCERTAIN
+    # The result must be one of the five final categories.
     assert result.category in [c.value for c in EmailCategory]
 
 
@@ -222,6 +222,7 @@ def test_strong_winner_resolves_at_stage1():
 # ---------------------------------------------------------------------------
 # Test 12 — Misleading subject (Case G)
 # ---------------------------------------------------------------------------
+@pytest.mark.req("CLS-10")
 def test_misleading_subject_goes_to_stage2():
     email = make_email(
         subject="Invoice",
@@ -230,7 +231,8 @@ def test_misleading_subject_goes_to_stage2():
     result = classify_email(email)
     # Subject says INVOICE but body is clearly DOCUMENT_COMPARISON → Stage 2
     # Body intent should win via Stage 2 body-dominant re-weighting
-    assert result.resolved_at_stage in (STAGE_2, HUMAN_REVIEW)
+    assert result.category == EmailCategory.DOCUMENT_COMPARISON.value
+    assert result.resolved_at_stage == STAGE_2
 
 
 # ---------------------------------------------------------------------------
@@ -252,7 +254,7 @@ def test_mixed_intent_goes_to_stage2_or_human_review():
 # ---------------------------------------------------------------------------
 # Test 14 — Stage 2 unresolved
 # ---------------------------------------------------------------------------
-def test_stage2_unresolved_produces_uncertain():
+def test_stage2_unresolved_selects_best_supported_category():
     """
     An email so vague that even Stage 2 cannot resolve it.
     """
@@ -262,11 +264,7 @@ def test_stage2_unresolved_produces_uncertain():
         filenames=[],
     )
     result = classify_email(email)
-    # Very vague email — either UNCERTAIN or GENERAL_MAIL; never a high-confidence
-    # commit to a specific operational category
-    if result.category == EmailCategory.UNCERTAIN.value:
-        assert result.resolved_at_stage == HUMAN_REVIEW
-    # Otherwise weak GENERAL_MAIL or similar is acceptable
+    assert result.category in [c.value for c in EmailCategory]
 
 
 # ---------------------------------------------------------------------------
@@ -278,10 +276,8 @@ def test_unresolved_produces_human_review_metadata():
         body=".",
     )
     result = classify_email(email)
-    if result.resolved_at_stage == HUMAN_REVIEW:
-        assert result.human_review_reason_code is not None
-        assert result.human_review_reason_text is not None
-        assert result.candidate_scores != {}
+    assert result.resolved_at_stage == STAGE_2
+    assert result.candidate_scores != {}
 
 
 # ---------------------------------------------------------------------------
@@ -320,7 +316,7 @@ def test_candidate_scores_contains_all_categories():
         body="Compare SI and BL.",
     )
     result = classify_email(email)
-    expected = {c.value for c in EmailCategory} - {EmailCategory.UNCERTAIN.value}
+    expected = {c.value for c in EmailCategory}
     assert expected.issubset(set(result.candidate_scores.keys()))
 
 

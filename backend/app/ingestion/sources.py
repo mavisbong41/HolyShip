@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import urllib.parse
 import urllib.request
+from datetime import datetime
 from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Iterable
@@ -140,6 +141,7 @@ def map_organizer_record(
         recipients=[],
         subject=subject,
         body=body,
+        received_at=_parse_received_at(record.get("received_at")),
         attachments=attachments,
         source_metadata=metadata,
         content_hash=build_content_hash(
@@ -223,3 +225,13 @@ def _content_type_for(path: str) -> str | None:
         ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
         ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     }.get(extension)
+
+
+def _parse_received_at(value: Any) -> datetime | None:
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        return value
+    if isinstance(value, str):
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    raise ValueError("Organizer received_at must be an ISO-8601 timestamp")

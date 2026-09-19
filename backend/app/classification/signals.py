@@ -15,12 +15,11 @@ from enum import Enum
 
 
 class EmailCategory(str, Enum):
-    DOCUMENT_COMPARISON = "DOCUMENT_COMPARISON"
-    NEW_SI_REQUEST      = "NEW_SI_REQUEST"
-    INVOICE_QUERY       = "INVOICE_QUERY"
-    GENERAL_MAIL        = "GENERAL_MAIL"
-    SPAM                = "SPAM"
-    UNCERTAIN           = "UNCERTAIN"
+    DOCUMENT_COMPARISON = "document_comparison"
+    NEW_SI_REQUEST      = "new_si_request"
+    INVOICE_QUERY       = "invoice_query"
+    GENERAL_MESSAGE     = "general_message"
+    SPAM                = "spam"
 
 
 @dataclass(frozen=True)
@@ -55,8 +54,14 @@ CATEGORY_SIGNALS: dict[EmailCategory, list[SignalPattern]] = {
         SignalPattern("confirm the bl",                         weight=1.5),
         SignalPattern("confirm the draft",                      weight=1.3),
         SignalPattern("check the details",                      weight=1.2),
-        SignalPattern("draft bl",                               weight=1.2),
-        SignalPattern("draft bill of lading",                   weight=1.2),
+        # A bare draft-BL mention is not intent. These action-specific forms
+        # support comparison while preserving the Pattern A awaiting workflow.
+        SignalPattern("send the draft bl",                      weight=1.8),
+        SignalPattern("send draft bl",                          weight=1.8),
+        SignalPattern("provide the draft bl",                   weight=1.8),
+        SignalPattern("provide draft bl",                       weight=1.8),
+        SignalPattern("issue the draft bl",                     weight=1.8),
+        SignalPattern("issue draft bl",                         weight=1.8),
         SignalPattern("bill of lading",                         weight=0.8),
         SignalPattern("to confirm docs",                        weight=1.5),
         SignalPattern("confirm docs",                           weight=1.4),
@@ -97,7 +102,7 @@ CATEGORY_SIGNALS: dict[EmailCategory, list[SignalPattern]] = {
         SignalPattern("billing",                                weight=0.8),
         SignalPattern("invoice",                                weight=1.0),
     ],
-    EmailCategory.GENERAL_MAIL: [
+    EmailCategory.GENERAL_MESSAGE: [
         SignalPattern("operational update",                     weight=2.5),
         SignalPattern("update summary",                         weight=2.0),
         SignalPattern("outstanding bl",                         weight=1.5),

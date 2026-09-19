@@ -139,7 +139,8 @@ def test_sync_classifies_clear_document_comparison(svc, session):
 
     results = session.query(ClassificationResultRecord).all()
     assert len(results) == 1
-    assert results[0].category == "DOCUMENT_COMPARISON"
+    assert results[0].category == "document_comparison"
+    assert results[0].comparison_readiness == "READY_FOR_COMPARISON"
     assert results[0].confidence >= 0.80
 
 
@@ -291,4 +292,5 @@ def test_sync_one_uses_same_classification_pipeline(svc, session):
     assert outcome.status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED")
     results = session.query(ClassificationResultRecord).all()
     assert len(results) == 1
-    assert results[0].category == "DOCUMENT_COMPARISON"
+    assert results[0].category == "document_comparison"
+    assert results[0].comparison_readiness == "READY_FOR_COMPARISON"

@@ -57,8 +57,17 @@ class ClassificationOutput:
     evidence_summary: dict
     conflict_detected: bool
     resolved_at_stage: str          # STAGE_1 | STAGE_2 | HUMAN_REVIEW
+    comparison_readiness: Optional[str] = None
     classifier_version: str = "batch1-rule-v1"
+    reason_code: str = "CLASSIFICATION_RESOLVED"
 
     # If the result is HUMAN_REVIEW, these hold the review metadata
     human_review_reason_code: Optional[str] = None
     human_review_reason_text: Optional[str] = None
+
+    @property
+    def low_confidence(self) -> bool:
+        """Whether this result is below the centralized Stage-1 confidence gate."""
+        from backend.app.classification.config import STAGE1_CONFIDENCE_THRESHOLD
+
+        return self.confidence < STAGE1_CONFIDENCE_THRESHOLD

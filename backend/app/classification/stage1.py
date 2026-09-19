@@ -22,6 +22,7 @@ from backend.app.classification.signals import (
     EmailCategory,
     SignalPattern,
 )
+from backend.app.classification.config import SUBJECT_WEIGHT, BODY_WEIGHT, ATTACHMENT_METADATA_WEIGHT
 
 
 def _normalise(text: str) -> str:
@@ -87,9 +88,9 @@ def score_email(
     attachment_text = " ".join(attachment_filenames)
 
     for category, patterns in CATEGORY_SIGNALS.items():
-        s_score = _score_text(subject, patterns) * 0.7
-        b_score = _score_text(body, patterns) * 1.0
-        a_score = _score_text(attachment_text, patterns) * 0.3
+        s_score = _score_text(subject, patterns) * SUBJECT_WEIGHT
+        b_score = _score_text(body, patterns) * BODY_WEIGHT
+        a_score = _score_text(attachment_text, patterns) * ATTACHMENT_METADATA_WEIGHT
 
         subject_scores[category.value] = round(s_score, 4)
         body_scores[category.value] = round(b_score, 4)

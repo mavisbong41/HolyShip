@@ -32,6 +32,7 @@ from backend.app.storage.repositories import (
     HumanReviewRepository,
     ProcessingJobRepository,
 )
+from backend.app.storage.transitions import transition
 
 logger = logging.getLogger(__name__)
 
@@ -205,9 +206,11 @@ class SyncService:
             job_type="CLASSIFICATION",
             status="INGESTED",
         )
+        transition(self.session, record, "QUEUED", "INGESTED")
 
         # ---- CLASSIFY ------------------------------------------------- #
         job.status = "CLASSIFYING"
+        transition(self.session, record, "CLASSIFYING", "CLASSIFICATION_STARTED")
         self.session.flush()
 
         cls_input = email_message_to_classification_input(message)
@@ -224,11 +227,21 @@ class SyncService:
             confidence=result.confidence,
             candidate_scores=result.candidate_scores,
             reason=result.reason,
+            reason_code=result.reason_code,
             evidence_summary=result.evidence_summary,
             conflict_detected=result.conflict_detected,
             resolved_at_stage=result.resolved_at_stage,
+            comparison_readiness=result.comparison_readiness,
             classifier_version=result.classifier_version,
         )
+        transition(self.session, record, "CLASSIFIED", "CLASSIFICATION_COMPLETE")
+
+        if result.category != "document_comparison":
+            transition(self.session, record, "COMPLETED", "NON_COMPARISON_COMPLETE")
+        elif result.comparison_readiness == "AWAITING_DOCUMENTS":
+            transition(self.session, record, "AWAITING_DOCUMENTS", "AWAITING_DOCUMENTS")
+        elif result.comparison_readiness == "UNRESOLVED":
+            transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
 
         # ---- HUMAN REVIEW --------------------------------------------- #
         if result.resolved_at_stage == HUMAN_REVIEW:

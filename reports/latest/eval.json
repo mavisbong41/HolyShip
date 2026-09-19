@@ -2,11 +2,11 @@
   "attachment_failures": "unavailable: attachment processing is Phase 2",
   "bundle": "data\\bundle",
   "category_distribution": {
-    "BL_COMPARISON": 220,
-    "GENERAL": 41,
+    "BL_COMPARISON": 214,
+    "GENERAL": 61,
     "INVOICE_QUERY": 83,
     "SI_REQUEST": 136,
-    "SPAM": 40
+    "SPAM": 26
   },
   "external_calls": {
     "cache": 0,
@@ -2635,8 +2635,8 @@
     "source_failures": [],
     "total": 520
   },
-  "throughput_emails_per_second": 346.729,
+  "throughput_emails_per_second": 331.462,
   "total_bundle_emails": 520,
   "unhandled_exceptions": 0,
-  "wall_seconds": 1.5
+  "wall_seconds": 1.569
 }

@@ -12,6 +12,11 @@ from typing import Any
 
 
 _CATEGORY_MAP = {
+    "document_comparison": "BL_COMPARISON",
+    "new_si_request": "SI_REQUEST",
+    "invoice_query": "INVOICE_QUERY",
+    "general_message": "GENERAL",
+    "spam": "SPAM",
     "DOCUMENT_COMPARISON": "BL_COMPARISON",
     "NEW_SI_REQUEST": "SI_REQUEST",
     "INVOICE_QUERY": "INVOICE_QUERY",
@@ -24,7 +29,7 @@ _PUBLIC_CATEGORIES = frozenset(_CATEGORY_MAP.values())
 def to_submission_entry(category: str, candidate_scores: dict[str, float] | None = None) -> dict[str, Any]:
     """Return a public-contract entry without inventing comparison results.
 
-    ``UNCERTAIN`` is legacy-only.  Its highest-scoring supported candidate is
+    Legacy ``UNCERTAIN`` is accepted only for historical-record export. Its highest-scoring supported candidate is
     used as a temporary baseline category; it is never emitted as a sixth
     public category.
     """

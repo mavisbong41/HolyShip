@@ -7,6 +7,7 @@ from backend.app.submission_adapter import build_submission, to_submission_entry
 
 
 @pytest.mark.req("SUB-01")
+@pytest.mark.req("SCP-07")
 def test_adapter_emits_every_required_public_field_and_supported_category():
     result = build_submission([
         ("email_001", "GENERAL_MAIL", {}),

@@ -2,9 +2,37 @@ from __future__ import annotations
 
 import uuid
 from datetime import datetime
-from typing import Any, Optional
+from typing import Annotated, Any, Literal, Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+
+
+EmailCategoryValue = Literal[
+    "document_comparison",
+    "new_si_request",
+    "invoice_query",
+    "general_message",
+    "spam",
+]
+ComparisonReadinessValue = Literal[
+    "READY_FOR_COMPARISON",
+    "AWAITING_DOCUMENTS",
+    "UNRESOLVED",
+]
+ProcessingStatusValue = Literal[
+    "NEW",
+    "QUEUED",
+    "CLASSIFYING",
+    "CLASSIFIED",
+    "AWAITING_DOCUMENTS",
+    "RETRIEVING_ATTACHMENTS",
+    "EXTRACTING",
+    "COMPARING",
+    "COMPLETED",
+    "BLOCKED",
+    "FAILED",
+]
+ConfidenceValue = Annotated[float, Field(ge=0.0, le=1.0)]
 
 
 # ---------------------------------------------------------------------------
@@ -32,6 +60,7 @@ class EmailOut(BaseModel):
     body: str
     received_at: Optional[datetime]
     content_hash: str
+    processing_status: ProcessingStatusValue
     created_at: datetime
     updated_at: datetime
     attachments: list[AttachmentOut] = []
@@ -45,6 +74,7 @@ class EmailListItem(BaseModel):
     source_type: str
     sender: Optional[str]
     subject: str
+    processing_status: ProcessingStatusValue
     received_at: Optional[datetime]
     created_at: datetime
     attachment_count: int = 0
@@ -59,13 +89,15 @@ class EmailListItem(BaseModel):
 class ClassificationOut(BaseModel):
     id: uuid.UUID
     email_id: uuid.UUID
-    category: str
-    confidence: float
+    category: EmailCategoryValue
+    confidence: ConfidenceValue
     candidate_scores: dict[str, float]
     reason: str
+    reason_code: str
     evidence_summary: dict[str, Any]
     conflict_detected: bool
     resolved_at_stage: str
+    comparison_readiness: Optional[ComparisonReadinessValue]
     classifier_version: str
     created_at: datetime
 

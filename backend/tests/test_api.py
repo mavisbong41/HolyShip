@@ -53,6 +53,7 @@ def test_health_returns_ok():
 # POST /api/email/incoming — shape and same classifier
 # ---------------------------------------------------------------------------
 
+@pytest.mark.req("SCP-07")
 def test_incoming_email_returns_classified_outcome(client):
     tc, mock_session = client
 

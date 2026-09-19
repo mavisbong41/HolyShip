@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase R targeted sync reliability repair
-**Repository state:** Windows CPython 3.11.9, PostgreSQL 16, Alembic migrations, and the Phase R reliability suite have been independently verified. Phase 0 baseline/harness work remains.
+**Updated by:** Phase R3B SCP closure and final Phase 1 gate
+**Repository state:** Phase 1 is complete: 22 owned requirements PASS, 0 TODO, 0 FAIL; trace and `make check PHASE=1` pass. Public scoreboard remains intentionally unverified.
 
 ---
 
@@ -88,13 +88,13 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Area | Status | Notes |
 |---|---|---|
 | Requirements | DONE | Backend requirements defined through comparison |
-| Repository/stack audit | NOT CONFIRMED | Codex must inspect actual repository |
+| Repository/stack audit | DONE | Python/FastAPI/SQLAlchemy/PostgreSQL stack and public participant bundle verified |
 | Email ingestion | NOT CONFIRMED | Implementation must be checked |
 | Initial sync | NOT CONFIRMED | Implementation must be checked |
 | Continuous ingestion | NOT CONFIRMED | Implementation must be checked |
-| Classification Stage 1 | NOT CONFIRMED | Implementation must be checked |
-| Classification Stage 2 | NOT CONFIRMED | Implementation must be checked |
-| Comparison readiness | NOT CONFIRMED | Must distinguish READY vs AWAITING_DOCUMENTS vs unresolved |
+| Classification Stage 1 | IMPLEMENTED | Centralized deterministic signals and thresholds; exact five-category output contract |
+| Classification Stage 2 | IMPLEMENTED | Validated five-category output, explicit zero-signal policy, evidence-aware deterministic tie handling |
+| Comparison readiness | IMPLEMENTED | READY_FOR_COMPARISON / AWAITING_DOCUMENTS / UNRESOLVED after document_comparison only |
 | Attachment retrieval | NOT CONFIRMED | Implementation must be checked |
 | Document router | NOT CONFIRMED | Must include XLSX and scan/image routing |
 | Document role validation | NOT CONFIRMED | Must detect readable-but-wrong SI/BL documents |
@@ -209,6 +209,25 @@ Fast compare
 
 ## Implemented
 
+### Phase 1 — R3B scope/process closure
+
+- Human Review is frozen: current classifier/sync processing creates no new review cases; unresolved readiness persists `BLOCKED` with `READINESS_UNRESOLVED`. Historical storage and read-only routes remain compatible.
+- Alembic `20260920_0005` adds non-null persisted classification `reason_code` and database checks for the five categories, confidence `[0, 1]`, and the three readiness values.
+- API schemas now expose exact category, readiness, and 11-state processing-status contracts; email responses include processing status and classification responses include reason code.
+- `reports/phase1_consistency_audit.md` records runtime, persistence, live-database, API, migration, test, and documentation consistency.
+- Legacy `GENERAL_MAIL` / `UNCERTAIN` handling is confined to migration/export compatibility boundaries and is absent from the authoritative runtime enum.
+- `SCP-01`, `SCP-05`, and `SCP-07` have substantive executable and audit evidence. All 22 Phase-1-owned requirements are PASS.
+
+### Phase 1 — R3A-2 classification closure
+
+- Exact runtime category set is `document_comparison`, `new_si_request`, `invoice_query`, `general_message`, and `spam`.
+- True all-zero evidence uses an explicit neutral `general_message` result with confidence `0.20`, `low_confidence=True`, and reason code `ZERO_SIGNAL_GENERAL`; this is not a blanket fallback for evidence-bearing ambiguity.
+- Stage 2 zero-signal output is independent of enum/dictionary order. Evidence-bearing ties use body score, subject score, then an explicit lexical tie-break.
+- A bare `draft BL` mention is no longer specialized classification evidence. Action-specific send/provide/issue/check/compare signals preserve the legitimate Pattern A workflow.
+- Pattern A remains `document_comparison` / `AWAITING_DOCUMENTS`; Pattern B remains `new_si_request` with no readiness evaluation.
+- The fixed-seed public audit preserves all 91 legitimate awaiting cases and all three immediate-comparison/missing-document cases.
+- `CLS-01`, `CLS-05`, `CLS-06`, `CLS-07`, `CLS-08`, `CLS-10`, and `CLS-12` now have passing executable evidence.
+
 ### Planning / Requirements
 
 - Defined initial-sync + continuous-ingestion workflow.
@@ -263,6 +282,8 @@ Fast compare
 
 
 ## Next
+
+- Begin Phase 2 only in a new explicitly authorized phase session. Phase 1 is closed; no Phase 2 work was started here.
 
 Recommended implementation order after the dataset audit:
 
@@ -474,8 +495,22 @@ Never substitute `NET WEIGHT`.
 
 `ground_truth.json` and private reference answers may not be read by application code, prompts, caches, rules, or demo prediction logic.
 
+### KD-020 — Zero evidence is explicit and neutral
+
+An all-zero category score vector is not evidence for the first enum member. It resolves to low-confidence `general_message` with `ZERO_SIGNAL_GENERAL`. This policy applies only when every specialized score is zero; evidence-bearing ambiguity continues through normal Stage 2 resolution.
+
 
 ## API / Data Contract Changes
+
+`ClassificationOutput` now exposes a machine-readable `reason_code` and a derived `low_confidence` property. Stage 1 emits `STAGE1_CONFIDENT`; Stage 2 reason codes are propagated; true zero-signal output emits `ZERO_SIGNAL_GENERAL`. R3A added no database migration or external dependency.
+
+R3B aligns the external and persisted contract:
+
+- `ClassificationOut.category` is restricted to the five internal categories.
+- `ClassificationOut.comparison_readiness` is restricted to READY/AWAITING/UNRESOLVED or null.
+- `ClassificationOut.confidence` is constrained to `[0, 1]` and exposes `reason_code`.
+- `EmailOut` and `EmailListItem` expose the exact processing-status vocabulary.
+- `classification_results.reason_code` is non-null after migration `20260920_0005`; category, confidence, and readiness checks are enforced in PostgreSQL.
 
 No repository API/schema changes are confirmed yet.
 
@@ -577,6 +612,31 @@ When adding an environment variable:
 
 ### Validation log
 
+2026-09-20 — Phase R3A-2
+- Pre-fix synthetic regression: `python -m pytest backend/tests/test_phase1_zero_signal.py -vv` → expected RED, 4 failed; reproduced enum-order zero-signal fallback, missing reason code, and bare-draft-BL standalone evidence.
+- Focused zero-signal suite after repair → 4 passed.
+- Focused CLS suite (`test_phase1_classification_readiness.py`, `test_classification_pipeline.py`, `test_phase1_classifier_contract.py`, `test_phase1_zero_signal.py`) → 37 passed.
+- R3A-1 audit baseline: distribution `234/136/83/41/26` (document comparison / new SI / invoice / general / spam), low confidence 200, no-attachment comparison `108` with `A=91, B=3, C=0, D=14`, conflicts 49.
+- R3A-2 audit: distribution `203/141/84/66/26`, low confidence 102, no-attachment comparison `94` with `A=91, B=3, C=0, D=0`, conflicts 45; all 25 zero-signal cases resolve to low-confidence `general_message` and none to `document_comparison`.
+- Initial full suite without the test database environment → 82 passed, 16 skipped, 1 warning; not accepted as the gate.
+- PostgreSQL-enabled `python -m pytest` → 98 passed, 0 failed, 0 skipped, 1 deprecation warning.
+- `make reliability` target via `C:\msys64\usr\bin\make.exe` and project virtualenv → 10 passed.
+- `make check-fast` target via `C:\msys64\usr\bin\make.exe` and project virtualenv → PASS: compileall, 11 tests passed, `git diff --check` passed (line-ending warnings only).
+- `make trace PHASE=1` target → expected FAIL with only `SCP-01`, `SCP-05`, and `SCP-07` TODO; Phase 1 matrix totals are 19 PASS, 3 TODO, 0 FAIL.
+
+2026-09-20 — Phase R3B final closure
+- Focused SCP/API/compatibility suite → 23 passed, 0 failed, 0 skipped, 1 warning.
+- Development Alembic upgrade `20260920_0004 -> 20260920_0005` → PASS; live introspection confirmed all classification/status constraints and non-null reason codes.
+- Live development compatibility aggregates: five valid categories; statuses `CLASSIFIED=214`, `COMPLETED=306`; reason codes `CLASSIFICATION_RESOLVED=21`, `STAGE1_CONFIDENT=274`, `STAGE2_RESOLVED=225`; 21 historical Human Review rows retained and not extended.
+- PostgreSQL-enabled `python -m pytest` → 101 passed, 0 failed, 0 skipped, 1 warning.
+- `make reliability` → 10 passed.
+- Standalone `make eval` → 520 emails, 1.411 seconds, 368.574 emails/s; all rows skipped as unchanged in the historical dev baseline.
+- Standalone `make perf` → 520 emails, 1.477 seconds, 351.984 emails/s.
+- `make check-fast` → PASS: compileall, 11 tests passed, `git diff --check` passed with line-ending warnings only.
+- `make trace PHASE=1` → PASS; Phase 1 matrix 22 PASS, 0 TODO, 0 FAIL.
+- `make check PHASE=1` → PASS: 101 tests, eval 520 emails in 1.569 seconds (331.462 emails/s), reliability 10 passed, trace passed.
+- `make score PHASE=1` → NOT RUN by instruction; public score remains NOT VERIFIED.
+
 2026-09-20
 - `pytest backend\tests\test_sync_service.py::test_sync_continues_after_broken_email -vv` → NOT RUN: `pytest` is not on this shell's PATH.
 - `pytest backend\tests\test_sync_service.py -vv` → NOT RUN: `pytest` is not on this shell's PATH.
@@ -613,6 +673,13 @@ Never fabricate test results.
 
 ## Known Limitations
 
+- The public classification audit provides semantic/input evidence, not hidden-label correctness. No private ground truth or evaluator data was used.
+- Zero-signal messages intentionally remain low-confidence neutral results. A future model-backed resolver may improve their semantics, but Phase 1 does not invent unsupported specialized intent.
+- The development database retains 21 historical Human Review rows and the legacy read-only Human Review API for compatibility. Current Phase 1 processing creates none.
+- The Phase 0 baseline in `reports/latest/eval.md` contains historical classifications and skips unchanged emails; current Phase 1 classifier behavior is represented by `reports/classification_audit.md`, not by reinterpreting the historical baseline.
+- Per-email p50/p95 and peak RSS remain unavailable because the existing sync/eval harness has no per-email timing or cross-platform process-metrics instrumentation.
+- Public scoreboard results are not verified; no score call was made in Phase 1.
+
 Current document-level limitations:
 
 - Human Review UI/workflow is not specified in this milestone.
@@ -624,6 +691,22 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase R3B final Phase 1 closure
+
+- **Changed:** Froze current Human Review creation with PostgreSQL evidence; aligned category/readiness/status/reason-code contracts across runtime, database, API, migration, tests, and docs; added migration `20260920_0005`; retained compatibility boundaries.
+- **Why:** `SCP-01`, `SCP-05`, and `SCP-07` required executable proof that Phase 1 did not extend Human Review, vocabularies cannot drift, and prior supported interfaces/data migrate safely.
+- **Files:** API schemas/router, storage model/repository, sync persistence, Alembic `0005`, SCP/API/adapter/repository tests, `reports/phase1_consistency_audit.md`, matrix, and this handoff.
+- **Validation:** Focused 23 passed; full PostgreSQL suite 101 passed; reliability 10 passed; eval/perf/check-fast/trace passed; final `make check PHASE=1` passed.
+- **Next:** Stop Phase 1. Begin Phase 2 only when explicitly requested in a new phase session.
+
+### 2026-09-20 — Phase R3A-2 zero-signal classification closure
+
+- **Changed:** Added an explicit order-independent all-zero policy, propagated classification reason codes, replaced bare draft-BL evidence with action-specific signals, expanded CLS executable evidence, and regenerated the fixed-seed public audit.
+- **Why:** A five-way zero-score tie accidentally selected `document_comparison` by insertion order, and a bare draft-BL token could independently create comparison intent.
+- **Files:** `backend/app/classification/models.py`, `pipeline.py`, `signals.py`, `stage2.py`, Phase 1 classification tests, `scripts/run_classification_audit.py`, `reports/classification_audit.md`, `docs/requirements_matrix.md`, `implement.md`.
+- **Validation:** Focused CLS 37 passed; full PostgreSQL suite 98 passed with zero skips; reliability 10 passed; check-fast passed.
+- **Next:** Close only the remaining `SCP-01`, `SCP-05`, and `SCP-07` rows in R3B; do not begin Phase 2.
 
 ### 2026-09-20 — Phase 0 test and bundle reproducibility repair
 
@@ -648,6 +731,19 @@ Current document-level limitations:
 - **Baseline:** `holyship_dev` processed the public 520-email bundle: 499 classified, 21 human-review outcomes, 0 failed, 0 source failures; 3.978 seconds / 130.720 emails per second. Reports are `reports/latest/eval.md`, `reports/latest/submission.json`, `reports/baseline.md`, and `reports/history.csv`.
 - **Gates:** `make trace PHASE=0` passed. `make check PHASE=0` passed: 72 passed, 0 skipped, 1 deprecation warning; reliability subset 10 passed. The explicit isolation guard printed distinct dev/test URLs.
 - **Score:** The single `make score PHASE=0` call reran the successful gates but POST `/submit` was refused at `localhost:8080`. No organizer response or scoreboard exists; the real failed attempt is recorded in `reports/score_history.jsonl` and was not retried.
+
+### 2026-09-20 — Phase 1 classification and readiness (partial)
+
+- **Changed:** Final classifier output now uses five lowercase domain categories; `GENERAL_MAIL` is a compatibility alias with value `general_message`, and the pipeline no longer returns `UNCERTAIN` or creates Human Review cases for unresolved classification. Added the post-classification `comparison_readiness` field and additive Alembic revision `20260920_0003`; migrated legacy stored category values. Added deterministic readiness evaluation only for `document_comparison` and public synthetic tests for Pattern A, Pattern B, READY, AWAITING, UNRESOLVED, and non-comparison routing.
+- **Validation:** `python scripts/run_tests.py -q` → 76 passed, 1 warning. Public bundle eval completed (520 emails, 2.000 seconds, 260.058 emails/s); reliability subset → 10 passed.
+- **Blocked:** Phase 1 trace gate correctly fails because several Phase-1-owned matrix rows remain TODO and lack executable requirement-marked evidence. The prior Phase-0-only trace script was corrected not to falsely report a Phase 1 pass. Do not declare Phase 1 complete until every owner-phase-1 row is either implemented and marked PASS with evidence, or honestly marked FAIL with its blocker.
+
+### 2026-09-20 — R1 processing-state evidence closed
+
+- **Migration:** `20260920_0004_add_processing_state_events` adds `email_messages.processing_status` (NOT NULL) constrained to `NEW, QUEUED, CLASSIFYING, CLASSIFIED, AWAITING_DOCUMENTS, RETRIEVING_ATTACHMENTS, EXTRACTING, COMPARING, COMPLETED, BLOCKED, FAILED`, plus immutable `processing_events` with email FK and email/timestamp indexes.
+- **Runtime:** `backend/app/storage/transitions.py` centralizes validated, transactional transitions and suppresses no-op events. Phase-1 flows persist completed non-comparisons, awaiting comparisons, and unresolved readiness as BLOCKED with `READINESS_UNRESOLVED`.
+- **Backfill verification:** development database at `20260920_0004`: `CLASSIFIED=214`, `COMPLETED=306`, no null processing statuses. Inspector confirmed the check constraint, table, FK, and both indexes.
+- **Validation:** focused PostgreSQL state suite 4 passed; sync regression 8 passed; full suite 80 passed, 0 skipped, 1 warning; reliability 10 passed; check-fast passed.
 
 ### 2026-09-20 — Phase R per-email transaction isolation
 
