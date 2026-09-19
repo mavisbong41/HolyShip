@@ -1,0 +1,35 @@
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-holyship}
+      POSTGRES_USER: ${POSTGRES_USER:-holyship}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-holyship}
+    ports:
+      - "5432:5432"
+    volumes:
+      - holyship_postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-holyship} -d ${POSTGRES_DB:-holyship}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  backend:
+    build:
+      context: .
+      dockerfile: backend/Dockerfile
+    environment:
+      DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-holyship}:${POSTGRES_PASSWORD:-holyship}@postgres:5432/${POSTGRES_DB:-holyship}
+      ORGANIZER_BUNDLE_PATH: /app/sdoc-hackathon-bundle
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./sdoc-hackathon-bundle:/app/sdoc-hackathon-bundle:ro
+
+volumes:
+  holyship_postgres_data:
+
