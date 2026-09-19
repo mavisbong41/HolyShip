@@ -96,10 +96,17 @@ def classify_email(
     # ------------------------------------------------------------------ #
     # Stage 1 gate — Cases A, B, F
     # ------------------------------------------------------------------ #
+    # Case 3 guard: body must have positive signal for the top category.
+    # If body is silent, only subject + filename are driving the score —
+    # insufficient evidence for a confident Stage 1 commit.
+    body_signal_for_top = stage1.body_scores.get(top_cat, 0.0)
+    body_is_sufficient = body_signal_for_top > 0.0
+
     if (
         not conflict_detected
         and top_conf >= confidence_threshold
         and margin >= margin_threshold
+        and body_is_sufficient
     ):
         return ClassificationOutput(
             category=top_cat,
@@ -109,6 +116,14 @@ def classify_email(
             evidence_summary=evidence,
             conflict_detected=False,
             resolved_at_stage=STAGE_1,
+        )
+
+    # If body was the only missing piece, surface that in the conflict reason
+    if not conflict_detected and not body_is_sufficient:
+        conflict_detected = True
+        conflict_reason = (
+            f"Body has no signal for top category '{top_cat}'. "
+            f"Classification driven by subject/attachment only — insufficient for Stage 1."
         )
 
     # ------------------------------------------------------------------ #

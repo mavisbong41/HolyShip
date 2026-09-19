@@ -322,3 +322,49 @@ def test_candidate_scores_contains_all_categories():
     result = classify_email(email)
     expected = {c.value for c in EmailCategory} - {EmailCategory.UNCERTAIN.value}
     assert expected.issubset(set(result.candidate_scores.keys()))
+
+
+# ---------------------------------------------------------------------------
+# Test — Case 3: clear subject + silent body + matching attachment
+#         must NOT finalize at Stage 1 (body minimum signal guard)
+# ---------------------------------------------------------------------------
+def test_case3_silent_body_does_not_commit_at_stage1():
+    """
+    Subject:    "TO CONFIRM DOCS / verify draft BL"  → strong DOCUMENT_COMPARISON signal
+    Body:       completely empty / irrelevant
+    Attachment: SI.txt + BL.txt                      → 0.3× filename nudge
+
+    Without the body-signal guard, subject (0.7×) + filename (0.3×) could
+    push DOCUMENT_COMPARISON past the confidence threshold and commit at Stage 1.
+    With the guard, body_signal_for_top == 0 → must escalate to Stage 2.
+    """
+    email = make_email(
+        subject="TO CONFIRM DOCS — please verify draft BL",
+        body="",                                   # completely silent body
+        filenames=["email_001_SI.txt", "email_001_BL.txt"],
+    )
+    result = classify_email(email)
+    assert result.resolved_at_stage != STAGE_1, (
+        "Silent body must prevent Stage 1 finalization even with a clear subject"
+    )
+
+
+# ---------------------------------------------------------------------------
+# Test — Case 3b: subject + attachment agree but body is vague noise
+#         (not zero, but no actionable signal for the top category)
+# ---------------------------------------------------------------------------
+def test_case3b_vague_body_with_no_category_signal_escalates():
+    """
+    Body has words but NONE match any category signal pattern.
+    Should behave like Case 3 — body contributes 0 to category scores.
+    """
+    email = make_email(
+        subject="verify draft BL",
+        body="Thank you for your cooperation.",   # no signal words
+        filenames=["SI.txt", "BL.txt"],
+    )
+    result = classify_email(email)
+    # body_signal_for_top will be 0 → must not Stage 1 finalize
+    assert result.resolved_at_stage != STAGE_1, (
+        "Body with no signal words must not allow Stage 1 finalization"
+    )
