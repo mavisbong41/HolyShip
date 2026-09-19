@@ -45,6 +45,11 @@ class EmailMessageRecord(TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    documents: Mapped[list[DocumentRecord]] = relationship(
+        back_populates="email",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
     processing_jobs: Mapped[list[ProcessingJobRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     classification_results: Mapped[list[ClassificationResultRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     human_review_cases: Mapped[list[HumanReviewCaseRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
@@ -62,6 +67,7 @@ class AttachmentRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="attachments")
+    document: Mapped[DocumentRecord | None] = relationship(back_populates="attachment", uselist=False)
 
 
 class ProcessingJobRecord(TimestampMixin, Base):
@@ -95,11 +101,69 @@ class ClassificationResultRecord(Base):
     email: Mapped[EmailMessageRecord] = relationship(back_populates="classification_results")
 
 
+class DocumentRecord(TimestampMixin, Base):
+    __tablename__ = "documents"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    attachment_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("attachments.id", ondelete="CASCADE"), nullable=True, index=True)
+    document_type: Mapped[str] = mapped_column(String(50), nullable=False, index=True)  # SI | DRAFT_BL | OTHER | UNKNOWN
+    format: Mapped[str] = mapped_column(String(50), nullable=False)  # PLAIN_TEXT | PDF_TEXT | DOCX | XLSX | SCANNED_PDF | IMAGE | UNKNOWN
+    filename: Mapped[str] = mapped_column(String(512), nullable=False)
+    source_reference: Mapped[str] = mapped_column(Text, nullable=False)
+
+    email: Mapped[EmailMessageRecord] = relationship(back_populates="documents")
+    attachment: Mapped[AttachmentRecord | None] = relationship(back_populates="document")
+    extractions: Mapped[list[DocumentExtractionRecord]] = relationship(
+        back_populates="document",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class DocumentExtractionRecord(TimestampMixin, Base):
+    __tablename__ = "document_extractions"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    document_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="CASCADE"), nullable=False, index=True)
+    reader_used: Mapped[str] = mapped_column(String(80), nullable=False)  # PlainTextReader | PdfTextReader | DocxReader | XlsxReader | OcrReader | VisionReader
+    extraction_status: Mapped[str] = mapped_column(String(50), nullable=False, default="EXTRACTED")  # EXTRACTED | FAILED | PARTIAL | UNREADABLE
+    extraction_quality: Mapped[float | None] = mapped_column(Float)
+    raw_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    pages_count: Mapped[int] = mapped_column(nullable=False, default=1)
+    metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+
+    document: Mapped[DocumentRecord] = relationship(back_populates="extractions")
+    fields: Mapped[list[ExtractedFieldRecord]] = relationship(
+        back_populates="extraction",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class ExtractedFieldRecord(Base):
+    __tablename__ = "extracted_fields"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    extraction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("document_extractions.id", ondelete="CASCADE"), nullable=False, index=True)
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # shipper | consignee | notify_party | port_of_loading | port_of_discharge | container_count | gross_weight
+    raw_value: Mapped[str | None] = mapped_column(Text)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="EXTRACTED")  # EXTRACTED | MISSING | AMBIGUOUS | LOW_CONFIDENCE | INVALID | UNREADABLE
+    confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
+    evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    extraction_method: Mapped[str] = mapped_column(String(80), nullable=False, default="FAST_KEY_VALUE")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    extraction: Mapped[DocumentExtractionRecord] = relationship(back_populates="fields")
+
+
 class HumanReviewCaseRecord(Base):
     __tablename__ = "human_review_cases"
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
+    document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    field_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
     reason_text: Mapped[str] = mapped_column(Text, nullable=False)
     candidate_scores: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
