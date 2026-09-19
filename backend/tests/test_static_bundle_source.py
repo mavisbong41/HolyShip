@@ -3,7 +3,7 @@ from collections import Counter
 from backend.app.ingestion.sources import StaticBundleSource
 
 
-ORGANIZER_BUNDLE_PATH = "sdoc-hackathon-bundle"
+ORGANIZER_BUNDLE_PATH = "data/bundle"
 
 
 def test_static_bundle_source_loads_all_organizer_emails():

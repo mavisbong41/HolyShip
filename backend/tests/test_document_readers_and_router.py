@@ -14,7 +14,7 @@ from backend.app.documents.readers.xlsx_reader import XlsxReader
 from backend.app.documents.router import DocumentRouter
 from backend.app.ingestion.models import AttachmentMetadata
 
-BUNDLE_ATTACHMENTS = Path("sdoc-hackathon-bundle/attachments")
+BUNDLE_ATTACHMENTS = Path("data/bundle/attachments")
 
 
 # ---------------------------------------------------------------------------

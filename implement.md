@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Requirements revision after direct dataset audit  
-**Repository state:** Requirements/architecture refined against the provided dataset; source-code implementation status must still be confirmed against the actual repository before coding.
+**Updated by:** Phase R targeted sync reliability repair
+**Repository state:** Windows CPython 3.11.9, PostgreSQL 16, Alembic migrations, and the Phase R reliability suite have been independently verified. Phase 0 baseline/harness work remains.
 
 ---
 
@@ -244,9 +244,20 @@ Fast compare
 
 ## In Progress
 
-None recorded yet.
+### Phase 0 — Audit, traceability, evaluation harness, baseline
 
-Codex should update this section as soon as implementation work begins.
+- Frozen the original requirement ID set in `docs/requirements_seed_ids.txt` before editing the matrix.
+- Static audit found that the persisted classifier exposes `GENERAL_MAIL` and `UNCERTAIN`, and routes unresolved cases into Human Review; this conflicts with the five-category contract and the current milestone scope.
+- The prior local-runtime blocker is resolved: CPython 3.11.9 and PostgreSQL 16 are available. Phase 0 still needs a reproducible dependency manifest, bundle-path configuration, test environment setup, harness, and baseline.
+
+### Phase R — Targeted source-stream reliability repair
+
+- Fixed `SyncService.sync` so a generator-level source failure is reported as `SOURCE_ITERATION_FAILED`, does not escape the service boundary, and commits previously completed messages.
+- The failure is intentionally source-scoped: there is no materialized `EmailMessage` to persist when `next(iterator)` fails, so no synthetic email/job is created.
+- Strengthened the existing broken-source test to assert truthful counts, structured failure data, persisted prior work, and a subsequent clean sync.
+- Fixed per-email transaction isolation: each materialized email now commits after processing, so a later materialized-email failure and its existing `Session.rollback()` cannot discard earlier successful work.
+- `failed` now means materialized email-processing failures only; `source_failed` and `source_failures` represent iterator failures separately.
+- Reproducibility repair: declared `httpx2>=2.13,<3.0` (not `httpx`): installed Starlette 1.6 `TestClient` imports `httpx2`. A disposable CPython 3.11.9 environment installed only `backend/requirements.txt`, imported `fastapi.testclient.TestClient`, and passed `backend/tests/test_api.py` (10 passed, 1 deprecation warning). The default participant-bundle path is now `data/bundle` in settings, examples, Docker compose, and bundle-dependent tests.
 
 ---
 
@@ -316,6 +327,12 @@ This order is a planning recommendation. Codex should adjust it to the actual re
 ---
 
 ## Blocked / Open Questions
+
+### Phase 0 execution blockers
+
+- The available `C:\\msys64` Python reports a Windows platform for packages but has no compatible binary wheels for the declared `uvicorn[standard]` and `psycopg[binary]` extras. A standard Windows CPython environment (or a compatible locked dependency set) is required before test/migration/app execution can be evidenced.
+- PostgreSQL 16 and the project connection have been independently verified. The organizer server remains an external prerequisite for the one permitted score call.
+- The public contract does not define an official `AWAITING_DOCUMENTS` submission mapping. Any baseline-only mapping must remain isolated and explicitly marked `UNVALIDATED`.
 
 These should be resolved from the repository or user direction rather than guessed:
 
@@ -560,7 +577,24 @@ When adding an environment variable:
 
 ### Validation log
 
-No code validation has been recorded yet.
+2026-09-20
+- `pytest backend\tests\test_sync_service.py::test_sync_continues_after_broken_email -vv` → NOT RUN: `pytest` is not on this shell's PATH.
+- `pytest backend\tests\test_sync_service.py -vv` → NOT RUN: `pytest` is not on this shell's PATH.
+- `pytest backend\tests\test_repositories_postgres.py backend\tests\test_sync_service.py -rs` → NOT RUN: `pytest` is not on this shell's PATH.
+- `pytest` → NOT RUN: `pytest` is not on this shell's PATH.
+- `python -m compileall -q backend\app\sync backend\tests` → PASS.
+
+2026-09-20 — Phase R per-email transaction repair
+- `python -m pytest backend\tests\test_sync_service.py -vv` → NOT RUN: the available `C:\\msys64\\ucrt64\\bin\\python.exe` has no pytest module.
+- `python -m pytest backend\tests\test_repositories_postgres.py backend\tests\test_sync_service.py -rs` → NOT RUN: same environment limitation.
+- `python -m pytest` → NOT RUN: same environment limitation.
+- `python -m compileall -q backend\app\sync backend\tests` → PASS.
+- `git diff --check` → PASS.
+
+2026-09-20 — Phase 0 reproducibility verification
+- `HOLYSHIP_TEST_DATABASE_URL=postgresql+psycopg://holyship:holyship@localhost:5432/holyship .venv\\Scripts\\python.exe -m pytest -q` → PASS: 71 passed, 1 Starlette/AnyIO deprecation warning, 6.12s.
+- `.venv\\Scripts\\python.exe -m compileall -q backend\\app\\sync backend\\tests` → PASS.
+- `git diff --check` → PASS.
 
 Codex must append real commands/results here after coding.
 
@@ -590,6 +624,54 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 0 test and bundle reproducibility repair
+
+- **Changed:** Added declared `httpx2` test dependency after clean-install verification and replaced the legacy `sdoc-hackathon-bundle` default/test/Docker path with `data/bundle`; removed the obsolete root junction so only `data/bundle` remains.
+- **Why:** A clean checkout must run the existing TestClient suite and public participant bundle without a local junction or manual dependency installation.
+- **Files:** `backend/requirements.txt`, `backend/app/core/config.py`, `.env.example`, `docker-compose.yml`, bundle-dependent tests, `implement.md`.
+- **Validation:** Full PostgreSQL-enabled suite passed: 71 passed, 1 deprecation warning.
+- **Next:** Build the Phase 0 Makefile/harness, finish traceability evidence, run the 520-email baseline, then perform exactly one score call.
+
+### 2026-09-20 — Phase 0 harness and clean dependency verification
+
+- **Changed:** Replaced the incorrect declared `httpx` dependency with `httpx2>=2.13,<3.0`; Starlette 1.6's `TestClient` imports `httpx2`. Added a public-contract boundary adapter, `@pytest.mark.req("SUB-01")` coverage, a Phase 0 Makefile/trace gate, and a public-bundle baseline script. Removed the obsolete `sdoc-hackathon-bundle` junction so `data/bundle` is the only bundle entry point.
+- **Clean-install evidence:** Disposable CPython 3.11.9 environment installed only `backend/requirements.txt`; `from fastapi.testclient import TestClient` succeeded and `backend/tests/test_api.py -q` reported **10 passed, 1 deprecation warning**.
+- **Validation:** With `HOLYSHIP_TEST_DATABASE_URL=postgresql+psycopg://holyship:holyship@localhost:5432/holyship`, `python -m pytest -q` reported **72 passed, 0 skipped, 1 deprecation warning**. `python -m compileall -q backend/app backend/tests scripts`, `git diff --check`, and `python scripts/trace_phase0.py` passed.
+- **Baseline blocker:** The configured ordinary database has `alembic_version=20260919_0002 (head)` but lacks `email_messages`. `alembic upgrade head` correctly performed no work because the stale version row says head. The new baseline script fails before syncing any mail with this explicit precondition error. I did not run destructive downgrade/reset or call `/submit`; therefore no score was requested.
+- **Spec/code gap:** The legacy classifier categories are adapted only at the submission boundary. `DOCUMENT_COMPARISON` becomes `BL_COMPARISON` with `NEEDS_REVIEW/missing_value` because actual document comparison is not implemented until later phases; legacy `UNCERTAIN` uses its highest supported candidate (or `GENERAL` fallback) and is never emitted as a sixth public category.
+
+### 2026-09-20 — Phase 0 isolated database baseline
+
+- **Root cause and safeguard:** `DATABASE_URL` and `HOLYSHIP_TEST_DATABASE_URL` previously named the same database. PostgreSQL test fixtures call `Base.metadata.drop_all/create_all/drop_all`, deleting the development tables while leaving `alembic_version` at head. `.env.example` now uses `holyship_dev` and `holyship_test`; `scripts/database_isolation.py` compares resolved host/user/port/database identities and `make test` / `make check` refuse an identical pair before pytest runs.
+- **Database evidence:** Read-only verification after the isolated test suite found development tables `email_messages`, `attachments`, `processing_jobs`, `classification_results`, `human_review_cases`, and document tables in `holyship_dev`. The earlier inconsistent `holyship` database was not repaired or reused.
+- **Baseline:** `holyship_dev` processed the public 520-email bundle: 499 classified, 21 human-review outcomes, 0 failed, 0 source failures; 3.978 seconds / 130.720 emails per second. Reports are `reports/latest/eval.md`, `reports/latest/submission.json`, `reports/baseline.md`, and `reports/history.csv`.
+- **Gates:** `make trace PHASE=0` passed. `make check PHASE=0` passed: 72 passed, 0 skipped, 1 deprecation warning; reliability subset 10 passed. The explicit isolation guard printed distinct dev/test URLs.
+- **Score:** The single `make score PHASE=0` call reran the successful gates but POST `/submit` was refused at `localhost:8080`. No organizer response or scoreboard exists; the real failed attempt is recorded in `reports/score_history.jsonl` and was not retried.
+
+### 2026-09-20 — Phase R per-email transaction isolation
+
+- **Changed:** Committed each materialized email before reading the next one; added `source_failed` separate from materialized-email `failed`; added a PostgreSQL integration test for A-success/B-processing-failure/C-success.
+- **Why:** The previous single outer transaction allowed B's `Session.rollback()` to invalidate A while the report still described A as successful.
+- **Files:** `backend/app/sync/service.py`, `backend/tests/test_sync_service.py`, `implement.md`.
+- **Validation:** Compile and diff checks passed. The required pytest commands were attempted but cannot run under the current MSYS Python because pytest is not installed.
+- **Next:** Run the required pytest commands in the user-reported PostgreSQL-enabled environment, then continue Phase 0 only.
+
+### 2026-09-20 — Phase R source-stream exception isolation
+
+- **Changed:** Added structured `SOURCE_ITERATION_FAILED` reporting at the `EmailSource.iter_messages()` boundary and strengthened the broken-source integration test.
+- **Why:** A source generator exception previously escaped the sync loop, preventing the normal final commit of already completed work.
+- **Files:** `backend/app/sync/service.py`, `backend/tests/test_sync_service.py`, `implement.md`.
+- **Validation:** Syntax compilation passed. Required pytest commands could not run because no `pytest` executable is available in this shell.
+- **Next:** Run the four required pytest commands in the PostgreSQL-enabled test environment; then resume Phase 0 only.
+
+### 2026-09-20 — Phase 0 audit started; executable baseline blocked
+
+- **Changed:** Added the frozen requirement-ID list and recorded static audit findings/blockers.
+- **Why:** Phase 0 requires evidence-backed traceability before any product behavior changes.
+- **Files:** `docs/requirements_seed_ids.txt`, `implement.md`.
+- **Validation:** Read the public participant contract; searched source/tests for private-data references, email-specific logic, hard-coded backlog size, category values, and Human Review usage. Test/migration/app/full-sync/score were not run because dependency installation and external services are blocked.
+- **Next:** Provide a compatible CPython environment, `.env` + PostgreSQL, and organizer server, then resume Phase 0 from the audit/test gate.
 
 ### 2026-09-20 — Dataset-audit architecture revision
 

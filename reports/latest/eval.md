@@ -1,0 +1,2646 @@
+# Phase 0 baseline
+
+```json
+{
+  "attachment_failures": "unavailable: attachment processing is Phase 2",
+  "bundle": "data\\bundle",
+  "category_distribution": {
+    "BL_COMPARISON": 220,
+    "GENERAL": 41,
+    "INVOICE_QUERY": 83,
+    "SI_REQUEST": 136,
+    "SPAM": 40
+  },
+  "external_calls": {
+    "cache": 0,
+    "llm": 0,
+    "ocr": 0,
+    "vision": 0
+  },
+  "human_review": 0,
+  "low_confidence": 200,
+  "p50_p95_per_email_seconds": "unavailable: legacy sync has no per-email timing instrumentation",
+  "peak_rss": "unavailable: no declared cross-platform process-metrics dependency",
+  "stage_counts": {
+    "HUMAN_REVIEW": 21,
+    "STAGE_1": 274,
+    "STAGE_2": 225
+  },
+  "sync": {
+    "classified": 0,
+    "failed": 0,
+    "human_review": 0,
+    "ingested": 0,
+    "outcomes": [
+      {
+        "error": null,
+        "external_message_id": "email_001",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_002",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_003",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_004",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_005",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_006",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_007",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_008",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_009",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_010",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_011",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_012",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_013",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_014",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_015",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_016",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_017",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_018",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_019",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_020",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_021",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_022",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_023",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_024",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_025",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_026",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_027",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_028",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_029",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_030",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_031",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_032",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_033",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_034",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_035",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_036",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_037",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_038",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_039",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_040",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_041",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_042",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_043",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_044",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_045",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_046",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_047",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_048",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_049",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_050",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_051",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_052",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_053",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_054",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_055",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_056",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_057",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_058",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_059",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_060",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_061",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_062",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_063",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_064",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_065",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_066",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_067",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_068",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_069",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_070",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_071",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_072",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_073",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_074",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_075",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_076",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_077",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_078",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_079",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_080",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_081",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_082",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_083",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_084",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_085",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_086",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_087",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_088",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_089",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_090",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_091",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_092",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_093",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_094",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_095",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_096",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_097",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_098",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_099",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_100",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_101",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_102",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_103",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_104",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_105",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_106",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_107",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_108",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_109",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_110",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_111",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_112",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_113",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_114",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_115",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_116",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_117",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_118",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_119",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_120",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_121",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_122",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_123",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_124",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_125",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_126",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_127",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_128",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_129",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_130",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_131",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_132",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_133",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_134",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_135",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_136",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_137",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_138",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_139",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_140",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_141",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_142",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_143",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_144",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_145",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_146",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_147",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_148",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_149",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_150",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_151",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_152",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_153",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_154",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_155",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_156",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_157",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_158",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_159",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_160",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_161",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_162",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_163",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_164",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_165",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_166",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_167",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_168",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_169",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_170",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_171",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_172",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_173",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_174",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_175",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_176",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_177",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_178",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_179",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_180",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_181",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_182",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_183",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_184",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_185",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_186",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_187",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_188",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_189",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_190",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_191",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_192",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_193",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_194",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_195",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_196",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_197",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_198",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_199",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_200",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_201",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_202",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_203",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_204",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_205",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_206",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_207",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_208",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_209",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_210",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_211",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_212",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_213",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_214",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_215",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_216",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_217",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_218",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_219",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_220",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_221",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_222",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_223",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_224",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_225",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_226",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_227",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_228",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_229",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_230",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_231",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_232",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_233",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_234",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_235",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_236",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_237",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_238",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_239",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_240",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_241",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_242",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_243",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_244",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_245",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_246",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_247",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_248",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_249",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_250",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_251",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_252",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_253",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_254",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_255",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_256",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_257",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_258",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_259",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_260",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_261",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_262",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_263",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_264",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_265",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_266",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_267",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_268",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_269",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_270",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_271",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_272",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_273",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_274",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_275",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_276",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_277",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_278",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_279",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_280",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_281",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_282",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_283",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_284",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_285",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_286",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_287",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_288",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_289",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_290",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_291",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_292",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_293",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_294",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_295",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_296",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_297",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_298",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_299",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_300",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_301",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_302",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_303",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_304",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_305",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_306",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_307",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_308",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_309",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_310",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_311",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_312",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_313",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_314",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_315",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_316",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_317",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_318",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_319",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_320",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_321",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_322",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_323",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_324",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_325",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_326",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_327",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_328",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_329",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_330",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_331",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_332",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_333",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_334",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_335",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_336",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_337",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_338",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_339",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_340",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_341",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_342",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_343",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_344",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_345",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_346",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_347",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_348",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_349",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_350",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_351",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_352",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_353",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_354",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_355",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_356",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_357",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_358",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_359",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_360",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_361",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_362",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_363",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_364",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_365",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_366",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_367",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_368",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_369",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_370",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_371",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_372",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_373",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_374",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_375",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_376",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_377",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_378",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_379",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_380",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_381",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_382",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_383",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_384",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_385",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_386",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_387",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_388",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_389",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_390",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_391",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_392",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_393",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_394",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_395",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_396",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_397",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_398",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_399",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_400",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_401",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_402",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_403",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_404",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_405",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_406",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_407",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_408",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_409",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_410",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_411",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_412",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_413",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_414",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_415",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_416",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_417",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_418",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_419",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_420",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_421",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_422",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_423",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_424",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_425",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_426",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_427",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_428",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_429",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_430",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_431",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_432",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_433",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_434",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_435",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_436",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_437",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_438",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_439",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_440",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_441",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_442",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_443",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_444",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_445",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_446",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_447",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_448",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_449",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_450",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_451",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_452",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_453",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_454",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_455",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_456",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_457",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_458",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_459",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_460",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_461",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_462",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_463",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_464",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_465",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_466",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_467",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_468",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_469",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_470",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_471",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_472",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_473",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_474",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_475",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_476",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_477",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_478",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_479",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_480",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_481",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_482",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_483",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_484",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_485",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_486",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_487",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_488",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_489",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_490",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_491",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_492",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_493",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_494",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_495",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_496",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_497",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_498",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_499",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_500",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_501",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_502",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_503",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_504",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_505",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_506",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_507",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_508",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_509",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_510",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_511",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_512",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_513",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_514",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_515",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_516",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_517",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_518",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_519",
+        "status": "SKIPPED"
+      },
+      {
+        "error": null,
+        "external_message_id": "email_520",
+        "status": "SKIPPED"
+      }
+    ],
+    "skipped": 520,
+    "source_failed": 0,
+    "source_failures": [],
+    "total": 520
+  },
+  "throughput_emails_per_second": 346.729,
+  "total_bundle_emails": 520,
+  "unhandled_exceptions": 0,
+  "wall_seconds": 1.5
+}
+```

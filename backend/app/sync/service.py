@@ -48,6 +48,14 @@ class EmailSyncOutcome:
 
 
 @dataclass
+class SourceSyncFailure:
+    """A source-stream failure that occurred before another email materialized."""
+
+    reason_code: str
+    error: str
+
+
+@dataclass
 class SyncReport:
     total: int = 0
     ingested: int = 0
@@ -55,7 +63,9 @@ class SyncReport:
     classified: int = 0
     human_review: int = 0
     failed: int = 0
+    source_failed: int = 0
     outcomes: list[EmailSyncOutcome] = field(default_factory=list)
+    source_failures: list[SourceSyncFailure] = field(default_factory=list)
 
 
 # ---------------------------------------------------------------------------
@@ -97,9 +107,32 @@ class SyncService:
         """
         report = SyncReport()
 
-        for message in source.iter_messages():
+        iterator = iter(source.iter_messages())
+        while True:
+            try:
+                message = next(iterator)
+            except StopIteration:
+                break
+            except Exception as exc:
+                # At this boundary there is no materialized EmailMessage to
+                # persist. Record the stream failure without inventing one,
+                # then commit work completed before the iterator failed.
+                logger.exception("Email source iteration failed")
+                report.source_failed += 1
+                report.source_failures.append(
+                    SourceSyncFailure(
+                        reason_code="SOURCE_ITERATION_FAILED",
+                        error=str(exc),
+                    )
+                )
+                break
+
             report.total += 1
             outcome = self._process_one(message)
+            # Each materialized email has its own durable boundary. This
+            # prevents a later _process_one() rollback from undoing prior
+            # successful work in the shared session.
+            self.session.commit()
             report.outcomes.append(outcome)
 
             if outcome.status == "SKIPPED":
@@ -113,7 +146,6 @@ class SyncService:
             elif outcome.status == "FAILED":
                 report.failed += 1
 
-        self.session.commit()
         return report
 
     def sync_one(self, message: EmailMessage) -> EmailSyncOutcome:
