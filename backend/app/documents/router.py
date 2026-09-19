@@ -1,0 +1,182 @@
+from __future__ import annotations
+
+import re
+from pathlib import Path
+from typing import Sequence
+
+from backend.app.documents.models import (
+    DocumentFormat,
+    DocumentRoutingResult,
+    DocumentType,
+    RoutedAttachment,
+)
+from backend.app.ingestion.models import AttachmentMetadata
+
+
+class DocumentRouter:
+    """
+    Classifies attachments into SI, DRAFT_BL, OTHER, or UNKNOWN.
+    Evaluates filename patterns, extensions, and content signals.
+    Enforces validation rules (missing SI/BL, multiple candidates, uncertainty).
+    """
+
+    def detect_format(self, filename: str) -> DocumentFormat:
+        ext = Path(filename).suffix.lower()
+        if ext in (".txt", ".text", ".csv", ""):
+            return DocumentFormat.PLAIN_TEXT
+        if ext == ".pdf":
+            return DocumentFormat.PDF_TEXT
+        if ext == ".docx":
+            return DocumentFormat.DOCX
+        if ext in (".xlsx", ".xlsm", ".xltx"):
+            return DocumentFormat.XLSX
+        if ext in (".png", ".jpg", ".jpeg", ".tiff", ".bmp"):
+            return DocumentFormat.IMAGE
+        return DocumentFormat.UNKNOWN
+
+    def classify_attachment(
+        self,
+        attachment: AttachmentMetadata,
+        peek_text: str | None = None,
+    ) -> RoutedAttachment:
+        filename_lower = attachment.filename.lower()
+        base_name = Path(filename_lower).stem
+        doc_format = self.detect_format(attachment.filename)
+
+        # 1. Check filename signals
+        si_score = 0.0
+        bl_score = 0.0
+        other_score = 0.0
+
+        if re.search(r"[_.\-\s]si([_.\-\s]|$)", base_name) or base_name.endswith("_si") or base_name.endswith("-si"):
+            si_score += 2.5
+        elif "shipping_instruction" in base_name or "shipping instruction" in base_name:
+            si_score += 3.0
+
+        if re.search(r"[_.\-\s]bl([_.\-\s]|$)", base_name) or base_name.endswith("_bl") or base_name.endswith("-bl"):
+            bl_score += 2.5
+        elif "draft_bl" in base_name or "draft bl" in base_name or "bill_of_lading" in base_name or "bill of lading" in base_name:
+            bl_score += 3.0
+
+        if "invoice" in base_name or "packing" in base_name:
+            other_score += 2.5
+
+        # 2. Check peek content signals if available
+        if peek_text:
+            text_lower = peek_text[:1000].lower()
+            if "shipping instruction" in text_lower or "bl instruction" in text_lower:
+                si_score += 2.0
+            if "bill of lading" in text_lower or "draft bl" in text_lower or "bill of lading (draft)" in text_lower:
+                bl_score += 2.0
+            if "commercial invoice" in text_lower or "packing list" in text_lower:
+                other_score += 2.0
+
+        # Determine winner
+        if si_score > bl_score and si_score > other_score and si_score >= 2.0:
+            return RoutedAttachment(
+                filename=attachment.filename,
+                source_reference=attachment.source_reference,
+                document_type=DocumentType.SI,
+                format=doc_format,
+                confidence=min(1.0, si_score / 3.0),
+                evidence=f"Filename/text matched SI patterns (score={si_score})",
+            )
+        elif bl_score > si_score and bl_score > other_score and bl_score >= 2.0:
+            return RoutedAttachment(
+                filename=attachment.filename,
+                source_reference=attachment.source_reference,
+                document_type=DocumentType.DRAFT_BL,
+                format=doc_format,
+                confidence=min(1.0, bl_score / 3.0),
+                evidence=f"Filename/text matched DRAFT_BL patterns (score={bl_score})",
+            )
+        elif other_score >= 2.0:
+            return RoutedAttachment(
+                filename=attachment.filename,
+                source_reference=attachment.source_reference,
+                document_type=DocumentType.OTHER,
+                format=doc_format,
+                confidence=0.9,
+                evidence=f"Identified as non-comparison document (score={other_score})",
+            )
+        else:
+            return RoutedAttachment(
+                filename=attachment.filename,
+                source_reference=attachment.source_reference,
+                document_type=DocumentType.UNKNOWN,
+                format=doc_format,
+                confidence=0.2,
+                evidence="Could not reliably determine document type from filename or content",
+            )
+
+    def route_attachments(
+        self,
+        attachments: Sequence[AttachmentMetadata],
+        peek_texts: dict[str, str] | None = None,
+    ) -> DocumentRoutingResult:
+        peek_texts = peek_texts or {}
+        routed_list = [
+            self.classify_attachment(att, peek_texts.get(att.source_reference or att.filename))
+            for att in attachments
+        ]
+
+        si_candidates = [r for r in routed_list if r.document_type == DocumentType.SI]
+        bl_candidates = [r for r in routed_list if r.document_type == DocumentType.DRAFT_BL]
+        other_list = [r for r in routed_list if r.document_type not in (DocumentType.SI, DocumentType.DRAFT_BL)]
+        unknown_list = [r for r in routed_list if r.document_type == DocumentType.UNKNOWN]
+
+        # Case 1: Multiple SI candidates
+        if len(si_candidates) > 1:
+            return DocumentRoutingResult(
+                other_attachments=routed_list,
+                human_review_required=True,
+                human_review_reason_code="MULTIPLE_SI_CANDIDATES",
+                human_review_reason_text=f"Found {len(si_candidates)} Shipping Instruction candidates: {[c.filename for c in si_candidates]}",
+            )
+
+        # Case 2: Multiple BL candidates
+        if len(bl_candidates) > 1:
+            return DocumentRoutingResult(
+                other_attachments=routed_list,
+                human_review_required=True,
+                human_review_reason_code="MULTIPLE_BL_CANDIDATES",
+                human_review_reason_text=f"Found {len(bl_candidates)} Draft BL candidates: {[c.filename for c in bl_candidates]}",
+            )
+
+        # Case 3: Missing both
+        if not si_candidates and not bl_candidates:
+            reason_code = "DOCUMENT_TYPE_UNCERTAIN" if unknown_list else "MISSING_SI"
+            return DocumentRoutingResult(
+                other_attachments=routed_list,
+                human_review_required=True,
+                human_review_reason_code=reason_code,
+                human_review_reason_text="Neither Shipping Instruction nor Draft BL could be identified in email attachments.",
+            )
+
+        # Case 4: Missing SI
+        if not si_candidates:
+            return DocumentRoutingResult(
+                bl_attachment=bl_candidates[0],
+                other_attachments=other_list,
+                human_review_required=True,
+                human_review_reason_code="MISSING_SI",
+                human_review_reason_text="Draft BL found, but Shipping Instruction (SI) is missing from attachments.",
+            )
+
+        # Case 5: Missing BL
+        if not bl_candidates:
+            return DocumentRoutingResult(
+                si_attachment=si_candidates[0],
+                other_attachments=other_list,
+                human_review_required=True,
+                human_review_reason_code="MISSING_BL",
+                human_review_reason_text="Shipping Instruction found, but Draft Bill of Lading (BL) is missing from attachments.",
+            )
+
+        # Success: exactly 1 SI and 1 BL
+        return DocumentRoutingResult(
+            si_attachment=si_candidates[0],
+            bl_attachment=bl_candidates[0],
+            other_attachments=other_list,
+            human_review_required=False,
+        )
