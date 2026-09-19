@@ -1,0 +1,128 @@
+from __future__ import annotations
+
+import uuid
+from datetime import datetime
+from typing import Any, Optional
+
+from pydantic import BaseModel
+
+
+# ---------------------------------------------------------------------------
+# Email schemas
+# ---------------------------------------------------------------------------
+
+class AttachmentOut(BaseModel):
+    id: uuid.UUID
+    filename: str
+    content_type: Optional[str]
+    source_reference: str
+    external_attachment_id: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class EmailOut(BaseModel):
+    id: uuid.UUID
+    external_message_id: str
+    source_type: str
+    sender: Optional[str]
+    recipients: list[str]
+    subject: str
+    body: str
+    received_at: Optional[datetime]
+    content_hash: str
+    created_at: datetime
+    updated_at: datetime
+    attachments: list[AttachmentOut] = []
+
+    model_config = {"from_attributes": True}
+
+
+class EmailListItem(BaseModel):
+    id: uuid.UUID
+    external_message_id: str
+    source_type: str
+    sender: Optional[str]
+    subject: str
+    received_at: Optional[datetime]
+    created_at: datetime
+    attachment_count: int = 0
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Classification schemas
+# ---------------------------------------------------------------------------
+
+class ClassificationOut(BaseModel):
+    id: uuid.UUID
+    email_id: uuid.UUID
+    category: str
+    confidence: float
+    candidate_scores: dict[str, float]
+    reason: str
+    evidence_summary: dict[str, Any]
+    conflict_detected: bool
+    resolved_at_stage: str
+    classifier_version: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Human review schemas
+# ---------------------------------------------------------------------------
+
+class HumanReviewOut(BaseModel):
+    id: uuid.UUID
+    email_id: uuid.UUID
+    reason_code: str
+    reason_text: str
+    candidate_scores: dict[str, float]
+    evidence: dict[str, Any]
+    confidence: Optional[float]
+    status: str
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+# ---------------------------------------------------------------------------
+# Sync schemas
+# ---------------------------------------------------------------------------
+
+class SyncRequest(BaseModel):
+    source: str = "static"          # "static" | "http"
+    organizer_http_url: Optional[str] = None
+
+
+class SyncReportOut(BaseModel):
+    total: int
+    ingested: int
+    skipped: int
+    classified: int
+    human_review: int
+    failed: int
+
+
+# ---------------------------------------------------------------------------
+# Incoming email schema
+# ---------------------------------------------------------------------------
+
+class IncomingAttachmentIn(BaseModel):
+    filename: str
+    source_reference: Optional[str] = None
+    content_type: Optional[str] = None
+    external_attachment_id: Optional[str] = None
+
+
+class IncomingEmailIn(BaseModel):
+    external_message_id: Optional[str] = None
+    sender: Optional[str] = None
+    recipients: list[str] = []
+    subject: str
+    body: str = ""
+    attachments: list[IncomingAttachmentIn] = []
