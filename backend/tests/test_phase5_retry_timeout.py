@@ -1,10 +1,13 @@
 from __future__ import annotations
 
 import time
+import urllib.error
+import urllib.request
 
 import pytest
 
 from backend.app.core.reliability import RetryPolicy, retry_call, run_with_timeout
+from backend.app.ingestion.sources import OrganizerHttpSource
 
 
 def test_retry_call_retries_transient_failures_with_bounded_backoff():
@@ -86,3 +89,46 @@ def test_retry_policy_rejects_unbounded_configuration():
         RetryPolicy(max_attempts=0)
     with pytest.raises(ValueError):
         RetryPolicy(max_attempts=2, backoff_seconds=-1)
+
+
+def test_organizer_http_source_retries_transient_5xx(monkeypatch):
+    attempts = 0
+
+    class _Response:
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *_args):
+            return False
+
+        def read(self):
+            return b"[]"
+
+    def flaky_urlopen(*_args, **_kwargs):
+        nonlocal attempts
+        attempts += 1
+        if attempts == 1:
+            raise urllib.error.HTTPError(
+                "http://example.test/emails",
+                503,
+                "temporary",
+                hdrs=None,
+                fp=None,
+            )
+        return _Response()
+
+    monkeypatch.setattr(urllib.request, "urlopen", flaky_urlopen)
+    source = OrganizerHttpSource(
+        "http://example.test",
+        retry_policy=RetryPolicy(max_attempts=2, backoff_seconds=0),
+    )
+
+    assert source._get_json("/emails") == []
+    assert attempts == 2
+    assert source.retry_events == [
+        {
+            "attempt": 1,
+            "error_type": "HTTPError",
+            "delay_seconds": 0,
+        }
+    ]

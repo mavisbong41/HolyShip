@@ -58,6 +58,12 @@ class MaterializationResult:
     processing_status: str
     reason_code: str
     technical_failure: bool = False
+    reader_calls: int = 0
+    extractor_calls: int = 0
+    ocr_calls: int = 0
+    vision_calls: int = 0
+    cache_hits: int = 0
+    cache_misses: int = 0
 
 
 @dataclass
@@ -114,6 +120,9 @@ class DocumentMaterializationService:
         attachment_records = list(email_record.attachments)
         persisted: list[_PersistedDocument] = []
         technical_failure: str | None = None
+        reader_calls = 0
+        ocr_calls = 0
+        vision_calls = 0
 
         for index, attachment in enumerate(message.attachments):
             attachment_record = self._attachment_record(attachment_records, attachment.source_reference, index)
@@ -133,6 +142,7 @@ class DocumentMaterializationService:
             attachment_record.retrieval_reason_code = None
 
             started = time.perf_counter()
+            reader_calls += 1
             try:
                 document = self.reader.read(
                     content,
@@ -152,6 +162,9 @@ class DocumentMaterializationService:
                 )
                 technical_failure = technical_failure or "DOCUMENT_READER_FAILED"
             parse_duration_ms = (time.perf_counter() - started) * 1000.0
+            reader_name = document.reader_used.casefold()
+            ocr_calls += int("ocr" in reader_name)
+            vision_calls += int("vision" in reader_name)
 
             validation, outcome = self._classify_materialization(content, document)
             document.document_type = validation.document_type
@@ -257,7 +270,14 @@ class DocumentMaterializationService:
 
         if technical_failure:
             transition(self.session, email_record, "FAILED", technical_failure)
-            return MaterializationResult("FAILED", technical_failure, technical_failure=True)
+            return MaterializationResult(
+                "FAILED",
+                technical_failure,
+                technical_failure=True,
+                reader_calls=reader_calls,
+                ocr_calls=ocr_calls,
+                vision_calls=vision_calls,
+            )
 
         precedence = (
             PreExtractionOutcome.WRONG_DOCUMENT_TYPE,
@@ -267,7 +287,13 @@ class DocumentMaterializationService:
         )
         for outcome in precedence:
             if any(item.outcome == outcome for item in persisted):
-                return self._blocked(email_record, outcome.value)
+                return self._blocked(
+                    email_record,
+                    outcome.value,
+                    reader_calls=reader_calls,
+                    ocr_calls=ocr_calls,
+                    vision_calls=vision_calls,
+                )
 
         si_documents = [item for item in persisted if item.role == DocumentType.SI]
         bl_documents = [item for item in persisted if item.role == DocumentType.DRAFT_BL]
@@ -276,13 +302,31 @@ class DocumentMaterializationService:
             for item in duplicate_role:
                 item.record.routing_outcome = PreExtractionOutcome.MULTIPLE_CANDIDATES.value
             self.session.flush()
-            return self._blocked(email_record, PreExtractionOutcome.MULTIPLE_CANDIDATES.value)
+            return self._blocked(
+                email_record,
+                PreExtractionOutcome.MULTIPLE_CANDIDATES.value,
+                reader_calls=reader_calls,
+                ocr_calls=ocr_calls,
+                vision_calls=vision_calls,
+            )
 
         if any(item.outcome == PreExtractionOutcome.ROLE_INCONCLUSIVE for item in persisted):
-            return self._blocked(email_record, "DOCUMENT_ROLE_UNRESOLVED")
+            return self._blocked(
+                email_record,
+                "DOCUMENT_ROLE_UNRESOLVED",
+                reader_calls=reader_calls,
+                ocr_calls=ocr_calls,
+                vision_calls=vision_calls,
+            )
 
         if len(si_documents) != 1 or len(bl_documents) != 1:
-            return self._blocked(email_record, PreExtractionOutcome.MISSING_REQUIRED_ATTACHMENT.value)
+            return self._blocked(
+                email_record,
+                PreExtractionOutcome.MISSING_REQUIRED_ATTACHMENT.value,
+                reader_calls=reader_calls,
+                ocr_calls=ocr_calls,
+                vision_calls=vision_calls,
+            )
 
         transition(self.session, email_record, "EXTRACTING", "DOCUMENTS_MATERIALIZED")
         field_service = DocumentFieldExtractionService(
@@ -311,6 +355,12 @@ class DocumentMaterializationService:
                 "FAILED",
                 "DOCUMENT_FIELD_EXTRACTION_FAILED",
                 technical_failure=True,
+                reader_calls=reader_calls,
+                extractor_calls=batch.computations,
+                ocr_calls=ocr_calls,
+                vision_calls=vision_calls,
+                cache_hits=batch.cache_hits,
+                cache_misses=batch.cache_misses,
             )
         try:
             with self.session.begin_nested():
@@ -335,6 +385,12 @@ class DocumentMaterializationService:
         return MaterializationResult(
             comparison.record.comparison_state,
             comparison.record.reason_code,
+            reader_calls=reader_calls,
+            extractor_calls=batch.computations,
+            ocr_calls=ocr_calls,
+            vision_calls=vision_calls,
+            cache_hits=batch.cache_hits,
+            cache_misses=batch.cache_misses,
         )
 
     def _classify_materialization(
@@ -369,9 +425,23 @@ class DocumentMaterializationService:
             evidence=evidence,
         )
 
-    def _blocked(self, email_record: EmailMessageRecord, reason_code: str) -> MaterializationResult:
+    def _blocked(
+        self,
+        email_record: EmailMessageRecord,
+        reason_code: str,
+        *,
+        reader_calls: int = 0,
+        ocr_calls: int = 0,
+        vision_calls: int = 0,
+    ) -> MaterializationResult:
         transition(self.session, email_record, "BLOCKED", reason_code)
-        return MaterializationResult("BLOCKED", reason_code)
+        return MaterializationResult(
+            "BLOCKED",
+            reason_code,
+            reader_calls=reader_calls,
+            ocr_calls=ocr_calls,
+            vision_calls=vision_calls,
+        )
 
     @staticmethod
     def _attachment_record(

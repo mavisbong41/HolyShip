@@ -88,6 +88,7 @@ class OrganizerHttpSource(EmailSource):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
         self.retry_policy = retry_policy or RetryPolicy()
+        self.retry_events: list[dict[str, object]] = []
 
     def iter_messages(self) -> Iterable[EmailMessage]:
         for record in self._get_json("/emails"):
@@ -114,6 +115,13 @@ class OrganizerHttpSource(EmailSource):
             request,
             policy=self.retry_policy,
             is_retryable=is_retryable_http_error,
+            on_retry=lambda attempt, error, delay: self.retry_events.append(
+                {
+                    "attempt": attempt,
+                    "error_type": type(error).__name__,
+                    "delay_seconds": delay,
+                }
+            ),
         )
 
     def _map_record(self, record: dict[str, Any]) -> EmailMessage:

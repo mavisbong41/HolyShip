@@ -220,6 +220,7 @@ class ComparisonService:
             result = (
                 run_with_timeout(resolve, timeout_seconds=self.semantic_timeout_seconds)
                 if self.semantic_timeout_seconds is not None
+                and not isinstance(self.l2, DefaultSemanticResolver)
                 else resolve()
             )
         except TimeoutError:

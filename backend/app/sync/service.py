@@ -55,6 +55,10 @@ class EmailSyncOutcome:
     retry_count: int = 0
     cache_hits: int = 0
     cache_misses: int = 0
+    reader_calls: int = 0
+    extractor_calls: int = 0
+    ocr_calls: int = 0
+    vision_calls: int = 0
 
 
 @dataclass
@@ -82,8 +86,13 @@ class SyncReport:
     p95_per_email_ms: float | None = None
     max_workers: int = 1
     retries: int = 0
+    source_retry_attempts: int = 0
     cache_hits: int = 0
     cache_misses: int = 0
+    reader_calls: int = 0
+    extractor_calls: int = 0
+    ocr_calls: int = 0
+    vision_calls: int = 0
     unhandled_exceptions: int = 0
 
 
@@ -161,8 +170,13 @@ class SyncService:
             report.p50_per_email_ms = _percentile(durations, 0.50)
             report.p95_per_email_ms = _percentile(durations, 0.95)
         report.retries = sum(outcome.retry_count for outcome in report.outcomes)
+        report.source_retry_attempts = len(getattr(source, "retry_events", ()))
         report.cache_hits = sum(outcome.cache_hits for outcome in report.outcomes)
         report.cache_misses = sum(outcome.cache_misses for outcome in report.outcomes)
+        report.reader_calls = sum(outcome.reader_calls for outcome in report.outcomes)
+        report.extractor_calls = sum(outcome.extractor_calls for outcome in report.outcomes)
+        report.ocr_calls = sum(outcome.ocr_calls for outcome in report.outcomes)
+        report.vision_calls = sum(outcome.vision_calls for outcome in report.outcomes)
         return report
 
     def _sync_sequential(self, source: EmailSource, report: SyncReport) -> None:
@@ -420,6 +434,9 @@ class SyncService:
         )
         transition(self.session, record, "CLASSIFIED", "CLASSIFICATION_COMPLETE")
 
+        cache_hits = 0
+        cache_misses = 0
+        reader_calls = extractor_calls = ocr_calls = vision_calls = 0
         if result.category != "document_comparison":
             transition(self.session, record, "COMPLETED", "NON_COMPARISON_COMPLETE")
         elif result.comparison_readiness == "AWAITING_DOCUMENTS":
@@ -428,6 +445,12 @@ class SyncService:
             transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
         elif result.comparison_readiness == "READY_FOR_COMPARISON":
             materialization = self._document_service.process(record, message, source)
+            cache_hits = materialization.cache_hits
+            cache_misses = materialization.cache_misses
+            reader_calls = materialization.reader_calls
+            extractor_calls = materialization.extractor_calls
+            ocr_calls = materialization.ocr_calls
+            vision_calls = materialization.vision_calls
             if materialization.technical_failure:
                 job.status = "FAILED"
                 job.error_message = materialization.reason_code
@@ -436,6 +459,12 @@ class SyncService:
                     external_message_id=ext_id,
                     status="FAILED",
                     error=materialization.reason_code,
+                    cache_hits=materialization.cache_hits,
+                    cache_misses=materialization.cache_misses,
+                    reader_calls=materialization.reader_calls,
+                    extractor_calls=materialization.extractor_calls,
+                    ocr_calls=materialization.ocr_calls,
+                    vision_calls=materialization.vision_calls,
                 )
             if materialization.processing_status == "BLOCKED":
                 job.status = "BLOCKED"
@@ -476,7 +505,16 @@ class SyncService:
             result.confidence,
             result.resolved_at_stage,
         )
-        return EmailSyncOutcome(external_message_id=ext_id, status="CLASSIFIED")
+        return EmailSyncOutcome(
+            external_message_id=ext_id,
+            status="CLASSIFIED",
+            cache_hits=cache_hits,
+            cache_misses=cache_misses,
+            reader_calls=reader_calls,
+            extractor_calls=extractor_calls,
+            ocr_calls=ocr_calls,
+            vision_calls=vision_calls,
+        )
 
 
 def _is_retryable_processing_error(error: Exception) -> bool:

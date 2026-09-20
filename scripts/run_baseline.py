@@ -95,7 +95,16 @@ def main() -> None:
         with session_factory() as session:
             if "email_messages" not in inspect(session.bind).get_table_names():
                 raise SystemExit("Evaluation migrations did not initialize email_messages.")
-            report = SyncService(session).sync(source)
+            settings = get_settings()
+            report = SyncService(
+                session,
+                confidence_threshold=settings.classification_threshold,
+                margin_threshold=settings.classification_margin_threshold,
+                max_workers=settings.sync_max_workers,
+                session_factory=session_factory,
+                retry_max_attempts=settings.retry_max_attempts,
+                semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
+            ).sync(source)
             rows = session.execute(
                 select(EmailMessageRecord, ClassificationResultRecord)
                 .outerjoin(
@@ -186,11 +195,25 @@ def main() -> None:
             "report": "reports/attachment_inventory.md",
             "note": "Phase 2 materialization/role audit is separate from this idempotent sync timing run",
         },
-        "external_calls": {"llm": 0, "ocr": 0, "vision": 0, "cache": 0},
-        "unhandled_exceptions": 0,
+        "external_calls": {
+            "reader": report.reader_calls,
+            "extractor": report.extractor_calls,
+            "llm": 0,
+            "ocr": report.ocr_calls,
+            "vision": report.vision_calls,
+            "cache_hits": report.cache_hits,
+            "cache_misses": report.cache_misses,
+        },
+        "retries": report.retries,
+        "source_retry_attempts": report.source_retry_attempts,
+        "unhandled_exceptions": report.unhandled_exceptions,
         "wall_seconds": round(elapsed, 3),
         "throughput_emails_per_second": round(len(public_ids) / elapsed, 3) if elapsed else None,
-        "p50_p95_per_email_seconds": "unavailable: legacy sync has no per-email timing instrumentation",
+        "p50_p95_per_email_seconds": {
+            "p50": round(report.p50_per_email_ms / 1000, 6) if report.p50_per_email_ms is not None else None,
+            "p95": round(report.p95_per_email_ms / 1000, 6) if report.p95_per_email_ms is not None else None,
+        },
+        "max_workers": report.max_workers,
         "peak_rss": "unavailable: no declared cross-platform process-metrics dependency",
     }
     (LATEST / "eval.json").write_text(json.dumps(metrics, indent=2, sort_keys=True) + "\n", encoding="utf-8")
