@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+from dataclasses import asdict
 from uuid import UUID
 
 from sqlalchemy import delete, select
@@ -9,7 +11,13 @@ from sqlalchemy.orm import Session, selectinload
 from backend.app.comparison.models import ComparisonBatchResult
 from backend.app.extraction.models import CanonicalField, DocumentExtractionResult
 from backend.app.ingestion.models import EmailMessage
+from backend.app.resolution.models import (
+    ExtractionResolutionRequest,
+    ResolutionDecision,
+    SemanticResolutionRequest,
+)
 from backend.app.storage.models import (
+    AIResolutionRecord,
     AttachmentRecord,
     ClassificationResultRecord,
     ComparisonResultRecord,
@@ -22,6 +30,91 @@ from backend.app.storage.models import (
     HumanReviewCaseRecord,
     ProcessingJobRecord,
 )
+
+
+class AIResolutionRepository:
+    """Concurrency-safe durable cache for validated Phase-6 decisions."""
+
+    def __init__(self, session: Session):
+        self.session = session
+
+    def get_decision(self, request_hash: str) -> ResolutionDecision | None:
+        record = self.session.scalar(
+            select(AIResolutionRecord).where(
+                AIResolutionRecord.request_hash == request_hash
+            )
+        )
+        return self._to_decision(record) if record is not None else None
+
+    def store_decision(
+        self,
+        *,
+        request_hash: str,
+        request: ExtractionResolutionRequest | SemanticResolutionRequest,
+        decision: ResolutionDecision,
+        provider_name: str,
+        model_name: str,
+        resolver_version: str,
+        prompt_schema_version: str,
+    ) -> ResolutionDecision:
+        existing = self.get_decision(request_hash)
+        if existing is not None:
+            return existing
+        purpose = "EXTRACTION" if isinstance(request, ExtractionResolutionRequest) else "SEMANTIC"
+        source_identity = (
+            f"{request.content_identity}|{request.document_role}|{request.document_id}"
+            if isinstance(request, ExtractionResolutionRequest)
+            else request.source_identity
+        )
+        request_json = json.loads(json.dumps(asdict(request), default=str))
+        response_json = {
+            "value": decision.value,
+            "normalized_value": decision.normalized_value,
+            "equivalent": decision.equivalent,
+            "evidence": decision.evidence,
+        }
+        record = AIResolutionRecord(
+            request_hash=request_hash,
+            purpose=purpose,
+            case_id=request.case_id,
+            field_name=request.field.value,
+            source_identity=source_identity,
+            provider_name=provider_name,
+            model_name=model_name,
+            resolver_version=resolver_version,
+            prompt_schema_version=prompt_schema_version,
+            request_json=request_json,
+            response_json=response_json,
+            accepted=decision.accepted,
+            confidence=decision.confidence,
+            validation_reason=decision.validation_reason,
+            provider_calls=decision.provider_calls,
+        )
+        try:
+            with self.session.begin_nested():
+                self.session.add(record)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.get_decision(request_hash)
+            if existing is None:
+                raise
+            return existing
+        return decision
+
+    @staticmethod
+    def _to_decision(record: AIResolutionRecord) -> ResolutionDecision:
+        return ResolutionDecision(
+            accepted=record.accepted,
+            validation_reason=record.validation_reason,
+            field=CanonicalField(record.field_name),
+            confidence=record.confidence,
+            value=record.response_json.get("value"),
+            normalized_value=record.response_json.get("normalized_value"),
+            equivalent=record.response_json.get("equivalent"),
+            evidence=record.response_json.get("evidence") or {},
+            provider_calls=record.provider_calls,
+            request_hash=record.request_hash,
+        )
 
 
 class EmailRepository:
@@ -708,10 +801,10 @@ class ComparisonResultRepository:
                 self.session.add(field_record)
             field_record.si_field_id = si_source.id
             field_record.bl_field_id = bl_source.id
-            field_record.si_raw_value = si_source.raw_value_json
-            field_record.bl_raw_value = bl_source.raw_value_json
-            field_record.si_canonical_value = si_source.canonical_value
-            field_record.bl_canonical_value = bl_source.canonical_value
+            field_record.si_raw_value = result.si_field.raw_value
+            field_record.bl_raw_value = result.bl_field.raw_value
+            field_record.si_canonical_value = result.si_field.canonical_value
+            field_record.bl_canonical_value = result.bl_field.canonical_value
             field_record.si_normalized_value = result.normalized_si
             field_record.bl_normalized_value = result.normalized_bl
             field_record.comparison_layer = result.layer.value
@@ -721,6 +814,8 @@ class ComparisonResultRepository:
                 "comparison": result.evidence,
                 "si_source_location": si_source.source_location,
                 "bl_source_location": bl_source.source_location,
+                "si_extraction": result.si_field.evidence,
+                "bl_extraction": result.bl_field.evidence,
             }
         self.session.flush()
         return record

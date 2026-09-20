@@ -34,6 +34,7 @@ from backend.app.storage.models import (
     EmailMessageRecord,
     HumanReviewCaseRecord,
 )
+from backend.app.resolution.runtime import get_configured_resolution_executor_factory
 from backend.app.sync.service import SyncService
 
 router = APIRouter()
@@ -72,6 +73,11 @@ def sync(
         session_factory=SessionLocal,
         retry_max_attempts=settings.retry_max_attempts,
         semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
+        extraction_max_workers=settings.extraction_max_workers,
+        ocr_timeout_seconds=settings.ocr_timeout_seconds,
+        ocr_max_calls=settings.ocr_max_calls,
+        ocr_max_concurrent_calls=settings.ocr_max_concurrent_calls,
+        resolution_executor_factory=get_configured_resolution_executor_factory(settings),
     )
 
     if body.source == "http":
@@ -250,6 +256,11 @@ def receive_incoming_email(
         session_factory=SessionLocal,
         retry_max_attempts=settings.retry_max_attempts,
         semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
+        extraction_max_workers=settings.extraction_max_workers,
+        ocr_timeout_seconds=settings.ocr_timeout_seconds,
+        ocr_max_calls=settings.ocr_max_calls,
+        ocr_max_concurrent_calls=settings.ocr_max_concurrent_calls,
+        resolution_executor_factory=get_configured_resolution_executor_factory(settings),
     )
     outcome = svc.sync_one(message)
 

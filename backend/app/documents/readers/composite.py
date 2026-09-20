@@ -123,6 +123,20 @@ class CompositeDocumentReader(DocumentReader):
         source_reference: str,
         last_result: UnifiedDocument,
     ) -> UnifiedDocument:
+        if last_result.metadata.get("fallback_allowed") is False:
+            return UnifiedDocument(
+                raw_text=last_result.raw_text,
+                pages=last_result.pages,
+                tables=last_result.tables,
+                format=last_result.format,
+                reader_used=last_result.reader_used,
+                filename=filename,
+                source_reference=source_reference,
+                extraction_quality=0.0,
+                extraction_status="UNREADABLE",
+                error_message=last_result.error_message,
+                metadata=last_result.metadata,
+            )
         vision_res = self.vision_reader.read(content_bytes, filename, source_reference)
         if vision_res.extraction_status == "EXTRACTED" and vision_res.raw_text.strip():
             return vision_res

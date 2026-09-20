@@ -202,6 +202,7 @@ def test_sync_reclassifies_changed_email(svc, session):
 # ---------------------------------------------------------------------------
 # Test 20 — one malformed email does not stop the whole sync
 # ---------------------------------------------------------------------------
+@pytest.mark.req("REL-06")
 def test_sync_continues_after_broken_email(svc, session):
     report = svc.sync(BrokenSource())
 
@@ -221,6 +222,8 @@ def test_sync_continues_after_broken_email(svc, session):
     assert later.total == 1
 
 
+@pytest.mark.req("PRF-02")
+@pytest.mark.req("REL-05")
 def test_sync_commits_each_materialized_email_before_later_failure(svc, session, monkeypatch):
     """A per-email rollback cannot discard previously committed messages."""
     original_classify = sync_service.classify_email

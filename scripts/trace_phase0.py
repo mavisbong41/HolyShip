@@ -7,6 +7,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 REQUIRED = {"ING-09", "SUB-01", "SEC-01", "SEC-02", "SEC-03", "SCP-03", "SCP-04", "SCP-08"}
+PHASE_ORDER = {"0": 0, "1": 1, "2": 2, "3": 3, "4": 4, "5": 5, "6A": 6, "6B": 7, "7": 8, "F": 9}
 
 
 def main() -> None:
@@ -15,15 +16,18 @@ def main() -> None:
     artifacts = [ROOT / "reports" / "leakage_audit.md", ROOT / "implement.md"]
     if missing or not all(path.exists() for path in artifacts):
         raise SystemExit(f"Phase 0 traceability failed: missing={missing}, artifacts={[str(path) for path in artifacts if not path.exists()]}")
-    phase = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    phase_name = sys.argv[1].upper() if len(sys.argv) > 1 and sys.argv[1] else "0"
+    if phase_name not in PHASE_ORDER:
+        raise SystemExit(f"Unknown phase {phase_name!r}; expected one of {', '.join(PHASE_ORDER)}")
+    phase = PHASE_ORDER[phase_name]
     rows: list[dict[str, str]] = []
     for line in matrix.splitlines():
         if not line.startswith("|"):
             continue
         cells = [cell.strip() for cell in line.strip().strip("|").split("|")]
-        if len(cells) < 7 or not re.fullmatch(r"\d+", cells[3]):
+        if len(cells) < 7 or cells[3] not in PHASE_ORDER:
             continue
-        owner = int(cells[3])
+        owner = PHASE_ORDER[cells[3]]
         if owner <= phase:
             rows.append(
                 {
@@ -63,10 +67,10 @@ def main() -> None:
     }
     if todo or failed or evidence_errors:
         raise SystemExit(
-            f"Phase {phase} traceability failed: counts={counts}, TODO={todo}, "
+            f"Phase {phase_name} traceability failed: counts={counts}, TODO={todo}, "
             f"FAIL={failed}, evidence_errors={evidence_errors}"
         )
-    print(f"Phase {phase} traceability: PASS {counts}")
+    print(f"Phase {phase_name} traceability: PASS {counts}")
 
 
 if __name__ == "__main__":

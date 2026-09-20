@@ -25,6 +25,7 @@ from backend.app.storage.models import (
 )
 from backend.app.submission_adapter import SubmissionWorkflowOutcome, build_submission
 from backend.app.sync.service import SyncService
+from backend.app.resolution.runtime import get_configured_resolution_executor_factory
 from database_isolation import require_eval_isolation
 from evaluation_database import reset_and_migrate
 
@@ -104,6 +105,11 @@ def main() -> None:
                 session_factory=session_factory,
                 retry_max_attempts=settings.retry_max_attempts,
                 semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
+                extraction_max_workers=settings.extraction_max_workers,
+                ocr_timeout_seconds=settings.ocr_timeout_seconds,
+                ocr_max_calls=settings.ocr_max_calls,
+                ocr_max_concurrent_calls=settings.ocr_max_concurrent_calls,
+                resolution_executor_factory=get_configured_resolution_executor_factory(settings),
             ).sync(source)
             rows = session.execute(
                 select(EmailMessageRecord, ClassificationResultRecord)
@@ -198,11 +204,17 @@ def main() -> None:
         "external_calls": {
             "reader": report.reader_calls,
             "extractor": report.extractor_calls,
-            "llm": 0,
+            "llm": report.resolver_calls,
             "ocr": report.ocr_calls,
             "vision": report.vision_calls,
             "cache_hits": report.cache_hits,
             "cache_misses": report.cache_misses,
+            "resolver_accepted": report.resolver_accepted,
+            "resolver_rejected": report.resolver_rejected,
+            "resolver_cache_hits": report.resolver_cache_hits,
+            "resolver_failures": report.resolver_failures,
+            "resolver_malformed": report.resolver_malformed,
+            "escalated_cases": report.escalated_cases,
         },
         "retries": report.retries,
         "source_retry_attempts": report.source_retry_attempts,

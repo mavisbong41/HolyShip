@@ -15,6 +15,11 @@ from backend.app.extraction.models import (
     MappingMethod,
     SourceLocation,
 )
+from backend.app.resolution.integration import (
+    HardCaseSemanticResolver,
+    apply_extraction_overlays,
+)
+from backend.app.resolution.service import ResolutionExecutor
 from backend.app.storage.models import (
     ComparisonResultRecord,
     DocumentExtractionRecord,
@@ -43,10 +48,16 @@ class PersistedComparisonService:
         comparator: ComparisonService | None = None,
         *,
         comparison_version: str = COMPARISON_VERSION,
+        resolution_executor: ResolutionExecutor | None = None,
     ) -> None:
         self.session = session
         self.comparator = comparator if comparator is not None else ComparisonService()
-        self.comparison_version = comparison_version
+        self.resolution_executor = resolution_executor
+        self.comparison_version = (
+            resolution_executor.comparison_version
+            if resolution_executor is not None and comparison_version == COMPARISON_VERSION
+            else comparison_version
+        )
         self.extraction_repo = DocumentExtractionRepository(session)
         self.comparison_repo = ComparisonResultRepository(session)
 
@@ -82,8 +93,37 @@ class PersistedComparisonService:
         si_result, si_fields = self._to_domain(si_record, "SI")
         bl_result, bl_fields = self._to_domain(bl_record, "DRAFT_BL")
 
+        comparator = self.comparator
+        if self.resolution_executor is not None and self.resolution_executor.enabled:
+            si_result = apply_extraction_overlays(
+                si_result,
+                executor=self.resolution_executor,
+                case_id=str(email.id),
+                document_id=str(si_record.document_id),
+                content_identity=si_record.document.content_sha256 or str(si_record.document_id),
+            )
+            bl_result = apply_extraction_overlays(
+                bl_result,
+                executor=self.resolution_executor,
+                case_id=str(email.id),
+                document_id=str(bl_record.document_id),
+                content_identity=bl_record.document.content_sha256 or str(bl_record.document_id),
+            )
+            comparator = ComparisonService(
+                l2=HardCaseSemanticResolver(
+                    self.resolution_executor,
+                    case_id=str(email.id),
+                    source_identity=(
+                        f"{si_record.document.content_sha256 or si_record.document_id}|"
+                        f"{bl_record.document.content_sha256 or bl_record.document_id}"
+                    ),
+                    si_fields=si_result.fields,
+                    bl_fields=bl_result.fields,
+                )
+            )
+
         transition(self.session, email, "COMPARING", "COMPARISON_STARTED")
-        batch = self.comparator.compare(si_result, bl_result)
+        batch = comparator.compare(si_result, bl_result)
         record = self.comparison_repo.upsert_result(
             email_id=email.id,
             si_extraction_id=si_extraction_id,
