@@ -1,12 +1,42 @@
+from contextlib import asynccontextmanager
+
 from fastapi import FastAPI
 
-from backend.app.api.router import router
-from backend.app.core.config import get_settings
+from backend.app.api.router import _build_sync_service, router
+from backend.app.core.config import Settings, get_settings
+from backend.app.ingestion.runtime import IngestionRuntime
+from backend.app.storage.database import SessionLocal
 
-app = FastAPI(
-    title=get_settings().app_name,
-    description="HolyShip Shipping Document Verification — product-facing API over persisted processing results",
-    version="0.7.0",
-)
 
-app.include_router(router, prefix="/api")
+def create_app(settings: Settings | None = None) -> FastAPI:
+    configured = settings or get_settings()
+
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        def processor_factory(session):
+            service = _build_sync_service(session, configured)
+            return service.sync_one
+
+        runtime = IngestionRuntime(
+            configured,
+            session_factory=SessionLocal,
+            processor_factory=processor_factory,
+        )
+        app.state.ingestion_runtime = runtime
+        runtime.start()
+        try:
+            yield
+        finally:
+            runtime.stop()
+
+    application = FastAPI(
+        title=configured.app_name,
+        description="HolyShip Shipping Document Verification — product-facing API over persisted processing results",
+        version="0.7.0",
+        lifespan=lifespan,
+    )
+    application.include_router(router, prefix="/api")
+    return application
+
+
+app = create_app()

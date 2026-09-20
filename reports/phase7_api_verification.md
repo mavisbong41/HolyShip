@@ -1,32 +1,46 @@
 # Phase 7 API Verification
 
 **Date:** 2026-09-20
-**Branch:** `phase7`
+**Branch:** `phase7` (Phase R repair, local before push)
 
 ## Automated verification
 
 | Check | Result |
 |---|---|
-| Product API + provider contract tests | 12 passed, 1 existing Starlette/httpx deprecation warning |
-| Inherited focused suite plus Phase 7 tests | 46 passed, 1 existing Starlette/httpx deprecation warning |
-| Full repository test collection | 212 passed, 59 skipped (database-dependent), 1 existing deprecation warning |
-| PostgreSQL product integration tests | 2 skipped: `HOLYSHIP_TEST_DATABASE_URL` unset and no PostgreSQL/Docker available |
+| Phase R polling + product API + provider + exporter focused tests | 30 passed, 1 existing Starlette/httpx deprecation warning |
+| Phase R polling suite including PostgreSQL checkpoint test | 19 passed, 1 skipped because `HOLYSHIP_TEST_DATABASE_URL` is unset |
+| Full repository test collection | 221 passed, 60 skipped (database-dependent), 1 existing deprecation warning |
+| PostgreSQL product/checkpoint integration tests | Skipped: `HOLYSHIP_TEST_DATABASE_URL` is unset; no PostgreSQL/Docker/Podman executable is available |
 | Python compileall | Passed for `backend/app`, `backend/tests`, and `scripts` |
-| Alembic heads | `20260920_0011 (head)` |
+| Alembic heads | `20260920_0012 (head)` |
 | SQLAlchemy PostgreSQL compilation | Queue and count statements compile successfully |
-| `git diff --check` | Passed; only expected Windows line-ending warnings |
-| Live demo | Not run; no database/service available |
-| Full `make check`/evaluation | Not run; no database/service available |
-| Push | Passed: `origin/phase7` created from the Phase 7 branch |
+| `git diff --check` | Pending final commit diff review |
+| Phase 7 trace | Not PASS: `ING-08` remains TODO because its PostgreSQL persistence evidence is skipped |
+| Live `scripts/demo.sh` | Not run; no database/service available |
+| Full `make check`/evaluation | Not run successfully; required database URLs are unset |
+| Push | Pending Phase R commit/push |
 
 ## Safety checks
 
 - Product GET paths compose persisted rows only; they do not invoke readers, OCR, extractors, resolution providers, or comparison services.
 - Product schemas omit AI request payloads, prompts, cache identities, and credentials.
 - Microsoft Graph support is an adapter-only payload mapper with no SDK, OAuth, or network dependency.
-- No migration was added for Phase 7.
+- Phase R adds only additive migration `20260920_0012_ingestion_checkpoints`; no Phase 0–6 processing tables or semantics were changed.
 - No runtime path reads `ground_truth.json` or private evaluator answers.
+
+## Phase R continuous-ingestion evidence
+
+- Unit tests cover three source listings (`A/B`, `A/B`, `A/B/C`), restart with
+  persisted fake state, zero duplicate attachment reads, bounded backoff
+  (`1s`, `2s`, then configured `60s`), and reset after success.
+- FastAPI lifespan tests cover disabled-by-default startup and a configured
+  one-shot initial sync. Runtime shutdown uses an event-aware sleeper so a
+  60-second poll interval does not delay shutdown.
+- `SqlAlchemyPollingStateStore` and migration `20260920_0012` are implemented,
+  but the PostgreSQL checkpoint-restart test was skipped because
+  `HOLYSHIP_TEST_DATABASE_URL` is unset. This is the remaining trace/gate
+  blocker, not a claimed database pass.
 
 ## Remaining verification
 
-Run the PostgreSQL integration tests, start the API, execute `scripts/demo_phase7.py`, run the repository's full check/evaluation gates, and push `phase7` from a network-enabled environment.
+Run the PostgreSQL integration/checkpoint tests, apply migration `20260920_0012`, start the API, execute `scripts/demo.sh`, run the repository's full check/evaluation gates, and push `phase7` from a service-enabled environment. Until then the final phase status is blocked by environment verification, not by a claimed passing database gate.

@@ -1,7 +1,7 @@
 from functools import lru_cache
 from pathlib import Path
 
-from pydantic import Field, SecretStr
+from pydantic import Field, SecretStr, model_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 from backend.app.core.reliability import RetryPolicy
@@ -35,6 +35,19 @@ class Settings(BaseSettings):
     ocr_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
     ocr_max_calls: int = Field(default=8, ge=1, le=1000)
     ocr_max_concurrent_calls: int = Field(default=2, ge=1, le=16)
+    initial_sync_on_startup: bool = False
+    continuous_polling_enabled: bool = False
+    polling_interval_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
+    polling_backoff_initial_seconds: float = Field(default=1.0, gt=0.0, le=3600.0)
+    polling_backoff_max_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
+    polling_source_type: str = "STATIC_BUNDLE"
+    polling_organizer_http_url: str | None = None
+
+    @model_validator(mode="after")
+    def validate_polling_backoff(self) -> "Settings":
+        if self.polling_backoff_max_seconds < self.polling_backoff_initial_seconds:
+            raise ValueError("polling_backoff_max_seconds must not be below polling_backoff_initial_seconds")
+        return self
 
     @property
     def retry_policy(self) -> RetryPolicy:

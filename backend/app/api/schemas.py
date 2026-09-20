@@ -140,9 +140,21 @@ class SyncReportOut(BaseModel):
     failed: int
 
 
+class SyncProgressOut(BaseModel):
+    """Final progress snapshot for the synchronous initial-sync request."""
+
+    total: int
+    processed: int
+    percent: float = Field(ge=0.0, le=100.0)
+    ingested: int
+    skipped: int
+    failed: int
+
+
 class InitialSyncOut(SyncReportOut):
     job_id: uuid.UUID
     status: Literal["COMPLETED"] = "COMPLETED"
+    progress: SyncProgressOut
 
 
 # ---------------------------------------------------------------------------
@@ -154,6 +166,7 @@ class IncomingAttachmentIn(BaseModel):
     source_reference: Optional[str] = None
     content_type: Optional[str] = None
     external_attachment_id: Optional[str] = None
+    content_base64: Optional[str] = None
 
 
 class IncomingEmailIn(BaseModel):

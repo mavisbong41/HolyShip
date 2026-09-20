@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import uuid
 from datetime import datetime
 from typing import Literal
@@ -17,6 +19,7 @@ from backend.app.api.schemas import (
     InitialSyncOut,
     IncomingEmailIn,
     SyncReportOut,
+    SyncProgressOut,
     SyncRequest,
 )
 from backend.app.core.config import Settings
@@ -318,26 +321,45 @@ def receive_incoming_email(
     Accept a newly arriving email (webhook / manual submission).
     Runs EXACTLY the same classification pipeline as the batch sync.
     """
+    attachment_contents: dict[str, bytes] = {}
+    incoming_attachments: list[IncomingAttachmentInput] = []
+    for attachment in payload.attachments:
+        source_reference = attachment.source_reference or attachment.filename
+        if attachment.content_base64 is not None:
+            try:
+                attachment_contents[source_reference] = base64.b64decode(
+                    attachment.content_base64,
+                    validate=True,
+                )
+            except (binascii.Error, ValueError) as exc:
+                raise HTTPException(
+                    status_code=422,
+                    detail=f"Invalid base64 attachment content for {attachment.filename}",
+                ) from exc
+        incoming_attachments.append(
+            IncomingAttachmentInput(
+                filename=attachment.filename,
+                source_reference=source_reference,
+                content_type=attachment.content_type,
+                external_attachment_id=attachment.external_attachment_id,
+            )
+        )
+
     incoming = IncomingEmailPayload(
         external_message_id=payload.external_message_id,
         sender=payload.sender,
         recipients=payload.recipients,
         subject=payload.subject,
         body=payload.body,
-        attachments=[
-            IncomingAttachmentInput(
-                filename=a.filename,
-                source_reference=a.source_reference,
-                content_type=a.content_type,
-                external_attachment_id=a.external_attachment_id,
-            )
-            for a in payload.attachments
-        ],
+        attachments=incoming_attachments,
     )
     message: EmailMessage = map_incoming_payload(incoming)
 
     svc = _build_sync_service(session, settings)
-    outcome = svc.sync_one(message)
+    outcome = svc.sync_one(
+        message,
+        IncomingApiSource(incoming, attachment_contents=attachment_contents),
+    )
 
     return {
         "external_message_id": outcome.external_message_id,
@@ -490,7 +512,20 @@ def product_initial_sync(
     settings: Settings = Depends(get_settings_dep),
 ):
     report = sync(body=body, session=session, settings=settings)
-    return InitialSyncOut(job_id=uuid.uuid4(), **report.model_dump())
+    processed = report.ingested + report.skipped + report.failed
+    total = report.total
+    return InitialSyncOut(
+        job_id=uuid.uuid4(),
+        progress=SyncProgressOut(
+            total=total,
+            processed=processed,
+            percent=100.0 if total == 0 else min(100.0, processed / total * 100.0),
+            ingested=report.ingested,
+            skipped=report.skipped,
+            failed=report.failed,
+        ),
+        **report.model_dump(),
+    )
 
 
 @router.post(

@@ -74,6 +74,30 @@ class ProcessingEventRecord(Base):
     email: Mapped[EmailMessageRecord] = relationship(back_populates="processing_events")
 
 
+class IngestionCheckpointRecord(TimestampMixin, Base):
+    """Durable state for one source polling stream.
+
+    Organizer HTTP currently has no incremental cursor. The checkpoint records
+    the last completely listed poll for audit/restart visibility; the email
+    identity and content-hash state remains the authoritative dedupe guard.
+    """
+
+    __tablename__ = "ingestion_checkpoints"
+    __table_args__ = (
+        UniqueConstraint("source_key", name="uq_ingestion_checkpoint_source_key"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    source_key: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    source_type: Mapped[str] = mapped_column(String(50), nullable=False)
+    last_successful_poll_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    last_seen_external_id: Mapped[str | None] = mapped_column(String(255))
+    last_seen_content_hash: Mapped[str | None] = mapped_column(String(64))
+    poll_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
+    last_error_code: Mapped[str | None] = mapped_column(String(80))
+    last_error_message: Mapped[str | None] = mapped_column(Text)
+
+
 class AttachmentRecord(Base):
     __tablename__ = "attachments"
     __table_args__ = (

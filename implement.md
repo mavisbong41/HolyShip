@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase 7 product-facing API and live-demo implementation
-**Repository state:** Local `phase7` is based on the clean Phase 6 tip `f38b42d27ecc8e63a1dc5e972c24043d2ee058ac` (`ad29157` is the preceding Phase 6 runtime commit). The configured remote `feature/email-classification` was stale at `a415000`; Phase 7 commit `ccffc98` is pushed to `origin/phase7`.
+**Updated by:** Phase R Phase 7 closure repair
+**Repository state:** Local `phase7` retains the Phase 7 history. The fetched `origin/feature/email-classification` integration merge contains the same Phase 6 production tree as the Phase 7 base; the difference is merge topology only, so no merge/rebase was performed. The repair is not yet pushed.
 
 ---
 
@@ -91,7 +91,7 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Repository/stack audit | DONE | Python/FastAPI/SQLAlchemy/PostgreSQL stack and public participant bundle verified |
 | Email ingestion | IMPLEMENTED | Source adapters normalize provider messages; duplicate identity is database-backed |
 | Initial sync | IMPLEMENTED | Repeated sync skips completed unchanged messages and processes progressively |
-| Continuous ingestion | PARTIAL | Incoming API and HTTP/static adapters exist; real provider cursor/polling is not implemented |
+| Continuous ingestion | IMPLEMENTED — DB GATE PENDING | Generic worker, startup lifespan, configurable 60-second polling, bounded backoff, source checkpoint, and completed-email/attachment dedupe are implemented; live PostgreSQL verification is unavailable here |
 | Classification Stage 1 | IMPLEMENTED | Centralized deterministic signals and thresholds; exact five-category output contract |
 | Classification Stage 2 | IMPLEMENTED | Validated five-category output, explicit zero-signal policy, evidence-aware deterministic tie handling |
 | Comparison readiness | IMPLEMENTED | READY_FOR_COMPARISON / AWAITING_DOCUMENTS / UNRESOLVED after document_comparison only |
@@ -213,6 +213,16 @@ Fast compare
 
 ## Implemented
 
+### Phase R — close Phase 7 implementation and verification gaps
+
+- Added generic `ContinuousIngestionWorker` with source-independent polling, restart-safe DB-backed checkpoint persistence, bounded exponential backoff, reset-after-success behavior, and no-refetch/no-reprocess guards for unchanged completed messages.
+- Added optional FastAPI lifespan startup integration for initial sync and continuous polling. Disabled settings create no worker; startup initial sync runs in a daemon thread and does not block HTTP startup.
+- Added migration `20260920_0012_ingestion_checkpoints` and centralized polling settings with safe `.env.example` defaults.
+- Added request-only base64 attachment content to the generic incoming API so simulated/demo messages use the shared lazy source and real document pipeline.
+- Added a completed `progress` snapshot to `/api/v1/sync/initial`; the endpoint remains explicitly synchronous.
+- Added `scripts/demo.sh` and expanded the HTTP-only demo to text, XLSX, wrong-document, scanned-PDF, `AWAITING_DOCUMENTS`, and spam scenarios with event checks.
+- Added requirement-marked polling/runtime/API tests and a PostgreSQL checkpoint-restart test (skipped when `HOLYSHIP_TEST_DATABASE_URL` is absent).
+
 ### Phase 7 — product-facing API and live-demo boundary
 
 - Added explicit Pydantic product contracts for queue rows, summary counts, unified email detail, documents, extracted fields, seven-field comparison, evidence, timeline, reviewer context, AI resolution provenance, and polling events.
@@ -222,8 +232,8 @@ Fast compare
 - Added read-only `/api/v1/human-review` queue/detail composition and `/api/v1/events` as a deterministic polling-compatible `EMAIL_PROCESSING_UPDATED` feed.
 - Added `/api/v1/sync/initial`, `/api/v1/ingestion/email`, and technical-failure-only `/api/v1/emails/{id}/reprocess` aliases over the existing `SyncService`; legacy `/api/*` routes remain unchanged.
 - Added a provider-isolated `MicrosoftGraphSource` payload adapter with no credentials/network dependency.
-- Added `scripts/demo_phase7.py`, `docs/phase7_api.md`, `reports/phase7_api_audit.md`, `reports/phase7_api_verification.md`, `reports/phase7_demo.md`, and the Phase 7 PostgreSQL/API/provider tests.
-- No migration was required; product responses reuse persisted Phase 0–6 tables and do not expose request payloads, prompts, secrets, or AI cache identities.
+- Added `scripts/demo_phase7.py`, `scripts/demo.sh`, `docs/phase7_api.md`, `reports/phase7_api_audit.md`, `reports/phase7_api_verification.md`, `reports/phase7_demo.md`, and the Phase 7 PostgreSQL/API/provider tests.
+- Product responses reuse persisted processing tables and do not expose request payloads, prompts, secrets, or AI cache identities. Phase R adds only the additive checkpoint migration `20260920_0012`.
 
 ### Phase 6 — targeted hard-case AI layer
 
@@ -371,7 +381,8 @@ Fast compare
 
 ## In Progress
 
-- Phase 7 implementation is complete and pushed to `origin/phase7`; PostgreSQL integration, live API/demo execution, and full evaluation remain unverified because this environment has no PostgreSQL/Docker service.
+- Phase R implementation is complete locally. PostgreSQL migration/integration, live API/demo execution, full evaluation, and the final full gate remain unverified because this environment has no PostgreSQL, Docker, or Podman executable and the required database URLs are unset.
+- Matrix implementation evidence is repaired; `ING-08` remains TODO until the PostgreSQL checkpoint-restart test and full trace can run in a service-enabled environment.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
@@ -394,9 +405,9 @@ Fast compare
 
 ## Next
 
-- Run the isolated PostgreSQL integration/product suite and live `scripts/demo_phase7.py` workflow in a service-enabled environment.
-- Run the full `make check` equivalent, Phase 7 trace, and AI-disabled compatibility evaluation there; the local security/overfit scan and unit suite are complete.
-- Review `origin/phase7`; do not merge until the service-backed gates pass. Human Review UI/actions remain out of scope.
+- Run the isolated PostgreSQL integration/checkpoint suite and `scripts/demo.sh` in a service-enabled environment.
+- Run `mingw32-make check-fast`, `python scripts/trace_phase0.py 7`, `mingw32-make check`, and the AI-disabled compatibility evaluation there; do not convert skipped database checks into PASS.
+- Push the local Phase R commits only after the final diff review; do not merge. Human Review UI/actions remain out of scope.
 
 Recommended implementation order after the dataset audit:
 
@@ -678,7 +689,9 @@ No new public route was added in Phase 5. Existing `/api/sync` and `/api/email/i
 
 Phase 6 adds no public route and does not change the submission schema. Migration `20260920_0011` adds internal `ai_resolutions`. `field_comparisons` retains the original extraction foreign keys while canonical/evidence values may describe an accepted overlay. AI-enabled comparison identity includes resolver/provider/model/schema versions; disabled identity remains `phase4-deterministic-v1`. Existing API and batch constructors now activate the configured factory when enabled.
 
-Phase 7 adds no migration. It reuses `email_messages`, `attachments`, `classification_results`, `documents`, `document_extractions`, `extracted_fields`, `comparison_results`, `field_comparisons`, `processing_events`, `human_review_cases`, and `ai_resolutions` through explicit product schemas. GET routes never invoke the processing pipeline. A forced `SyncService.sync_one(..., force=True)` path is used only by the technical-failure reprocess control.
+Phase 7 reuses `email_messages`, `attachments`, `classification_results`, `documents`, `document_extractions`, `extracted_fields`, `comparison_results`, `field_comparisons`, `processing_events`, `human_review_cases`, and `ai_resolutions` through explicit product schemas. Phase R adds migration `20260920_0012_ingestion_checkpoints` for source polling state. GET routes never invoke the processing pipeline. A forced `SyncService.sync_one(..., force=True)` path is used only by the technical-failure reprocess control.
+
+`POST /api/v1/sync/initial` remains a blocking request and now includes a final `progress` object. `POST /api/v1/ingestion/email` accepts optional request-only `content_base64` attachment bytes; the decoded bytes are passed through `IncomingApiSource` and are not copied into email metadata.
 
 Implemented product interfaces:
 
@@ -715,7 +728,7 @@ HOLYSHIP_EVAL_DATABASE_URL   -> holyship_eval
 
 `HOLYSHIP_EVAL_DATABASE_URL` is required for `make eval` and scoring preflight. It must identify a dedicated non-maintenance database distinct from dev and test. The database itself must exist and be owned by or writable by the configured application user; the harness owns only its eval schema lifecycle. `.env.example` documents the safe local names, while the local `.env` remains ignored and uncommitted.
 
-Phase 5 worker/retry defaults are safe bounded values documented in `.env.example`. Production `/api/sync` passes `SessionLocal`, the configured worker limit, retry attempts, HTTP timeout policy, and semantic resolver timeout into the shared service. No real Microsoft Graph cursor/polling configuration exists yet.
+Phase 5 worker/retry defaults are safe bounded values documented in `.env.example`. Production `/api/sync` passes `SessionLocal`, the configured worker limit, retry attempts, HTTP timeout policy, and semantic resolver timeout into the shared service. Phase R adds `INITIAL_SYNC_ON_STARTUP`, `CONTINUOUS_POLLING_ENABLED`, `POLLING_INTERVAL_SECONDS` (default 60), `POLLING_BACKOFF_INITIAL_SECONDS`, `POLLING_BACKOFF_MAX_SECONDS`, `POLLING_SOURCE_TYPE`, and optional `POLLING_ORGANIZER_HTTP_URL`. The generic runtime supports static-bundle and Organizer HTTP sources; Microsoft Graph remains an isolated adapter skeleton.
 
 Phase 6 adds `EXTRACTION_MAX_WORKERS`, `AI_ESCALATION_ENABLED`, `AI_PROVIDER`, `AI_MODEL`, `AI_ENDPOINT`, optional secret `AI_API_KEY`, `AI_CONFIDENCE_THRESHOLD`, `AI_TIMEOUT_SECONDS`, `AI_MAX_CALLS_PER_CASE`, `AI_MAX_CONCURRENT_CALLS`, `AI_RESOLVER_VERSION`, `AI_PROMPT_SCHEMA_VERSION`, `OCR_TIMEOUT_SECONDS`, `OCR_MAX_CALLS`, and `OCR_MAX_CONCURRENT_CALLS`. No key/token or secret is committed. The built-in configured provider is the vendor-neutral `http_json` boundary; deterministic fake providers are injected at the same runtime factory boundary in tests.
 
@@ -745,20 +758,18 @@ When adding an environment variable:
 
 ## Tests & Validation
 
-### Phase 7 executed evidence
+### Phase R / Phase 7 executed evidence
 
-- `python -m pytest backend/tests/test_phase7_product_api.py backend/tests/test_phase7_provider_contract.py -q` → PASS: 12 tests, 0 failures, 1 existing Starlette/TestClient deprecation warning.
-- `python -m pytest backend/tests/test_api.py backend/tests/test_submission_adapter.py backend/tests/test_phase5_retry_timeout.py backend/tests/test_phase5_reliability.py backend/tests/test_storage_models.py backend/tests/test_phase7_product_api.py backend/tests/test_phase7_provider_contract.py -q` → PASS: 46 tests, 0 failures, 1 existing deprecation warning.
-- `python -m pytest backend/tests -q` → PASS: 212 tests, 59 skips (database-dependent tests), 1 existing deprecation warning.
-- `python -m pytest backend/tests/test_phase7_product_api_postgres.py -q` → 2 skipped: `HOLYSHIP_TEST_DATABASE_URL` is unset; no PostgreSQL client/Docker service is available in this environment.
+- `python -m pytest backend/tests/test_phase7_polling.py backend/tests/test_phase7_product_api.py backend/tests/test_phase7_polling_postgres.py -q` → PASS: 20 passed, 1 PostgreSQL test skipped, 1 existing Starlette/TestClient deprecation warning.
 - `python -m compileall -q backend/app backend/tests scripts` → PASS.
-- `python -m alembic heads` → PASS: `20260920_0011`.
+- `python -m alembic heads` → PASS: `20260920_0012`.
+- `python -m pytest backend/tests -q` → PASS: 221 passed, 60 skipped (database-dependent), 1 existing Starlette/TestClient deprecation warning.
 - PostgreSQL dialect compilation of queue/count statements → PASS; live SQL execution remains unverified.
 - `mingw32-make check-fast` → PASS: inherited 34-test gate, compileall, and diff check.
 - `mingw32-make check` and `python scripts/run_tests.py -q` → NOT RUN successfully: required `DATABASE_URL` and `HOLYSHIP_TEST_DATABASE_URL` are unset.
-- Production-code safety scan → PASS: no private-reference access or per-email production lookup was added; configured secret handling remains environment-backed.
+- Production-code safety scan → PASS by focused source scan: no private-reference access or per-email production lookup was added.
 - `git diff --check` → PASS with expected Windows LF/CRLF conversion warnings.
-- Live `scripts/demo_phase7.py`, full PostgreSQL check, public evaluation, and scoreboard → NOT RUN/UNVERIFIED: no PostgreSQL/Docker service is available. `git push -u origin phase7` → PASS.
+- Live `scripts/demo.sh`, full PostgreSQL check, public evaluation, and scoreboard → NOT RUN/UNVERIFIED: no PostgreSQL/Docker/Podman service is available.
 
 ### Phase 6 executed evidence
 
@@ -982,7 +993,7 @@ Never fabricate test results.
 - Missing values, corrupt/wrong documents, and missing attachments intentionally remain blocked/Human Review outcomes.
 
 - Live PostgreSQL migrations, database concurrency, idempotency, cache versioning, failure isolation, clean evaluation, and database-backed worker equivalence are verified on isolated temporary databases. Restart/resume is verified at the persisted-state/service level; a true OS process kill/restart was not exercised.
-- Phase 5 does not add a real provider polling cursor/checkpoint. Static bundle, organizer HTTP, and incoming API sources remain the implemented provider boundary; real Microsoft Graph polling is NOT IMPLEMENTED / NOT VERIFIED.
+- Organizer HTTP has no true `since` cursor, so the worker may list the source again; persisted email identity/content state prevents completed reprocessing and attachment refetch. Live Microsoft Graph polling is not required by Phase 7 and remains NOT VERIFIED.
 - Peak RSS remains NOT MEASURED because no cross-platform process-metrics dependency is declared. The new report records this honestly rather than emitting zero.
 - The semantic timeout helper bounds caller wait but cannot forcibly cancel an arbitrary provider thread; production clients should also enforce their own timeout.
 - Public clean evaluation is verified twice and remains byte-identical to the Phase 4 baseline. The public scoreboard was not called because the organizer endpoint is external and unavailable in this environment.
@@ -1003,15 +1014,23 @@ Never fabricate test results.
 Current document-level limitations:
 
 - Phase 7 exposes read-only Human Review queue/detail context; reviewer UI/actions and authentication remain out of scope.
-- Microsoft Graph is a provider-isolated payload adapter only; OAuth, live polling, persisted provider checkpoints, and startup workers are not implemented.
+- Microsoft Graph is a provider-isolated payload adapter only; OAuth and live Graph polling are not implemented. Generic static/Organizer HTTP polling and startup lifecycle wiring are implemented.
 - `/api/v1/sync/initial` is a synchronous initial-sync boundary that returns a product job ID for the completed request; background job progress persistence is not implemented.
-- PostgreSQL joins, live demo, full evaluation, latency measurements, and N+1 query counts are not verified in this environment because PostgreSQL/Docker is unavailable.
-- `scripts/demo_phase7.py` uses existing public-bundle cases for persisted document scenarios and incoming API messages for new-message scenarios; it does not fabricate database rows.
+- PostgreSQL joins/checkpoint migration, live demo, full evaluation, latency measurements, and N+1 query counts are not verified in this environment because PostgreSQL/Docker/Podman is unavailable.
+- `scripts/demo.sh` calls the HTTP-only `scripts/demo_phase7.py`, which uses public bundle bytes and incoming API messages; it does not fabricate database rows or read private answers.
 - Exact participant-facing challenge submission schema must be verified against the public `sample_submission.json` used by the team.
 
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase R continuous ingestion and Phase 7 closure repair
+
+- **Changed:** Added generic polling worker/runtime lifecycle, durable checkpoint migration `20260920_0012`, configurable startup/poll/backoff settings, incoming base64 attachment transport, initial-sync progress snapshot, `scripts/demo.sh`, expanded public-fixture demo scenarios, and requirement-marked tests. Repaired Phase 7 matrix evidence paths and audited the fetched integration base.
+- **Why:** Phase 7 left ING-08 incomplete and the live demo/DB verification contract too narrow; the product boundary needed a generic restart-safe source coordinator without changing Phase 0–6 semantics.
+- **Files:** `backend/app/ingestion/polling.py`, `backend/app/ingestion/runtime.py`, `backend/app/main.py`, `backend/app/api/router.py`, `backend/app/api/schemas.py`, `backend/app/core/config.py`, `backend/app/storage/models.py`, migration `20260920_0012`, Phase R tests, demo/docs/matrix, `.env.example`, and this handoff.
+- **Validation:** Focused Phase R suite 20 passed/1 PostgreSQL skipped; full repository suite 221 passed/60 skipped; migration head `20260920_0012`; live PostgreSQL, demo, full check, compatibility fingerprint, and performance/N+1 measurements remain NOT VERIFIED because no service/database is available.
+- **Next:** Run the service-backed DB/migration/demo/full-gate workflow, then push the repair and stop.
 
 ### 2026-09-20 — Phase 7 product-facing API and live-demo boundary
 

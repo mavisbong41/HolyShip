@@ -91,6 +91,7 @@ def test_v1_queue_rejects_invalid_filters_and_pagination():
         assert client.get("/api/v1/emails?category=not-a-category").status_code == 422
 
 
+@pytest.mark.req("API-02")
 def test_v1_unknown_email_detail_returns_404():
     mock_session = MagicMock()
     mock_session.scalar.return_value = None
@@ -101,6 +102,41 @@ def test_v1_unknown_email_detail_returns_404():
         with TestClient(app) as client:
             response = client.get(f"/api/v1/emails/{uuid.uuid4()}")
         assert response.status_code == 404
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.req("API-02")
+def test_product_get_routes_do_not_construct_processing_services():
+    mock_session = MagicMock()
+    from backend.app.api.deps import get_session
+    from backend.app.api.product_schemas import EmailQueuePage, ProductSummary
+
+    app.dependency_overrides[get_session] = lambda: mock_session
+    try:
+        with patch("backend.app.api.router._build_sync_service", side_effect=AssertionError("GET invoked processing")):
+            with patch(
+                "backend.app.api.router.list_email_queue",
+                return_value=EmailQueuePage(items=[], total=0, skip=0, limit=10),
+            ):
+                with patch(
+                    "backend.app.api.router.get_product_summary",
+                    return_value=ProductSummary(
+                        total_emails=0,
+                        status_counts={},
+                        needs_review_count=0,
+                        comparison_ready_count=0,
+                        mismatch_count=0,
+                        unresolved_count=0,
+                    ),
+                ):
+                    with patch("backend.app.api.router.get_email_detail", return_value=None):
+                        with patch("backend.app.api.router.list_processing_events", return_value=[]):
+                            with TestClient(app) as client:
+                                assert client.get("/api/v1/emails?limit=10").status_code == 200
+                                assert client.get("/api/v1/summary").status_code == 200
+                                assert client.get(f"/api/v1/emails/{uuid.uuid4()}").status_code == 404
+                                assert client.get("/api/v1/events?limit=10").status_code == 200
     finally:
         app.dependency_overrides.clear()
 
@@ -144,6 +180,7 @@ def test_v1_events_contract_is_polling_compatible():
 @pytest.mark.req("ING-04")
 @pytest.mark.req("API-03")
 @pytest.mark.req("API-04")
+@pytest.mark.req("ING-10")
 def test_v1_initial_sync_and_incoming_aliases_reuse_existing_pipeline():
     mock_session = MagicMock()
     from backend.app.api.deps import get_session
@@ -167,11 +204,69 @@ def test_v1_initial_sync_and_incoming_aliases_reuse_existing_pipeline():
         assert initial.status_code == 200
         assert initial.json()["status"] == "COMPLETED"
         assert initial.json()["total"] == 2
+        assert initial.json()["progress"] == {
+            "total": 2,
+            "processed": 2,
+            "percent": 100.0,
+            "ingested": 2,
+            "skipped": 0,
+            "failed": 0,
+        }
         assert incoming.status_code == 200
         assert incoming.json()["status"] == "CLASSIFIED"
         assert sync_service.call_count == 2
+        incoming_source = sync_service.return_value.sync_one.call_args.args[1]
+        assert incoming_source.source_type == "INCOMING_API"
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.req("API-04")
+def test_v1_incoming_attachment_content_is_decoded_for_the_shared_pipeline():
+    mock_session = MagicMock()
+    from backend.app.api.deps import get_session
+
+    app.dependency_overrides[get_session] = lambda: mock_session
+    try:
+        with patch("backend.app.api.router.SyncService") as sync_service:
+            sync_service.return_value.sync_one.return_value = EmailSyncOutcome(
+                external_message_id="phase7-content",
+                status="CLASSIFIED",
+            )
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/ingestion/email",
+                    json={
+                        "external_message_id": "phase7-content",
+                        "subject": "Document",
+                        "attachments": [
+                            {
+                                "filename": "doc.txt",
+                                "content_base64": "U0k6IHRlc3Q=",
+                            }
+                        ],
+                    },
+                )
+        assert response.status_code == 200
+        source = sync_service.return_value.sync_one.call_args.args[1]
+        attachment = source.payloads[0].attachments[0]
+        assert source.get_attachment_content(attachment) == b"SI: test"
+    finally:
+        app.dependency_overrides.clear()
+
+
+@pytest.mark.req("API-04")
+def test_v1_incoming_attachment_rejects_invalid_base64():
+    with TestClient(app) as client:
+        response = client.post(
+            "/api/v1/ingestion/email",
+            json={
+                "external_message_id": "phase7-invalid-content",
+                "subject": "Document",
+                "attachments": [{"filename": "doc.txt", "content_base64": "%%%"}],
+            },
+        )
+    assert response.status_code == 422
 
 
 @pytest.mark.req("API-05")
@@ -225,6 +320,7 @@ def test_v1_reprocess_forces_the_existing_pipeline_for_failed_email():
         app.dependency_overrides.clear()
 
 
+@pytest.mark.req("API-07")
 def test_openapi_lists_product_contract_without_internal_storage_routes():
     with TestClient(app) as client:
         document = client.get("/openapi.json")

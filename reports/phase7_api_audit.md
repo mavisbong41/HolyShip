@@ -1,7 +1,7 @@
 # Phase 7 Product API Audit
 
 **Date:** 2026-09-20
-**Inherited state:** local `phase6` tip `f38b42d27ecc8e63a1dc5e972c24043d2ee058ac` (the configured remote feature branch is stale at `a415000`; fetch was unavailable in this environment)
+**Inherited state:** local Phase 7 history was audited against fetched `origin/feature/email-classification` at `47a184accb47491f718e3c3ac2d209b244e95aa1`. Its production tree matches the Phase 7 base; the difference is merge topology only, so no merge/rebase was performed.
 
 ## Existing endpoints
 
@@ -41,6 +41,11 @@
 - `GET /api/v1/human-review` and `GET /api/v1/human-review/{id}`: reviewer-ready composition.
 - `GET /api/v1/events`: deterministic polling-compatible processing-event feed.
 - `POST /api/v1/sync/initial` and `POST /api/v1/ingestion/email`: additive aliases for existing pipeline entry points.
+- `POST /api/v1/sync/initial` returns a final progress snapshot because the current request is synchronous; it does not claim background job polling semantics.
+- `POST /api/v1/ingestion/email` accepts request-only base64 attachment bytes and passes decoded content through `IncomingApiSource` to the existing lazy document pipeline.
+- `scripts/demo.sh`: canonical shell entrypoint for the HTTP-only six-scenario live demo.
+- `backend/app/ingestion/polling.py` and `backend/app/ingestion/runtime.py`: generic startup/continuous polling with a durable checkpoint, completed-message/content-hash dedupe, bounded backoff, and clean shutdown-aware sleeping. Organizer HTTP may list again because it has no true `since` cursor.
+- Migration `20260920_0012_ingestion_checkpoints`: additive source checkpoint persistence.
 - `POST /api/v1/emails/{id}/reprocess`: bounded technical-failure reprocess control where the source adapter can be reconstructed.
 - `scripts/demo_phase7.py`: live API walkthrough using the static bundle for persisted comparison scenarios and incoming API for new-message scenarios.
 - Microsoft Graph adapter skeleton remains isolated behind `EmailSource` and has no credentials.
@@ -51,10 +56,10 @@
 - Detail uses one email graph with `selectinload` for attachments, documents, extractions/fields, events, reviews, plus bounded bulk queries for comparisons and AI audit rows.
 - GET endpoints serialize persisted rows only; they never call readers, OCR, extractors, resolvers, or comparison services.
 - Legacy `/api/*` endpoints remain unchanged; v1 is the product contract.
-- No migration is required because Phase 0–6 persistence already contains the needed product data.
+- Product GET routes still compose persisted rows only; they never call readers, OCR, extractors, resolvers, or comparison services. The checkpoint migration is the only Phase R persistence addition.
 
 ## Intentionally omitted
 
 - No React/dashboard or Outlook UI.
 - No reviewer mutation/action endpoint; the current requirements define read-only product exposure and reprocess only for technical failures.
-- No provider credentials or live Graph polling implementation; only a provider-isolated adapter contract skeleton.
+- No provider credentials or live Microsoft Graph polling implementation; the Graph adapter remains isolated, while the generic worker operates with static-bundle and Organizer HTTP sources.
