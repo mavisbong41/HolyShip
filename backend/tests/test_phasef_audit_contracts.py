@@ -1,0 +1,116 @@
+from __future__ import annotations
+
+import ast
+import subprocess
+from pathlib import Path
+
+import pytest
+
+
+ROOT = Path(__file__).resolve().parents[2]
+
+
+def _req_markers(function: ast.FunctionDef | ast.AsyncFunctionDef) -> set[str]:
+    markers: set[str] = set()
+    for decorator in function.decorator_list:
+        if not isinstance(decorator, ast.Call) or len(decorator.args) != 1:
+            continue
+        target = decorator.func
+        if (
+            isinstance(target, ast.Attribute)
+            and target.attr == "req"
+            and isinstance(target.value, ast.Attribute)
+            and target.value.attr == "mark"
+            and isinstance(decorator.args[0], ast.Constant)
+            and isinstance(decorator.args[0].value, str)
+        ):
+            markers.add(decorator.args[0].value)
+    return markers
+
+
+@pytest.mark.req("SEC-04")
+def test_backend_logger_calls_do_not_receive_document_content_values():
+    forbidden_names = {
+        "body",
+        "content",
+        "content_base64",
+        "document",
+        "document_text",
+        "raw_value",
+        "text",
+    }
+    logger_calls: list[tuple[Path, ast.Call]] = []
+    violations: list[str] = []
+
+    for path in (ROOT / "backend" / "app").rglob("*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in ast.walk(tree):
+            if not isinstance(node, ast.Call) or not isinstance(node.func, ast.Attribute):
+                continue
+            if not isinstance(node.func.value, ast.Name) or node.func.value.id != "logger":
+                continue
+            logger_calls.append((path, node))
+            for argument in node.args[1:]:
+                referenced = {
+                    child.id
+                    for child in ast.walk(argument)
+                    if isinstance(child, ast.Name)
+                }
+                referenced.update(
+                    child.attr
+                    for child in ast.walk(argument)
+                    if isinstance(child, ast.Attribute)
+                )
+                unsafe = sorted(referenced & forbidden_names)
+                if unsafe:
+                    violations.append(f"{path.relative_to(ROOT)}:{node.lineno}:{','.join(unsafe)}")
+
+    assert logger_calls, "audit must inspect real backend logger calls"
+    assert violations == []
+
+
+@pytest.mark.req("SCP-02")
+def test_backend_milestone_contains_no_frontend_or_outlook_addin_artifacts():
+    completed = subprocess.run(
+        ["git", "ls-files"],
+        cwd=ROOT,
+        check=True,
+        capture_output=True,
+        text=True,
+    )
+    tracked = [Path(line) for line in completed.stdout.splitlines() if line]
+    frontend_roots = {"frontend", "dashboard", "extension", "outlook-addin", "outlook_addin", "ui"}
+    frontend_suffixes = {".jsx", ".tsx", ".vue", ".svelte"}
+    forbidden = [
+        str(path)
+        for path in tracked
+        if frontend_roots.intersection(part.lower() for part in path.parts)
+        or path.suffix.lower() in frontend_suffixes
+    ]
+    assert tracked, "audit must inspect tracked repository content"
+    assert forbidden == []
+
+
+@pytest.mark.req("SCP-06")
+def test_required_behavior_categories_have_req_marked_assertive_tests():
+    required_prefixes = {
+        "ingestion": "ING-",
+        "classification": "CLS-",
+        "attachment routing": "DOC-",
+        "extraction": "EXT-",
+        "comparison": "CMP-",
+    }
+    coverage = {category: [] for category in required_prefixes}
+
+    for path in (ROOT / "backend" / "tests").glob("test_*.py"):
+        tree = ast.parse(path.read_text(encoding="utf-8"), filename=str(path))
+        for node in tree.body:
+            if not isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) or not node.name.startswith("test_"):
+                continue
+            markers = _req_markers(node)
+            has_assertion = any(isinstance(child, ast.Assert) for child in ast.walk(node))
+            for category, prefix in required_prefixes.items():
+                if has_assertion and any(marker.startswith(prefix) for marker in markers):
+                    coverage[category].append(f"{path.name}::{node.name}")
+
+    assert all(coverage.values()), coverage

@@ -76,6 +76,7 @@ def test_run_with_timeout_returns_result_before_deadline():
     assert run_with_timeout(lambda: "done", timeout_seconds=0.2) == "done"
 
 
+@pytest.mark.req("REL-02")
 def test_run_with_timeout_raises_bounded_timeout():
     started = time.perf_counter()
 

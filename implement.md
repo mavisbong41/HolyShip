@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase 7 service-backed final verification
-**Repository state:** Local `phase7` is clean after service-backed verification, and `origin/phase7` will remain fast-forwarded to the same verified state. No merge or rebase was performed.
+**Updated by:** Phase F final adversarial audit
+**Repository state:** `phaseF` is the active audit branch from `feature/email-classification` at `f4081af`. Phase F changes remain isolated; no merge or rebase has been performed.
 
 ---
 
@@ -84,6 +84,8 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 ---
 
 ## Current Status
+
+Phase F final adversarial audit is in progress on the isolated `phaseF` branch. The audit has closed SEC-04, SCP-02, and SCP-06 with executable evidence and repaired the reproduced incoming-base64 size-bound defect. Final trace/check and fresh-clone parity remain the last gates before human review.
 
 | Area | Status | Notes |
 |---|---|---|
@@ -732,6 +734,8 @@ Phase 5 worker/retry defaults are safe bounded values documented in `.env.exampl
 
 Phase 6 adds `EXTRACTION_MAX_WORKERS`, `AI_ESCALATION_ENABLED`, `AI_PROVIDER`, `AI_MODEL`, `AI_ENDPOINT`, optional secret `AI_API_KEY`, `AI_CONFIDENCE_THRESHOLD`, `AI_TIMEOUT_SECONDS`, `AI_MAX_CALLS_PER_CASE`, `AI_MAX_CONCURRENT_CALLS`, `AI_RESOLVER_VERSION`, `AI_PROMPT_SCHEMA_VERSION`, `OCR_TIMEOUT_SECONDS`, `OCR_MAX_CALLS`, and `OCR_MAX_CONCURRENT_CALLS`. No key/token or secret is committed. The built-in configured provider is the vendor-neutral `http_json` boundary; deterministic fake providers are injected at the same runtime factory boundary in tests.
 
+Phase F adds `MAX_ATTACHMENT_BYTES` (default 25 MiB, bounded to 1–100 MiB) for incoming base64 attachment protection. `CLASSIFICATION_THRESHOLD` and `CLASSIFICATION_MARGIN_THRESHOLD` are now listed in `.env.example` alongside their existing safe defaults.
+
 Likely categories may include:
 
 ```text
@@ -757,6 +761,17 @@ When adding an environment variable:
 ---
 
 ## Tests & Validation
+
+### Phase F final adversarial audit (2026-09-20)
+
+- Recovered `phaseF` from clean integration SHA `f4081af`; verified no deliberate mutation remained after five RED→revert→GREEN checks (CLS-01, CMP-01, CMP-02, MAP-06, ING-08).
+- Strengthened trace gate validates frozen seed IDs, exact cited `req` markers, executable JUnit evidence, and rejects skipped/xfail evidence. Matrix is 106 PASS / 0 TODO / 0 FAIL / 0 WAIVED.
+- Reproduced and repaired incoming API arbitrary-base64 allocation risk with configurable `MAX_ATTACHMENT_BYTES`; focused invalid/normal/oversized attachment tests pass.
+- `python -m pytest backend/tests -q` → 292 passed, 0 failed, 0 skipped, 1 existing Starlette/httpx warning.
+- `mingw32-make check-fast` → 34 passed plus compileall/diff check. `mingw32-make reliability` → 14 passed. `mingw32-make perf` → 520 emails, 37.043s, 14.038 emails/s.
+- Clean temporary PostgreSQL database upgraded from empty to Alembic head `20260920_0012`; actual Git Bash `scripts/demo.sh` passed normal/XLSX/wrong/scanned/awaiting/spam/events/summary scenarios.
+- AI-disabled `reports/latest/submission.json` SHA-256 matched `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`.
+- Remaining final work: trace/check PHASE=F, commit/push `phaseF`, exact-candidate fresh-clone gates, and parity report.
 
 ### Phase R / Phase 7 executed evidence
 
@@ -1030,6 +1045,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase F final adversarial audit
+
+- **Changed:** Strengthened requirement trace/evidence validation; added SEC-04 input-bound/log audit, SCP-02 scope, SCP-06 category coverage, and mutation evidence; repaired configurable incoming base64 attachment size enforcement; corrected `.env.example` and Phase F matrix evidence.
+- **Why:** Final adversarial audit independently reproduced an unbounded base64 allocation risk and found trace evidence-integrity gaps. Both were repaired at the smallest general boundary with regression coverage.
+- **Files:** `backend/app/api/router.py`, `backend/app/core/config.py`, `.env.example`, Phase F audit/trace tests, `scripts/trace_phase0.py`, `docs/requirements_matrix.md`, `reports/final_audit.md`, and this handoff.
+- **Validation:** Full PostgreSQL suite 292 passed/0 failed/0 skipped; check-fast 34 passed; reliability 14 passed; perf 520 emails in 37.043s; demo PASS; AI-disabled SHA matched required reference; clean migration reached `20260920_0012`.
+- **Next:** Push exact candidate to `origin/phaseF`, verify clean clone, then stop for human review; do not merge.
 
 ### 2026-09-20 — Phase 7 service-backed final verification
 

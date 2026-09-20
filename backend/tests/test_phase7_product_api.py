@@ -290,6 +290,36 @@ def test_v1_incoming_attachment_rejects_invalid_base64():
     assert response.status_code == 422
 
 
+@pytest.mark.req("SEC-04")
+@pytest.mark.req("API-04")
+def test_v1_incoming_attachment_rejects_content_above_configured_limit():
+    from backend.app.api.deps import get_settings_dep
+    from backend.app.core.config import Settings
+
+    app.dependency_overrides[get_settings_dep] = lambda: Settings(max_attachment_bytes=4)
+    try:
+        with patch("backend.app.api.router.SyncService") as sync_service:
+            with TestClient(app) as client:
+                response = client.post(
+                    "/api/v1/ingestion/email",
+                    json={
+                        "external_message_id": "phasef-oversized-content",
+                        "subject": "Document",
+                        "attachments": [
+                            {
+                                "filename": "doc.txt",
+                                "content_base64": "MTIzNDU=",
+                            }
+                        ],
+                    },
+                )
+        assert response.status_code == 413
+        assert response.json()["detail"] == "Attachment content exceeds the configured 4-byte limit"
+        sync_service.assert_not_called()
+    finally:
+        app.dependency_overrides.clear()
+
+
 @pytest.mark.req("API-05")
 def test_v1_reprocess_rejects_non_failed_email_with_409():
     mock_session = MagicMock()
