@@ -6,9 +6,9 @@
 - Integration base: `feature/email-classification`
 - Integration base SHA: `f4081afcdafdb7466d5ff4e2c4c3d53662aac2b8`
 - Phase F starting SHA: `f4081afcdafdb7466d5ff4e2c4c3d53662aac2b8`
-- Candidate SHA: `c5e6eab` (initial pushed candidate; documentation parity commit follows)
+- Candidate SHA: `6f42223ed4f0dc42011df1c339f40c4f229fd378`
 - Environment: Windows 11, Python 3.14.3, Docker Desktop, PostgreSQL 16 service, GNU Make 4.2.1
-- Status: audit evidence complete; local final gates pass. Final status is gated on pushed-candidate fresh-clone verification.
+- Status: audit evidence complete; local and exact-candidate fresh-clone gates pass. Backend freeze candidate awaits human review/merge.
 
 ## Matrix integrity
 
@@ -245,11 +245,15 @@ Every MUST-NOT bullet was checked independently; all passed.
 ## Fresh clone
 
 - Source: exact `origin/phaseF` candidate.
-- Candidate SHA: final documentation-parity tip will be recorded after the second push.
+- Candidate SHA: `6f42223ed4f0dc42011df1c339f40c4f229fd378`.
 - Environment setup: documented `.env.example` variables only plus isolated dev/test/eval identities.
-- Clean migration: required and will be rerun from empty clone DB.
-- check-fast/check PHASE=F/demo/exporter/compatibility: required and will be recorded after push.
-- Hidden local dependency detected: none expected; any discovery is a release blocker.
+- Clean migration: PASS from empty isolated clean-clone dev DB to `20260920_0012`.
+- check-fast: PASS, 34 passed, 1 warning.
+- check PHASE=F: PASS, 292 passed, 0 failed, 0 skipped; 520/520 evaluation; 14 reliability; trace 106 PASS / 0 TODO / 0 FAIL.
+- demo: PASS through Git Bash.
+- exporter: PASS with documented script-import context (`sys.path.insert(0, 'scripts')`), 520 entries.
+- compatibility SHA: PASS, exact reference hash.
+- Hidden local dependency detected: none; clone `.env` used only documented variables and fresh isolated DBs.
 
 ## Trace
 
@@ -294,6 +298,7 @@ Every MUST-NOT bullet was checked independently; all passed.
 ## Commits
 
 - `c5e6eab` — `phaseF: complete final adversarial audit evidence`
+- `6f42223` — `phaseF: pin final audit candidate`
 
 ## Full Gates
 
@@ -302,19 +307,19 @@ Every MUST-NOT bullet was checked independently; all passed.
 - check-fast: PASS, 34 passed, 1 warning.
 - full tests: PASS, 292 passed, 0 failed, 0 skipped, 1 warning.
 - reliability: PASS, 14 passed.
-- perf: PASS, 520 emails, 37.043s, 14.038 emails/s.
+- perf: PASS, 520 emails, 29.274s, 17.763 emails/s (repeated 31.915s and 37.043s; variance documented above).
 - demo: PASS through Git Bash.
 - exporter: PASS via baseline shape validation and adapter tests.
 - compatibility SHA: PASS, reference hash matched.
 - trace PHASE=F: PASS, 106 PASS / 0 TODO / 0 FAIL, 244 tests executed.
 - check PHASE=F: PASS, 292 passed / 0 failed / 0 skipped; evaluation 520/520; reliability 14 passed; trace PASS.
-- fresh-clone: pending push and clean-room run.
+- fresh-clone: PASS at `6f42223ed4f0dc42011df1c339f40c4f229fd378` — clean migration, check-fast, full check, demo, exporter, and compatibility SHA all passed.
 
 ## Final Status
 
-- Pending final clean-room gates. Do not merge `phaseF`.
+- PHASE F PASS — BACKEND FREEZE CANDIDATE. Do not merge `phaseF` automatically.
 
 ## Recommended Next Step
 
-- If all pending gates pass: human reviews this evidence, then merges `phaseF` into `feature/email-classification`, verifies merged integration, declares backend frozen, and only then begins dashboard/extension frontend work.
-- If a pending gate fails: repair only the reproduced issue on `phaseF`, rerun the affected gates, and repeat fresh-clone verification.
+- Human reviews this evidence, then may merge `phaseF` into `feature/email-classification`, verify merged integration, declare backend frozen, and only then begin dashboard/extension frontend work.
+- No merge, frontend work, or human-review workflow changes were performed by this audit.

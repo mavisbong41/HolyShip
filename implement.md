@@ -85,7 +85,7 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 
 ## Current Status
 
-Phase F final adversarial audit is in progress on the isolated `phaseF` branch. The audit has closed SEC-04, SCP-02, and SCP-06 with executable evidence and repaired the reproduced incoming-base64 size-bound defect. Final trace/check and fresh-clone parity remain the last gates before human review.
+Phase F final adversarial audit passed on the isolated `phaseF` branch. SEC-04, SCP-02, and SCP-06 are closed with executable evidence; the reproduced incoming-base64 size-bound defect is repaired; local and exact-candidate fresh-clone gates pass. Human review/merge remains outstanding.
 
 | Area | Status | Notes |
 |---|---|---|
@@ -771,7 +771,7 @@ When adding an environment variable:
 - `mingw32-make check-fast` → 34 passed plus compileall/diff check. `mingw32-make reliability` → 14 passed. `mingw32-make perf` → 520 emails, 37.043s, 14.038 emails/s.
 - Clean temporary PostgreSQL database upgraded from empty to Alembic head `20260920_0012`; actual Git Bash `scripts/demo.sh` passed normal/XLSX/wrong/scanned/awaiting/spam/events/summary scenarios.
 - AI-disabled `reports/latest/submission.json` SHA-256 matched `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`.
-- Remaining final work: final documentation-parity commit/push, exact-candidate fresh-clone gates, and parity report.
+- Remaining final work: human review and an explicit decision whether to merge `phaseF` into `feature/email-classification`. Do not start frontend work before that decision.
 
 ### Phase R / Phase 7 executed evidence
 
@@ -1051,8 +1051,8 @@ Current document-level limitations:
 - **Changed:** Strengthened requirement trace/evidence validation; added SEC-04 input-bound/log audit, SCP-02 scope, SCP-06 category coverage, and mutation evidence; repaired configurable incoming base64 attachment size enforcement; corrected `.env.example` and Phase F matrix evidence.
 - **Why:** Final adversarial audit independently reproduced an unbounded base64 allocation risk and found trace evidence-integrity gaps. Both were repaired at the smallest general boundary with regression coverage.
 - **Files:** `backend/app/api/router.py`, `backend/app/core/config.py`, `.env.example`, Phase F audit/trace tests, `scripts/trace_phase0.py`, `docs/requirements_matrix.md`, `reports/final_audit.md`, and this handoff.
-- **Validation:** Full PostgreSQL suite 292 passed/0 failed/0 skipped; check-fast 34 passed; reliability 14 passed; perf 520 emails in 37.043s; demo PASS; AI-disabled SHA matched required reference; clean migration reached `20260920_0012`.
-- **Next:** Push exact candidate to `origin/phaseF`, verify clean clone, then stop for human review; do not merge.
+- **Validation:** Full PostgreSQL suite 292 passed/0 failed/0 skipped; check-fast 34 passed; reliability 14 passed; perf 520 emails in 29.274s (repeat runs 31.915s and 37.043s); demo PASS; AI-disabled SHA matched required reference; clean migration reached `20260920_0012`; exact pushed candidate `6f42223` passed clean-clone check-fast/full-check/demo/exporter/compatibility.
+- **Next:** Human review of `reports/final_audit.md`; do not merge or start frontend work automatically.
 
 ### 2026-09-20 — Phase 7 service-backed final verification
 
