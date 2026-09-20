@@ -6,7 +6,7 @@
 - Integration base: `feature/email-classification`
 - Integration base SHA: `f4081afcdafdb7466d5ff4e2c4c3d53662aac2b8`
 - Phase F starting SHA: `f4081afcdafdb7466d5ff4e2c4c3d53662aac2b8`
-- Candidate SHA: recorded after the Phase F commit/push below
+- Candidate SHA: `c5e6eab` (initial pushed candidate; documentation parity commit follows)
 - Environment: Windows 11, Python 3.14.3, Docker Desktop, PostgreSQL 16 service, GNU Make 4.2.1
 - Status: audit evidence complete; local final gates pass. Final status is gated on pushed-candidate fresh-clone verification.
 
@@ -244,8 +244,8 @@ Every MUST-NOT bullet was checked independently; all passed.
 
 ## Fresh clone
 
-- Source: exact `origin/phaseF` candidate (to be created after commit/push).
-- Candidate SHA: recorded after push.
+- Source: exact `origin/phaseF` candidate.
+- Candidate SHA: final documentation-parity tip will be recorded after the second push.
 - Environment setup: documented `.env.example` variables only plus isolated dev/test/eval identities.
 - Clean migration: required and will be rerun from empty clone DB.
 - check-fast/check PHASE=F/demo/exporter/compatibility: required and will be recorded after push.
@@ -293,7 +293,7 @@ Every MUST-NOT bullet was checked independently; all passed.
 
 ## Commits
 
-- Pending final Phase F commit/push; exact SHA and message will be recorded after clean gates.
+- `c5e6eab` — `phaseF: complete final adversarial audit evidence`
 
 ## Full Gates
 

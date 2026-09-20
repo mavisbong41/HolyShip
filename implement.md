@@ -771,7 +771,7 @@ When adding an environment variable:
 - `mingw32-make check-fast` → 34 passed plus compileall/diff check. `mingw32-make reliability` → 14 passed. `mingw32-make perf` → 520 emails, 37.043s, 14.038 emails/s.
 - Clean temporary PostgreSQL database upgraded from empty to Alembic head `20260920_0012`; actual Git Bash `scripts/demo.sh` passed normal/XLSX/wrong/scanned/awaiting/spam/events/summary scenarios.
 - AI-disabled `reports/latest/submission.json` SHA-256 matched `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`.
-- Remaining final work: trace/check PHASE=F, commit/push `phaseF`, exact-candidate fresh-clone gates, and parity report.
+- Remaining final work: final documentation-parity commit/push, exact-candidate fresh-clone gates, and parity report.
 
 ### Phase R / Phase 7 executed evidence
 
