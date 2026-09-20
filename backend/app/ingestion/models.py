@@ -9,7 +9,7 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-SourceType = Literal["STATIC_BUNDLE", "ORGANIZER_HTTP", "INCOMING_API"]
+SourceType = Literal["STATIC_BUNDLE", "ORGANIZER_HTTP", "INCOMING_API", "MICROSOFT_GRAPH"]
 
 
 class AttachmentMetadata(BaseModel):
