@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase R3B SCP closure and final Phase 1 gate
-**Repository state:** Phase 1 is complete: 22 owned requirements PASS, 0 TODO, 0 FAIL; trace and `make check PHASE=1` pass. Public scoreboard remains intentionally unverified.
+**Updated by:** Phase 2 document materialization and role-validation closure
+**Repository state:** Phase 2 implementation and executable evidence are complete: all requirements owned by phases 0–2 are 46 PASS, 0 TODO, 0 FAIL. Final Phase 2 gates are recorded below; the public scoreboard remains intentionally uncalled.
 
 ---
 
@@ -95,13 +95,13 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Classification Stage 1 | IMPLEMENTED | Centralized deterministic signals and thresholds; exact five-category output contract |
 | Classification Stage 2 | IMPLEMENTED | Validated five-category output, explicit zero-signal policy, evidence-aware deterministic tie handling |
 | Comparison readiness | IMPLEMENTED | READY_FOR_COMPARISON / AWAITING_DOCUMENTS / UNRESOLVED after document_comparison only |
-| Attachment retrieval | NOT CONFIRMED | Implementation must be checked |
-| Document router | NOT CONFIRMED | Must include XLSX and scan/image routing |
-| Document role validation | NOT CONFIRMED | Must detect readable-but-wrong SI/BL documents |
-| SI/BL extraction | NOT CONFIRMED | Implementation must be checked |
+| Attachment retrieval | IMPLEMENTED | Lazy source-owned retrieval only for READY_FOR_COMPARISON; SHA-256 and storage identity persisted |
+| Document router | IMPLEMENTED | TXT/PDF/DOCX/XLSX native paths; scanned/image inputs enter OCR/Vision directly; failures are structured |
+| Document role validation | IMPLEMENTED | Content/title/table evidence assigns SI/BL; filename is never proof; clear wrong business documents block |
+| SI/BL extraction | NOT STARTED | Phase 2 persists materialized text/tables only; seven-field extraction is Phase 3 |
 | Canonical field mapping | NOT CONFIRMED | Implementation must be checked |
 | Comparison pipeline | NOT CONFIRMED | Implementation must be checked |
-| Persistence | NOT CONFIRMED | Implementation must be checked |
+| Persistence | IMPLEMENTED THROUGH PHASE 2 | Processing events plus attachment hashes/retrieval state and document routing/validation outcomes |
 | Dashboard backend API | NOT CONFIRMED | Implementation must be checked |
 | Email-extension backend API | NOT CONFIRMED | Implementation must be checked |
 | Human Review UI/workflow | OUT OF SCOPE | Next milestone |
@@ -209,6 +209,20 @@ Fast compare
 
 ## Implemented
 
+### Phase 2 — document materialization and role validation
+
+- Only `document_comparison / READY_FOR_COMPARISON` enters attachment retrieval. Non-comparison mail, `AWAITING_DOCUMENTS`, and unresolved readiness never load attachment bytes.
+- Immediate comparison requests that explicitly expect SI and draft BL now remain ready even when one or both attachments are absent; retrieval then persists `MISSING_REQUIRED_ATTACHMENT / BLOCKED`, distinct from a true request to send a future draft BL.
+- `EmailSource.get_attachment_content()` is the lazy content boundary. Static bundle and organizer HTTP adapters implement it; incoming API sources accept explicitly supplied content and otherwise fail with a structured attachment-read outcome.
+- `DocumentMaterializationService` preserves attachment identity and source reference, computes SHA-256, persists raw materialized text/table cells separately, and stops valid pairs at `EXTRACTING`. It does not perform seven-field extraction or enter `COMPARING`.
+- Native routing supports TXT/CSV, text PDF, DOCX paragraphs/tables, and XLSX rows/cells. XLSX native numeric cell types remain intact in `UnifiedDocument.tables`.
+- Image inputs enter OCR/Vision without visiting native text/Office readers. Image-only PDFs require one PDF readability probe, then enter OCR/Vision directly. An unavailable OCR backend becomes `UNREADABLE_ATTACHMENT / BLOCKED`, not a crash.
+- Empty, corrupt/truncated, unsupported, source-read, and unexpected reader failures have structured outcomes. Technical failures persist `FAILED`; safe business stops persist `BLOCKED`; later emails continue.
+- `DocumentRoleValidator` uses materialized text and table/cell content. Explicit SI/BL headers assign roles; `COMMERCIAL INVOICE`, `PACKING LIST`, and `CERTIFICATE OF ORIGIN` produce `WRONG_DOCUMENT_TYPE`; inconclusive evidence remains unknown and blocks without guessing. Filename suffixes are supporting metadata only and never determine a role.
+- Alembic `20260920_0006` adds attachment hash/retrieval fields, document routing/role/validation evidence, parse duration, database checks, and the hash index. Existing rows receive explicit non-fabricated legacy/default states.
+- The public audit in `reports/attachment_inventory.md` covers all 520 emails and all 250 attachments: `SI_FOUND=123`, `BL_FOUND=114`, `WRONG_DOCUMENT_TYPE=5`, `CORRUPTED_ATTACHMENT=2`, `UNREADABLE_ATTACHMENT=6`; no attachment lacks a defined outcome.
+- Public Phase 2 email audit: 317 non-comparisons do not enter, 91 remain `AWAITING_DOCUMENTS`, 98 valid pairs reach `EXTRACTING`, and 14 ready cases block (`5` missing, `4` wrong type, `3` unreadable scan cases, `2` corrupt attachments). The audit is offline coverage; executable PostgreSQL evidence proves runtime lazy loading.
+
 ### Phase 1 — R3B scope/process closure
 
 - Human Review is frozen: current classifier/sync processing creates no new review cases; unresolved readiness persists `BLOCKED` with `READINESS_UNRESOLVED`. Historical storage and read-only routes remain compatible.
@@ -283,7 +297,7 @@ Fast compare
 
 ## Next
 
-- Begin Phase 2 only in a new explicitly authorized phase session. Phase 1 is closed; no Phase 2 work was started here.
+- Stop after Phase 2. Begin deterministic seven-field extraction and canonical mapping only when Phase 3 is explicitly authorized in a new phase session.
 
 Recommended implementation order after the dataset audit:
 
@@ -512,6 +526,13 @@ R3B aligns the external and persisted contract:
 - `EmailOut` and `EmailListItem` expose the exact processing-status vocabulary.
 - `classification_results.reason_code` is non-null after migration `20260920_0005`; category, confidence, and readiness checks are enforced in PostgreSQL.
 
+Phase 2 persistence is additive in migration `20260920_0006`:
+
+- `attachments.content_sha256`, `retrieval_status`, and `retrieval_reason_code` preserve lazy materialization identity and outcome.
+- `documents.routing_outcome`, `role_confidence`, `role_evidence`, `validation_outcome`, and `parse_duration_ms` preserve pre-extraction decisions and diagnostics.
+- Database checks constrain retrieval status, routing outcomes, and validation outcomes. No category, readiness, or processing-status vocabulary changed.
+- No new external dependency or environment variable was added.
+
 No repository API/schema changes are confirmed yet.
 
 Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
@@ -612,6 +633,24 @@ When adding an environment variable:
 
 ### Validation log
 
+2026-09-20 — Phase 2 document materialization and role validation
+- Required pre-change `make check-fast` first exposed a broken local `.venv` launcher whose base Python no longer existed. A workspace-local native Windows Python 3.13 environment was created and populated only from `backend/requirements.txt`; the repository dependency declaration itself was unchanged.
+- Test-first red evidence: `python -m pytest backend/tests/test_phase2_document_contract.py -vv` failed collection because the Phase 2 materialization module did not yet exist.
+- First PostgreSQL Phase 2 run → 6 passed, 4 failed: one test-result construction defect plus the real `CLS-09` gap where immediate comparison requests with missing attachments became `READINESS_UNRESOLVED` instead of entering retrieval and persisting `MISSING_REQUIRED_ATTACHMENT`.
+- Focused reader/role unit suite after repair → 5 passed. Focused PostgreSQL Phase 2 suite after adding source-read and reader-exception isolation → 12 passed.
+- Combined document/readiness/Phase 2 focused suite before the final failure-isolation additions → 36 passed; the added focused tests also passed in the 12-test PostgreSQL suite and full regression.
+- Public attachment audit → PASS: 520 emails, 250/250 attachments, 100% defined outcomes, 0 unhandled exceptions. Formats: TXT 192, text PDF 22, scanned PDF 6, DOCX 8, XLSX 22. Outcomes: SI 123, BL 114, wrong type 5, corrupt 2, unreadable 6.
+- Public Phase 2 gate audit → 317 non-comparison/not-entered, 91 awaiting, 98 materialized to EXTRACTING, 5 missing blocked, 4 wrong-type blocked, 3 scanned-email cases blocked unreadable, and 2 corrupt blocked. No seven-field extraction or comparison was run.
+- Development migration `20260920_0005 -> 20260920_0006` → PASS. Read-only introspection confirmed the new attachment/document columns, three check constraints, SHA-256 index, and surviving `email_messages`, `attachments`, `documents`, and `processing_events` tables at head.
+- Final `make check-fast` → PASS: compileall, 11 tests passed, `git diff --check` passed (line-ending warnings only).
+- Final full PostgreSQL-enabled test suite → 120 passed, 0 failed, 0 skipped, 1 Starlette/AnyIO deprecation warning.
+- `make reliability` → 10 passed.
+- Standalone `make eval` → 520 emails, 1.686 seconds, 308.489 emails/s.
+- Standalone `make perf` → 520 emails, 1.777 seconds, 292.670 emails/s.
+- `make trace PHASE=2` → PASS: 46 PASS, 0 TODO, 0 FAIL for all requirements owned by phases 0–2.
+- Final `make check PHASE=2` → PASS: 120 tests; eval 520 emails in 1.675 seconds (310.422 emails/s); reliability 10 passed; trace 46/0/0.
+- `make score PHASE=2` → NOT RUN by explicit instruction.
+
 2026-09-20 — Phase R3A-2
 - Pre-fix synthetic regression: `python -m pytest backend/tests/test_phase1_zero_signal.py -vv` → expected RED, 4 failed; reproduced enum-order zero-signal fallback, missing reason code, and bare-draft-BL standalone evidence.
 - Focused zero-signal suite after repair → 4 passed.
@@ -674,6 +713,8 @@ Never fabricate test results.
 ## Known Limitations
 
 - The public classification audit provides semantic/input evidence, not hidden-label correctness. No private ground truth or evaluator data was used.
+- OCR/Tesseract is unavailable in the verified environment. Phase 2 therefore routes six public image-only PDFs correctly and persists a clean unreadable/blocking outcome; a working OCR implementation remains owned by `DOC-07b` in Phase 6A.
+- Phase 2 materializes readable document content and validates SI/BL roles but intentionally does not extract the seven canonical shipment fields or compare documents. Those are Phase 3/4 responsibilities.
 - Zero-signal messages intentionally remain low-confidence neutral results. A future model-backed resolver may improve their semantics, but Phase 1 does not invent unsupported specialized intent.
 - The development database retains 21 historical Human Review rows and the legacy read-only Human Review API for compatibility. Current Phase 1 processing creates none.
 - The Phase 0 baseline in `reports/latest/eval.md` contains historical classifications and skips unchanged emails; current Phase 1 classifier behavior is represented by `reports/classification_audit.md`, not by reinterpreting the historical baseline.
@@ -691,6 +732,15 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 2 document materialization and role-validation closure
+
+- **Changed:** Added lazy source attachment retrieval, SHA-256 and retrieval persistence, format-directed materialization, content/table-based SI/BL validation, structured blocking/failure outcomes, migration `20260920_0006`, public attachment inventory, Phase 2 corpus gate audit, and executable evidence for all Phase 2-owned rows.
+- **Why:** The repository had standalone readers and a filename-weighted router but no READY-only orchestration, durable pre-extraction outcomes, or content-authoritative role validation. Immediate comparison requests with genuinely missing files also stopped one stage too early as unresolved readiness.
+- **Files:** Ingestion source contract/adapters; readiness; document models/readers/router/validator/materialization; storage models/repositories; sync; Alembic `0006`; Phase 2 tests; trace tooling; matrix; audit/report artifacts; this handoff.
+- **Dependencies:** No production dependency added. The existing declared reader stack was reused.
+- **Validation:** Public inventory 250/250 with defined outcomes; focused Phase 2 unit and PostgreSQL evidence green; full PostgreSQL suite 120 passed with zero skips; reliability/check-fast/eval/perf/trace/check passed; dev schema survived at `20260920_0006`.
+- **Next:** Stop. Begin Phase 3 only when explicitly authorized; do not implement canonical seven-field extraction or comparison in this phase.
 
 ### 2026-09-20 — Phase R3B final Phase 1 closure
 

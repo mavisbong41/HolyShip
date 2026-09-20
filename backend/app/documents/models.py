@@ -32,7 +32,7 @@ class DocumentPage:
 
 @dataclass
 class DocumentTable:
-    rows: list[list[str]] = field(default_factory=list)
+    rows: list[list[Any]] = field(default_factory=list)
     page_number: int = 1
     title: Optional[str] = None
 

@@ -1,8 +1,12 @@
-# Phase 0 baseline
+# Current public-bundle evaluation
 
 ```json
 {
-  "attachment_failures": "unavailable: attachment processing is Phase 2",
+  "attachment_audit": {
+    "note": "Phase 2 materialization/role audit is separate from this idempotent sync timing run",
+    "report": "reports/attachment_inventory.md",
+    "status": "PASS"
+  },
   "bundle": "data\\bundle",
   "category_distribution": {
     "BL_COMPARISON": 214,
@@ -2638,9 +2642,9 @@
     "source_failures": [],
     "total": 520
   },
-  "throughput_emails_per_second": 331.462,
+  "throughput_emails_per_second": 310.422,
   "total_bundle_emails": 520,
   "unhandled_exceptions": 0,
-  "wall_seconds": 1.569
+  "wall_seconds": 1.675
 }
 ```

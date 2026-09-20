@@ -22,15 +22,19 @@ class XlsxReader(DocumentReader):
 
             for sheet_name in wb.sheetnames:
                 ws = wb[sheet_name]
-                sheet_rows: list[list[str]] = []
+                sheet_rows: list[list[object]] = []
                 for row in ws.iter_rows(values_only=True):
-                    row_cells = [str(c).strip().replace("\n", " ") for c in row if c is not None and str(c).strip()]
+                    row_cells = [
+                        c.strip().replace("\n", " ") if isinstance(c, str) else c
+                        for c in row
+                        if c is not None and (not isinstance(c, str) or c.strip())
+                    ]
                     if row_cells:
                         sheet_rows.append(row_cells)
                         if len(row_cells) >= 2:
-                            text_lines.append(f"{row_cells[0]}: {' '.join(row_cells[1:])}")
+                            text_lines.append(f"{row_cells[0]}: {' '.join(str(cell) for cell in row_cells[1:])}")
                         elif len(row_cells) == 1:
-                            text_lines.append(row_cells[0])
+                            text_lines.append(str(row_cells[0]))
 
                 if sheet_rows:
                     tables.append(DocumentTable(rows=sheet_rows, page_number=1, title=sheet_name))

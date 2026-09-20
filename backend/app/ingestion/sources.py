@@ -26,6 +26,13 @@ class EmailSource(ABC):
     def get_message(self, external_message_id: str) -> EmailMessage:
         raise NotImplementedError
 
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        """Load attachment bytes lazily after comparison readiness is known."""
+        raise FileNotFoundError(
+            f"Attachment content is unavailable from {type(self).__name__}: "
+            f"{attachment.source_reference}"
+        )
+
 
 class StaticBundleSource(EmailSource):
     source_type = "STATIC_BUNDLE"
@@ -45,6 +52,13 @@ class StaticBundleSource(EmailSource):
         if not path.exists():
             raise FileNotFoundError(f"Organizer email not found: {external_message_id}")
         return self._map_record(json.loads(path.read_text(encoding="utf-8")), path)
+
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        root = self.bundle_path.resolve()
+        path = (root / attachment.source_reference).resolve()
+        if not path.is_relative_to(root):
+            raise ValueError("Attachment source reference escapes the configured bundle")
+        return path.read_bytes()
 
     def _map_record(self, record: dict[str, Any], source_file: Path) -> EmailMessage:
         return map_organizer_record(
@@ -72,6 +86,14 @@ class OrganizerHttpSource(EmailSource):
         safe_id = urllib.parse.quote(external_message_id, safe="")
         return self._map_record(self._get_json(f"/emails/{safe_id}"))
 
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        safe_path = urllib.parse.quote(attachment.source_reference.lstrip("/"), safe="/")
+        with urllib.request.urlopen(
+            f"{self.base_url}/{safe_path}",
+            timeout=self.timeout_seconds,
+        ) as response:
+            return response.read()
+
     def _get_json(self, path: str) -> Any:
         with urllib.request.urlopen(
             f"{self.base_url}{path}",
@@ -90,11 +112,16 @@ class OrganizerHttpSource(EmailSource):
 class IncomingApiSource(EmailSource):
     source_type = "INCOMING_API"
 
-    def __init__(self, payloads: IncomingEmailPayload | list[IncomingEmailPayload]):
+    def __init__(
+        self,
+        payloads: IncomingEmailPayload | list[IncomingEmailPayload],
+        attachment_contents: dict[str, bytes] | None = None,
+    ):
         if isinstance(payloads, IncomingEmailPayload):
             self.payloads = [payloads]
         else:
             self.payloads = list(payloads)
+        self.attachment_contents = attachment_contents or {}
 
     def iter_messages(self) -> Iterable[EmailMessage]:
         for payload in self.payloads:
@@ -105,6 +132,14 @@ class IncomingApiSource(EmailSource):
             if message.external_message_id == external_message_id:
                 return message
         raise KeyError(f"Incoming email not found: {external_message_id}")
+
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        try:
+            return self.attachment_contents[attachment.source_reference]
+        except KeyError as exc:
+            raise FileNotFoundError(
+                f"Incoming attachment content was not supplied: {attachment.source_reference}"
+            ) from exc
 
 
 def map_organizer_record(

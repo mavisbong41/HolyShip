@@ -103,6 +103,10 @@ class ListSource(EmailSource):
             if m.external_message_id == external_message_id:
                 return m
         raise KeyError(external_message_id)
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        if "_SI" in attachment.filename or attachment.filename == "SI.txt":
+            return b"SHIPPING INSTRUCTION\nShipper: A\nConsignee: B"
+        return b"BILL OF LADING (DRAFT)\nShipper: A\nConsignee: B"
 
 
 class BrokenSource(EmailSource):
@@ -117,6 +121,10 @@ class BrokenSource(EmailSource):
         raise RuntimeError("simulated broken email payload")
     def get_message(self, external_message_id: str) -> EmailMessage:
         raise KeyError(external_message_id)
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        if "_SI" in attachment.filename:
+            return b"SHIPPING INSTRUCTION\nShipper: A"
+        return b"BILL OF LADING (DRAFT)\nShipper: A"
 
 
 # ---------------------------------------------------------------------------
@@ -287,7 +295,7 @@ def test_sync_one_uses_same_classification_pipeline(svc, session):
         "Please compare the attached SI and draft BL. Check the details and confirm.",
         filenames=["SI.txt", "BL.txt"],
     )
-    outcome = svc.sync_one(email)
+    outcome = svc.sync_one(email, ListSource([email]))
 
     assert outcome.status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED")
     results = session.query(ClassificationResultRecord).all()

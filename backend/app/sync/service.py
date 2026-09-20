@@ -24,6 +24,7 @@ from backend.app.classification.pipeline import (
     classify_email,
 )
 from backend.app.classification.models import HUMAN_REVIEW
+from backend.app.documents.materialization import DocumentMaterializationService
 from backend.app.ingestion.models import EmailMessage
 from backend.app.ingestion.sources import EmailSource
 from backend.app.storage.repositories import (
@@ -95,6 +96,7 @@ class SyncService:
         self._job_repo = ProcessingJobRepository(session)
         self._cls_repo = ClassificationResultRepository(session)
         self._review_repo = HumanReviewRepository(session)
+        self._document_service = DocumentMaterializationService(session)
 
     # ------------------------------------------------------------------
     # Public API
@@ -129,7 +131,7 @@ class SyncService:
                 break
 
             report.total += 1
-            outcome = self._process_one(message)
+            outcome = self._process_one(message, source)
             # Each materialized email has its own durable boundary. This
             # prevents a later _process_one() rollback from undoing prior
             # successful work in the shared session.
@@ -149,12 +151,16 @@ class SyncService:
 
         return report
 
-    def sync_one(self, message: EmailMessage) -> EmailSyncOutcome:
+    def sync_one(
+        self,
+        message: EmailMessage,
+        source: EmailSource | None = None,
+    ) -> EmailSyncOutcome:
         """
         Process a single EmailMessage (used by POST /api/email/incoming).
         Commits immediately.
         """
-        outcome = self._process_one(message)
+        outcome = self._process_one(message, source)
         self.session.commit()
         return outcome
 
@@ -162,10 +168,14 @@ class SyncService:
     # Internal
     # ------------------------------------------------------------------
 
-    def _process_one(self, message: EmailMessage) -> EmailSyncOutcome:
+    def _process_one(
+        self,
+        message: EmailMessage,
+        source: EmailSource | None = None,
+    ) -> EmailSyncOutcome:
         ext_id = message.external_message_id
         try:
-            return self._ingest_and_classify(message)
+            return self._ingest_and_classify(message, source)
         except Exception as exc:
             logger.exception("Failed to process email %s", ext_id)
             # Best-effort: try to record the failure job without crashing
@@ -189,7 +199,11 @@ class SyncService:
                 error=str(exc),
             )
 
-    def _ingest_and_classify(self, message: EmailMessage) -> EmailSyncOutcome:
+    def _ingest_and_classify(
+        self,
+        message: EmailMessage,
+        source: EmailSource | None,
+    ) -> EmailSyncOutcome:
         ext_id = message.external_message_id
 
         # ---- INGEST --------------------------------------------------- #
@@ -242,6 +256,20 @@ class SyncService:
             transition(self.session, record, "AWAITING_DOCUMENTS", "AWAITING_DOCUMENTS")
         elif result.comparison_readiness == "UNRESOLVED":
             transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
+        elif result.comparison_readiness == "READY_FOR_COMPARISON":
+            materialization = self._document_service.process(record, message, source)
+            if materialization.technical_failure:
+                job.status = "FAILED"
+                job.error_message = materialization.reason_code
+                self.session.flush()
+                return EmailSyncOutcome(
+                    external_message_id=ext_id,
+                    status="FAILED",
+                    error=materialization.reason_code,
+                )
+            if materialization.processing_status == "BLOCKED":
+                job.status = "BLOCKED"
+                job.error_message = materialization.reason_code
 
         # ---- HUMAN REVIEW --------------------------------------------- #
         if result.resolved_at_stage == HUMAN_REVIEW:

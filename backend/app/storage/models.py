@@ -71,6 +71,12 @@ class ProcessingEventRecord(Base):
 
 class AttachmentRecord(Base):
     __tablename__ = "attachments"
+    __table_args__ = (
+        CheckConstraint(
+            "retrieval_status IN ('NOT_RETRIEVED','MATERIALIZED','FAILED')",
+            name="ck_attachment_retrieval_status",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -78,6 +84,9 @@ class AttachmentRecord(Base):
     content_type: Mapped[str | None] = mapped_column(String(255))
     source_reference: Mapped[str] = mapped_column(Text, nullable=False)
     external_attachment_id: Mapped[str | None] = mapped_column(String(512))
+    content_sha256: Mapped[str | None] = mapped_column(String(64), index=True)
+    retrieval_status: Mapped[str] = mapped_column(String(50), nullable=False, default="NOT_RETRIEVED")
+    retrieval_reason_code: Mapped[str | None] = mapped_column(String(80))
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="attachments")
@@ -133,6 +142,16 @@ class ClassificationResultRecord(Base):
 
 class DocumentRecord(TimestampMixin, Base):
     __tablename__ = "documents"
+    __table_args__ = (
+        CheckConstraint(
+            "routing_outcome IN ('SI_FOUND','BL_FOUND','MULTIPLE_CANDIDATES','MISSING_REQUIRED_ATTACHMENT','UNSUPPORTED_ATTACHMENT','CORRUPTED_ATTACHMENT','UNREADABLE_ATTACHMENT','WRONG_DOCUMENT_TYPE','ROLE_INCONCLUSIVE','LEGACY_UNCLASSIFIED')",
+            name="ck_document_routing_outcome",
+        ),
+        CheckConstraint(
+            "validation_outcome IN ('VALID','WRONG_DOCUMENT_TYPE','INCONCLUSIVE')",
+            name="ck_document_validation_outcome",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -141,6 +160,11 @@ class DocumentRecord(TimestampMixin, Base):
     format: Mapped[str] = mapped_column(String(50), nullable=False)  # PLAIN_TEXT | PDF_TEXT | DOCX | XLSX | SCANNED_PDF | IMAGE | UNKNOWN
     filename: Mapped[str] = mapped_column(String(512), nullable=False)
     source_reference: Mapped[str] = mapped_column(Text, nullable=False)
+    routing_outcome: Mapped[str] = mapped_column(String(50), nullable=False, default="LEGACY_UNCLASSIFIED")
+    role_confidence: Mapped[float] = mapped_column(Float, nullable=False, default=0.0)
+    role_evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    validation_outcome: Mapped[str] = mapped_column(String(50), nullable=False, default="INCONCLUSIVE")
+    parse_duration_ms: Mapped[float | None] = mapped_column(Float)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="documents")
     attachment: Mapped[AttachmentRecord | None] = relationship(back_populates="document")

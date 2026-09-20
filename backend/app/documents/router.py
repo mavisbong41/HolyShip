@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Sequence
 
@@ -9,7 +8,9 @@ from backend.app.documents.models import (
     DocumentRoutingResult,
     DocumentType,
     RoutedAttachment,
+    UnifiedDocument,
 )
+from backend.app.documents.role_validation import DocumentRoleValidator
 from backend.app.ingestion.models import AttachmentMetadata
 
 
@@ -19,6 +20,9 @@ class DocumentRouter:
     Evaluates filename patterns, extensions, and content signals.
     Enforces validation rules (missing SI/BL, multiple candidates, uncertainty).
     """
+
+    def __init__(self, role_validator: DocumentRoleValidator | None = None):
+        self.role_validator = role_validator or DocumentRoleValidator()
 
     def detect_format(self, filename: str) -> DocumentFormat:
         ext = Path(filename).suffix.lower()
@@ -39,75 +43,23 @@ class DocumentRouter:
         attachment: AttachmentMetadata,
         peek_text: str | None = None,
     ) -> RoutedAttachment:
-        filename_lower = attachment.filename.lower()
-        base_name = Path(filename_lower).stem
         doc_format = self.detect_format(attachment.filename)
-
-        # 1. Check filename signals
-        si_score = 0.0
-        bl_score = 0.0
-        other_score = 0.0
-
-        if re.search(r"[_.\-\s]si([_.\-\s]|$)", base_name) or base_name.endswith("_si") or base_name.endswith("-si"):
-            si_score += 2.5
-        elif "shipping_instruction" in base_name or "shipping instruction" in base_name:
-            si_score += 3.0
-
-        if re.search(r"[_.\-\s]bl([_.\-\s]|$)", base_name) or base_name.endswith("_bl") or base_name.endswith("-bl"):
-            bl_score += 2.5
-        elif "draft_bl" in base_name or "draft bl" in base_name or "bill_of_lading" in base_name or "bill of lading" in base_name:
-            bl_score += 3.0
-
-        if "invoice" in base_name or "packing" in base_name:
-            other_score += 2.5
-
-        # 2. Check peek content signals if available
-        if peek_text:
-            text_lower = peek_text[:1000].lower()
-            if "shipping instruction" in text_lower or "bl instruction" in text_lower:
-                si_score += 2.0
-            if "bill of lading" in text_lower or "draft bl" in text_lower or "bill of lading (draft)" in text_lower:
-                bl_score += 2.0
-            if "commercial invoice" in text_lower or "packing list" in text_lower:
-                other_score += 2.0
-
-        # Determine winner
-        if si_score > bl_score and si_score > other_score and si_score >= 2.0:
-            return RoutedAttachment(
+        validation = self.role_validator.validate(
+            UnifiedDocument(
+                raw_text=peek_text or "",
+                format=doc_format,
                 filename=attachment.filename,
                 source_reference=attachment.source_reference,
-                document_type=DocumentType.SI,
-                format=doc_format,
-                confidence=min(1.0, si_score / 3.0),
-                evidence=f"Filename/text matched SI patterns (score={si_score})",
             )
-        elif bl_score > si_score and bl_score > other_score and bl_score >= 2.0:
-            return RoutedAttachment(
-                filename=attachment.filename,
-                source_reference=attachment.source_reference,
-                document_type=DocumentType.DRAFT_BL,
-                format=doc_format,
-                confidence=min(1.0, bl_score / 3.0),
-                evidence=f"Filename/text matched DRAFT_BL patterns (score={bl_score})",
-            )
-        elif other_score >= 2.0:
-            return RoutedAttachment(
-                filename=attachment.filename,
-                source_reference=attachment.source_reference,
-                document_type=DocumentType.OTHER,
-                format=doc_format,
-                confidence=0.9,
-                evidence=f"Identified as non-comparison document (score={other_score})",
-            )
-        else:
-            return RoutedAttachment(
-                filename=attachment.filename,
-                source_reference=attachment.source_reference,
-                document_type=DocumentType.UNKNOWN,
-                format=doc_format,
-                confidence=0.2,
-                evidence="Could not reliably determine document type from filename or content",
-            )
+        )
+        return RoutedAttachment(
+            filename=attachment.filename,
+            source_reference=attachment.source_reference,
+            document_type=validation.document_type,
+            format=doc_format,
+            confidence=validation.confidence,
+            evidence=validation.evidence,
+        )
 
     def route_attachments(
         self,

@@ -9,7 +9,10 @@ from backend.app.ingestion.models import EmailMessage
 from backend.app.storage.models import (
     AttachmentRecord,
     ClassificationResultRecord,
+    DocumentExtractionRecord,
+    DocumentRecord,
     EmailMessageRecord,
+    ExtractedFieldRecord,
     HumanReviewCaseRecord,
     ProcessingJobRecord,
 )
@@ -186,6 +189,11 @@ class DocumentRepository:
         format: str,
         filename: str,
         source_reference: str,
+        routing_outcome: str = "LEGACY_UNCLASSIFIED",
+        role_confidence: float = 0.0,
+        role_evidence: dict | None = None,
+        validation_outcome: str = "INCONCLUSIVE",
+        parse_duration_ms: float | None = None,
     ) -> DocumentRecord:
         record = DocumentRecord(
             email_id=email_id,
@@ -194,6 +202,11 @@ class DocumentRepository:
             format=format,
             filename=filename,
             source_reference=source_reference,
+            routing_outcome=routing_outcome,
+            role_confidence=role_confidence,
+            role_evidence=role_evidence or {},
+            validation_outcome=validation_outcome,
+            parse_duration_ms=parse_duration_ms,
         )
         self.session.add(record)
         self.session.flush()
