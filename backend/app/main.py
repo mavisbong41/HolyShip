@@ -1,6 +1,7 @@
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 from backend.app.api.router import _build_sync_service, router
 from backend.app.core.config import Settings, get_settings
@@ -35,6 +36,14 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.7.0",
         lifespan=lifespan,
     )
+    if configured.cors_origin_list:
+        application.add_middleware(
+            CORSMiddleware,
+            allow_origins=configured.cors_origin_list,
+            allow_credentials=False,
+            allow_methods=["*"],
+            allow_headers=["*"],
+        )
     application.include_router(router, prefix="/api")
     return application
 

@@ -34,7 +34,7 @@ Persist Result
 Dashboard / Extension Backend API
 ```
 
-**Current scope includes the persisted-result product API; frontend UI remains out of scope.**
+**Current scope now includes the persisted-result product API and the web Dashboard UI.**
 
 Human Review UI/workflow is intentionally not part of the current milestone.
 
@@ -42,9 +42,9 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 
 ## Last Updated
 
-**Date:** 2026-09-20  
-**Updated by:** Phase F final adversarial audit
-**Repository state:** `phaseF` is the active audit branch from `feature/email-classification` at `f4081af`. Phase F changes remain isolated; no merge or rebase has been performed.
+**Date:** 2026-09-21
+**Updated by:** Dashboard UI sprint — 1:1 User Reference UI Match
+**Repository state:** `feature/dashboard` is the active product UI branch. Implemented exact 1:1 UI redesign matching user reference image `media_1789922618415.png`: white floating card sidebar with dark active pill, Operations Workbench Hero Banner with orange swoosh and "Faster Documents Safer Trade" watermark, 4 KPI cards with mini-bar chart indicators, 3-column middle section (Processing Load with colored status bars, Recent Activity with status icons & timestamps, Comparison Summary with verification alerts), and bottom Queue Preview table showing the latest 5 emails with checkboxes and action controls. All frontend checks and backend tests PASS.
 
 ---
 
@@ -85,7 +85,7 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 
 ## Current Status
 
-Phase F final adversarial audit passed on the isolated `phaseF` branch. SEC-04, SCP-02, and SCP-06 are closed with executable evidence; the reproduced incoming-base64 size-bound defect is repaired; local and exact-candidate fresh-clone gates pass. Human review/merge remains outstanding.
+Phase F final adversarial audit passed and the Dashboard UI sprint has started on `feature/dashboard`. The backend remains the source of truth; this pass adds a React/Vite web Dashboard that consumes `/api/v1` product routes without duplicating classification, extraction, normalization, or comparison logic.
 
 | Area | Status | Notes |
 |---|---|---|
@@ -108,6 +108,7 @@ Phase F final adversarial audit passed on the isolated `phaseF` branch. SEC-04, 
 | Persistence | IMPLEMENTED THROUGH PHASE 6 | Non-destructive AI proposal/audit persistence and versioned request-cache identity added |
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
+| Web Dashboard UI | IMPLEMENTED — DASHBOARD PASS PENDING VALIDATION | React/Vite Dashboard scaffold, visual tokens, overview, queue, detail comparison table, read-only Human Review, API client/types, tests, and docs added under `frontend/` |
 | Email-extension backend API | IMPLEMENTED — PHASE 7 | Shared v1 email/detail/ingestion contracts; no extension UI was added |
 | Human Review product API | IMPLEMENTED — READ-ONLY | Reviewer queue/detail composition exposes persisted reason, evidence, comparison, and AI provenance; no review mutation |
 | Human Review UI/workflow | OUT OF SCOPE | No frontend or reviewer action workflow was added |
@@ -214,6 +215,17 @@ Fast compare
 ---
 
 ## Implemented
+
+### Product UI — Dashboard client
+
+- Added `frontend/` with React, TypeScript, Vite, Vitest, Testing Library, and `lucide-react`.
+- Added centralized Dashboard API client for `/api/v1/summary`, `/api/v1/emails`, `/api/v1/emails/{id}`, `/api/v1/human-review`, and `/api/v1/events`.
+- Added project-owned TypeScript types mirroring the backend product schemas and exact enum values.
+- Added Averis-inspired orange/grey/black/white design tokens and responsive Dashboard styling.
+- Implemented Overview, Email Queue, unified Email Detail, seven-field SI vs Draft BL comparison, and read-only Human Review screens.
+- The frontend renders backend `MATCH` / `MISMATCH` / `UNRESOLVED` statuses only; it does not compare SI and BL values locally.
+- Added Dashboard docs and audit reports: `reports/product_ui_audit.md`, `docs/dashboard_api_contract.md`, `docs/product_ui.md`, `frontend/README.md`, and `reports/product_ui_completion.md`.
+- Outlook Add-in work is intentionally deferred until explicitly continued.
 
 ### Phase R — close Phase 7 implementation and verification gaps
 
@@ -762,6 +774,13 @@ When adding an environment variable:
 
 ## Tests & Validation
 
+### Dashboard UI sprint (2026-09-21)
+
+- `npm run check` from `frontend/` passed: TypeScript typecheck, 6 Vitest tests, and production build.
+- `mingw32-make check-fast PYTHON=py` passed: backend compileall, 34 focused backend tests, and `git diff --check`.
+- Vite dev server started at `http://127.0.0.1:5173/`.
+- `npm audit --audit-level=moderate` reports a Vitest/@vitest/mocker moderate advisory; the available fix requires a breaking Vitest major upgrade and was not auto-applied.
+
 ### Phase F final adversarial audit (2026-09-20)
 
 - Recovered `phaseF` from clean integration SHA `f4081af`; verified no deliberate mutation remained after five RED→revert→GREEN checks (CLS-01, CMP-01, CMP-02, MAP-06, ING-08).
@@ -1045,6 +1064,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-21 — Dashboard UI sprint
+
+- **Changed:** Added the React/Vite Dashboard client, centralized product API client/types, design tokens, Overview, Queue, Detail, seven-field comparison, read-only Human Review, frontend tests, and Dashboard docs/reports.
+- **Why:** The verified backend now needs a client-facing Dashboard experience using the existing `/api/v1` contracts.
+- **Files:** `frontend/*`, `docs/dashboard_api_contract.md`, `docs/product_ui.md`, `reports/product_ui_audit.md`, `reports/product_ui_completion.md`, `.gitignore`, and this handoff.
+- **Validation:** `npm run check` passed in `frontend/`; `mingw32-make check-fast PYTHON=py` passed. `npm audit --audit-level=moderate` reports a dev Vitest advisory requiring a breaking major upgrade to auto-fix.
+- **Next:** User review of Dashboard UI. Outlook Add-in remains deferred until explicitly continued.
 
 ### 2026-09-20 — Phase F final adversarial audit
 
