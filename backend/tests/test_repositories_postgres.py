@@ -57,7 +57,7 @@ def test_repositories_write_and_read_batch1_foundation_records(session):
     job = ProcessingJobRepository(session).create(email_id=email.id, job_type="INITIAL_SYNC", status="CLASSIFIED")
     classification = ClassificationResultRepository(session).create(
         email_id=email.id,
-        category="DOCUMENT_COMPARISON",
+        category="document_comparison",
         confidence=0.92,
         candidate_scores={"DOCUMENT_COMPARISON": 0.92, "INVOICE_QUERY": 0.05},
         reason="Body explicitly requests SI/BL comparison.",
@@ -82,7 +82,7 @@ def test_repositories_write_and_read_batch1_foundation_records(session):
     assert loaded.id == email.id
     assert len(loaded.attachments) == 1
     assert job.status == "CLASSIFIED"
-    assert classification.category == "DOCUMENT_COMPARISON"
+    assert classification.category == "document_comparison"
     assert review.status == "OPEN"
 
 

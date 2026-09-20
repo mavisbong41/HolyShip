@@ -54,29 +54,37 @@ class CompositeDocumentReader(DocumentReader):
     def read(self, content_bytes: bytes, filename: str, source_reference: str = "") -> UnifiedDocument:
         ext = Path(filename).suffix.lower()
 
+        if not content_bytes:
+            return UnifiedDocument(
+                raw_text="",
+                format=self.detect_format(filename),
+                reader_used="None",
+                filename=filename,
+                source_reference=source_reference,
+                extraction_quality=0.0,
+                extraction_status="UNREADABLE",
+                error_message="Attachment is empty",
+            )
+
         # 1. Plain text
         if ext in (".txt", ".text", ".csv", ""):
             return self.plain_reader.read(content_bytes, filename, source_reference)
 
         # 2. DOCX
         if ext == ".docx":
-            result = self.docx_reader.read(content_bytes, filename, source_reference)
-            if result.extraction_status == "EXTRACTED" and result.raw_text.strip():
-                return result
-            # Try vision if docx corrupted
-            return self._fallback_vision(content_bytes, filename, source_reference, result)
+            return self.docx_reader.read(content_bytes, filename, source_reference)
 
         # 3. XLSX
         if ext in (".xlsx", ".xlsm", ".xltx"):
-            result = self.xlsx_reader.read(content_bytes, filename, source_reference)
-            if result.extraction_status == "EXTRACTED" and result.raw_text.strip():
-                return result
-            return self._fallback_vision(content_bytes, filename, source_reference, result)
+            return self.xlsx_reader.read(content_bytes, filename, source_reference)
 
         # 4. PDF (Native -> OCR -> Vision)
         if ext == ".pdf":
             native_result = self.pdf_reader.read(content_bytes, filename, source_reference)
             if native_result.extraction_status == "EXTRACTED" and len(native_result.raw_text.strip()) >= 30:
+                return native_result
+
+            if native_result.extraction_status == "FAILED":
                 return native_result
 
             # Native extraction gave empty text or failed -> OCR fallback
@@ -119,7 +127,8 @@ class CompositeDocumentReader(DocumentReader):
         if vision_res.extraction_status == "EXTRACTED" and vision_res.raw_text.strip():
             return vision_res
 
-        # Preserve the failure from the last reader if vision couldn't resolve
+        # Preserve a clean unreadable result from the OCR path if vision could
+        # not resolve it. This layer never raises on an unavailable backend.
         return UnifiedDocument(
             raw_text=last_result.raw_text,
             pages=last_result.pages,
@@ -129,7 +138,7 @@ class CompositeDocumentReader(DocumentReader):
             filename=filename,
             source_reference=source_reference,
             extraction_quality=0.0,
-            extraction_status=last_result.extraction_status if last_result.extraction_status != "EXTRACTED" else "UNREADABLE",
+            extraction_status="UNREADABLE" if last_result.extraction_status in {"FAILED", "PARTIAL"} else last_result.extraction_status,
             error_message=last_result.error_message or "All extraction methods (native, OCR, vision) failed or yielded unreadable text",
             metadata=last_result.metadata,
         )

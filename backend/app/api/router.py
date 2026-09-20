@@ -116,6 +116,7 @@ def list_emails(
             source_type=r.source_type,
             sender=r.sender,
             subject=r.subject,
+            processing_status=r.processing_status,
             received_at=r.received_at,
             created_at=r.created_at,
             attachment_count=len(r.attachments),

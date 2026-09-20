@@ -22,11 +22,13 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
+import backend.app.sync.service as sync_service
 from backend.app.ingestion.models import AttachmentMetadata, EmailMessage
 from backend.app.ingestion.sources import EmailSource
 from backend.app.storage.database import Base
 from backend.app.storage.models import (
     ClassificationResultRecord,
+    EmailMessageRecord,
     HumanReviewCaseRecord,
     ProcessingJobRecord,
 )
@@ -101,6 +103,10 @@ class ListSource(EmailSource):
             if m.external_message_id == external_message_id:
                 return m
         raise KeyError(external_message_id)
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        if "_SI" in attachment.filename or attachment.filename == "SI.txt":
+            return b"SHIPPING INSTRUCTION\nShipper: A\nConsignee: B"
+        return b"BILL OF LADING (DRAFT)\nShipper: A\nConsignee: B"
 
 
 class BrokenSource(EmailSource):
@@ -115,6 +121,10 @@ class BrokenSource(EmailSource):
         raise RuntimeError("simulated broken email payload")
     def get_message(self, external_message_id: str) -> EmailMessage:
         raise KeyError(external_message_id)
+    def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
+        if "_SI" in attachment.filename:
+            return b"SHIPPING INSTRUCTION\nShipper: A"
+        return b"BILL OF LADING (DRAFT)\nShipper: A"
 
 
 # ---------------------------------------------------------------------------
@@ -137,7 +147,8 @@ def test_sync_classifies_clear_document_comparison(svc, session):
 
     results = session.query(ClassificationResultRecord).all()
     assert len(results) == 1
-    assert results[0].category == "DOCUMENT_COMPARISON"
+    assert results[0].category == "document_comparison"
+    assert results[0].comparison_readiness == "READY_FOR_COMPARISON"
     assert results[0].confidence >= 0.80
 
 
@@ -194,8 +205,52 @@ def test_sync_reclassifies_changed_email(svc, session):
 def test_sync_continues_after_broken_email(svc, session):
     report = svc.sync(BrokenSource())
 
-    assert report.failed >= 1
-    assert report.classified >= 1   # the good email still got classified
+    assert report.total == 1
+    assert report.failed == 0
+    assert report.source_failed == 1
+    assert report.classified == 1   # the good email still got classified
+    assert [(failure.reason_code, failure.error) for failure in report.source_failures] == [
+        ("SOURCE_ITERATION_FAILED", "simulated broken email payload"),
+    ]
+    assert session.query(EmailMessageRecord).count() == 1
+
+    # A failed stream does not poison a later, healthy source run.
+    later = svc.sync(ListSource([_email("good_002", "Invoice", "Please send invoice.")]))
+    assert later.failed == 0
+    assert later.source_failed == 0
+    assert later.total == 1
+
+
+def test_sync_commits_each_materialized_email_before_later_failure(svc, session, monkeypatch):
+    """A per-email rollback cannot discard previously committed messages."""
+    original_classify = sync_service.classify_email
+
+    def fail_only_the_materialized_bad_message(classification_input, **kwargs):
+        if classification_input.subject == "trigger processing failure":
+            raise RuntimeError("simulated materialized processing failure")
+        return original_classify(classification_input, **kwargs)
+
+    monkeypatch.setattr(sync_service, "classify_email", fail_only_the_materialized_bad_message)
+    report = svc.sync(ListSource([
+        _email("transaction_a", "first success", "Please send invoice."),
+        _email("transaction_b", "trigger processing failure", "Please send invoice."),
+        _email("transaction_c", "third success", "Please send invoice."),
+    ]))
+
+    assert report.total == 3
+    assert report.classified == 2
+    assert report.failed == 1
+    assert report.source_failed == 0
+    assert [outcome.status for outcome in report.outcomes] == [
+        "CLASSIFIED", "FAILED", "CLASSIFIED",
+    ]
+    assert session.query(EmailMessageRecord).count() == 3
+    assert session.query(ClassificationResultRecord).count() == 2
+    failed_jobs = session.query(ProcessingJobRecord).filter_by(status="FAILED").all()
+    assert len(failed_jobs) == 1
+    assert {record.external_message_id for record in session.query(EmailMessageRecord)} == {
+        "transaction_a", "transaction_b", "transaction_c",
+    }
 
 
 # ---------------------------------------------------------------------------
@@ -227,7 +282,7 @@ def test_sync_processing_job_state_transition(svc, session):
 
     jobs = session.query(ProcessingJobRecord).all()
     assert len(jobs) == 1
-    assert jobs[0].status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED", "FAILED")
+    assert jobs[0].status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED", "BLOCKED", "FAILED")
 
 
 # ---------------------------------------------------------------------------
@@ -240,9 +295,10 @@ def test_sync_one_uses_same_classification_pipeline(svc, session):
         "Please compare the attached SI and draft BL. Check the details and confirm.",
         filenames=["SI.txt", "BL.txt"],
     )
-    outcome = svc.sync_one(email)
+    outcome = svc.sync_one(email, ListSource([email]))
 
     assert outcome.status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED")
     results = session.query(ClassificationResultRecord).all()
     assert len(results) == 1
-    assert results[0].category == "DOCUMENT_COMPARISON"
+    assert results[0].category == "document_comparison"
+    assert results[0].comparison_readiness == "READY_FOR_COMPARISON"

@@ -1,9 +1,11 @@
 from collections import Counter
 
+import pytest
+
 from backend.app.ingestion.sources import StaticBundleSource
 
 
-ORGANIZER_BUNDLE_PATH = "sdoc-hackathon-bundle"
+ORGANIZER_BUNDLE_PATH = "data/bundle"
 
 
 def test_static_bundle_source_loads_all_organizer_emails():
@@ -34,6 +36,16 @@ def test_static_bundle_source_maps_attachment_metadata_without_reading_contents(
         "attachments/email_001_BL.txt",
     ]
     assert all(attachment.content_type == "text/plain" for attachment in message.attachments)
+
+
+@pytest.mark.req("ING-11")
+def test_static_bundle_source_loads_attachment_bytes_only_on_explicit_request():
+    source = StaticBundleSource(ORGANIZER_BUNDLE_PATH)
+    message = source.get_message("email_001")
+
+    content = source.get_attachment_content(message.attachments[0])
+
+    assert content.startswith(b"SHIPPING INSTRUCTION")
 
 
 def test_static_bundle_source_preserves_observed_attachment_distribution():

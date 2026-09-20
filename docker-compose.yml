@@ -21,14 +21,14 @@ services:
       dockerfile: backend/Dockerfile
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-holyship}:${POSTGRES_PASSWORD:-holyship}@postgres:5432/${POSTGRES_DB:-holyship}
-      ORGANIZER_BUNDLE_PATH: /app/sdoc-hackathon-bundle
+      ORGANIZER_BUNDLE_PATH: /app/data/bundle
     ports:
       - "8000:8000"
     depends_on:
       postgres:
         condition: service_healthy
     volumes:
-      - ./sdoc-hackathon-bundle:/app/sdoc-hackathon-bundle:ro
+      - ./data/bundle:/app/data/bundle:ro
 
 volumes:
   holyship_postgres_data:

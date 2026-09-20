@@ -1,0 +1,17 @@
+{
+  "version": "2026-09-20",
+  "ports": [
+    {
+      "canonical": "PORT KLANG",
+      "aliases": ["MYPKG", "MY PKG"],
+      "source_category": "UN/LOCODE",
+      "source_url": "https://service.unece.org/trade/locode/my.htm"
+    },
+    {
+      "canonical": "SINGAPORE",
+      "aliases": ["SGSIN", "SG SIN"],
+      "source_category": "UN/LOCODE",
+      "source_url": "https://service.unece.org/trade/locode/sg.htm"
+    }
+  ]
+}

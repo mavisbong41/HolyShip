@@ -14,7 +14,7 @@ from backend.app.documents.readers.xlsx_reader import XlsxReader
 from backend.app.documents.router import DocumentRouter
 from backend.app.ingestion.models import AttachmentMetadata
 
-BUNDLE_ATTACHMENTS = Path("sdoc-hackathon-bundle/attachments")
+BUNDLE_ATTACHMENTS = Path("data/bundle/attachments")
 
 
 # ---------------------------------------------------------------------------
@@ -119,7 +119,13 @@ def test_router_identifies_si_and_bl():
         AttachmentMetadata(filename="email_001_BL.txt", source_reference="email_001_BL.txt"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(
+        atts,
+        {
+            "email_001_SI.txt": "SHIPPING INSTRUCTION",
+            "email_001_BL.txt": "BILL OF LADING (DRAFT)",
+        },
+    )
 
     assert not result.human_review_required
     assert result.si_attachment is not None
@@ -134,7 +140,7 @@ def test_router_handles_missing_si():
         AttachmentMetadata(filename="email_001_BL.txt", source_reference="email_001_BL.txt"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(atts, {"email_001_BL.txt": "BILL OF LADING (DRAFT)"})
 
     assert result.human_review_required
     assert result.human_review_reason_code == "MISSING_SI"
@@ -148,7 +154,7 @@ def test_router_handles_missing_bl():
         AttachmentMetadata(filename="email_001_SI.txt", source_reference="email_001_SI.txt"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(atts, {"email_001_SI.txt": "SHIPPING INSTRUCTION"})
 
     assert result.human_review_required
     assert result.human_review_reason_code == "MISSING_BL"
@@ -162,7 +168,7 @@ def test_router_handles_both_missing():
         AttachmentMetadata(filename="commercial_invoice.pdf", source_reference="commercial_invoice.pdf"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(atts, {"commercial_invoice.pdf": "COMMERCIAL INVOICE"})
 
     assert result.human_review_required
     assert result.human_review_reason_code in ("MISSING_SI", "DOCUMENT_TYPE_UNCERTAIN")
@@ -176,7 +182,14 @@ def test_router_handles_multiple_si_candidates():
         AttachmentMetadata(filename="doc3_BL.txt", source_reference="doc3_BL.txt"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(
+        atts,
+        {
+            "doc1_SI.txt": "SHIPPING INSTRUCTION",
+            "doc2_SI.pdf": "SHIPPING INSTRUCTION",
+            "doc3_BL.txt": "BILL OF LADING (DRAFT)",
+        },
+    )
 
     assert result.human_review_required
     assert result.human_review_reason_code == "MULTIPLE_SI_CANDIDATES"
@@ -190,7 +203,14 @@ def test_router_handles_multiple_bl_candidates():
         AttachmentMetadata(filename="doc3_BL.docx", source_reference="doc3_BL.docx"),
     ]
 
-    result = router.route_attachments(atts)
+    result = router.route_attachments(
+        atts,
+        {
+            "doc1_SI.txt": "SHIPPING INSTRUCTION",
+            "doc2_BL.pdf": "BILL OF LADING (DRAFT)",
+            "doc3_BL.docx": "DRAFT BILL OF LADING",
+        },
+    )
 
     assert result.human_review_required
     assert result.human_review_reason_code == "MULTIPLE_BL_CANDIDATES"

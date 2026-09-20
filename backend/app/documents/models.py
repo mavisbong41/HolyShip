@@ -31,10 +31,27 @@ class DocumentPage:
 
 
 @dataclass
+class DocumentCell:
+    value: Any
+    row_index: int
+    column_index: int
+    coordinate: str | None = None
+
+    def to_dict(self) -> dict[str, Any]:
+        return {
+            "value": self.value,
+            "row_index": self.row_index,
+            "column_index": self.column_index,
+            "coordinate": self.coordinate,
+        }
+
+
+@dataclass
 class DocumentTable:
-    rows: list[list[str]] = field(default_factory=list)
+    rows: list[list[Any]] = field(default_factory=list)
     page_number: int = 1
     title: Optional[str] = None
+    cells: list[list[DocumentCell]] = field(default_factory=list)
 
 
 @dataclass

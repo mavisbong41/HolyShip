@@ -2,6 +2,8 @@ import json
 import threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 
+import pytest
+
 from backend.app.ingestion.sources import OrganizerHttpSource
 
 
@@ -36,6 +38,14 @@ class OrganizerApiHandler(BaseHTTPRequestHandler):
             return
         if self.path == "/emails/email_002":
             self._json(EMAILS[1])
+            return
+        if self.path == "/attachments/email_001_SI.txt":
+            body = b"SHIPPING INSTRUCTION\nShipper: A"
+            self.send_response(200)
+            self.send_header("Content-Type", "text/plain")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
             return
         self.send_response(404)
         self.end_headers()
@@ -74,6 +84,16 @@ def test_organizer_http_source_fetches_single_message():
     assert message.external_message_id == "email_002"
     assert message.sender == "billing@example.com"
     assert message.attachments == []
+
+
+@pytest.mark.req("ING-11")
+def test_organizer_http_source_loads_attachment_bytes_only_on_explicit_request():
+    with http_source() as base_url:
+        source = OrganizerHttpSource(base_url)
+        message = source.get_message("email_001")
+        content = source.get_attachment_content(message.attachments[0])
+
+    assert content == b"SHIPPING INSTRUCTION\nShipper: A"
 
 
 class http_source:

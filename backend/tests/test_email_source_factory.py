@@ -7,7 +7,7 @@ def test_factory_builds_static_bundle_source():
     source = build_email_source(
         EmailSourceConfig(
             source_type="STATIC_BUNDLE",
-            static_bundle_path="sdoc-hackathon-bundle",
+            static_bundle_path="data/bundle",
         )
     )
 
