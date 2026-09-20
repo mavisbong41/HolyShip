@@ -354,12 +354,14 @@ class SyncService:
         self,
         message: EmailMessage,
         source: EmailSource | None = None,
+        *,
+        force: bool = False,
     ) -> EmailSyncOutcome:
         """
         Process a single EmailMessage (used by POST /api/email/incoming).
         Commits immediately.
         """
-        outcome = self._process_one(message, source)
+        outcome = self._process_one(message, source, force=force)
         self.session.commit()
         return outcome
 
@@ -371,12 +373,14 @@ class SyncService:
         self,
         message: EmailMessage,
         source: EmailSource | None = None,
+        *,
+        force: bool = False,
     ) -> EmailSyncOutcome:
         ext_id = message.external_message_id
         started = time.perf_counter()
         for attempt in range(1, self.retry_max_attempts + 1):
             try:
-                outcome = self._ingest_and_classify(message, source)
+                outcome = self._ingest_and_classify(message, source, force=force)
                 outcome.duration_ms = (time.perf_counter() - started) * 1000.0
                 outcome.retry_count = attempt - 1
                 return outcome
@@ -431,6 +435,8 @@ class SyncService:
         self,
         message: EmailMessage,
         source: EmailSource | None,
+        *,
+        force: bool = False,
     ) -> EmailSyncOutcome:
         ext_id = message.external_message_id
 
@@ -445,7 +451,7 @@ class SyncService:
             "EXTRACTING",
             "COMPARING",
         }
-        if not changed and record.processing_status not in resumable:
+        if not changed and not force and record.processing_status not in resumable:
             # Unchanged — skip reclassification
             logger.debug("Email %s unchanged — skipping classification", ext_id)
             return EmailSyncOutcome(external_message_id=ext_id, status="SKIPPED")

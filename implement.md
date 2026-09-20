@@ -34,7 +34,7 @@ Persist Result
 Dashboard / Extension Backend API
 ```
 
-**Current scope ends at comparison.**
+**Current scope includes the persisted-result product API; frontend UI remains out of scope.**
 
 Human Review UI/workflow is intentionally not part of the current milestone.
 
@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase 6 focused runtime/concurrency review and final verification
-**Repository state:** `phase6` is based on merged Phase 5 commit `a415000b7692648962e2984e35eb7819c23785d0`. It adds an opt-in provider-independent resolver, configured API/batch runtime wiring, bounded OCR, migration `20260920_0011`, and fixture-backed evaluation. The AI-disabled submission remains byte-identical to Phase 5.
+**Updated by:** Phase 7 product-facing API and live-demo implementation
+**Repository state:** Local `phase7` is based on the clean Phase 6 tip `f38b42d27ecc8e63a1dc5e972c24043d2ee058ac` (`ad29157` is the preceding Phase 6 runtime commit). The configured remote `feature/email-classification` is stale at `a415000`; fetch/push require network access that was unavailable during this session.
 
 ---
 
@@ -105,9 +105,10 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | OCR | IMPLEMENTED / MOCK VERIFIED | Native-first routing, injectable engine, content cache, timeout, call budget, concurrency limit, and clean failure outcomes |
 | Persistence | IMPLEMENTED THROUGH PHASE 6 | Non-destructive AI proposal/audit persistence and versioned request-cache identity added |
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
-| Dashboard backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing route boundary; no dashboard behavior was added |
-| Email-extension backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing incoming-email route boundary; no extension UI was added |
-| Human Review UI/workflow | OUT OF SCOPE | Next milestone |
+| Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
+| Email-extension backend API | IMPLEMENTED — PHASE 7 | Shared v1 email/detail/ingestion contracts; no extension UI was added |
+| Human Review product API | IMPLEMENTED — READ-ONLY | Reviewer queue/detail composition exposes persisted reason, evidence, comparison, and AI provenance; no review mutation |
+| Human Review UI/workflow | OUT OF SCOPE | No frontend or reviewer action workflow was added |
 
 `NOT CONFIRMED` means this file was created before inspecting the repository's actual implementation. Codex must replace these statuses with truthful repository state after inspection.
 
@@ -211,6 +212,18 @@ Fast compare
 ---
 
 ## Implemented
+
+### Phase 7 — product-facing API and live-demo boundary
+
+- Added explicit Pydantic product contracts for queue rows, summary counts, unified email detail, documents, extracted fields, seven-field comparison, evidence, timeline, reviewer context, AI resolution provenance, and polling events.
+- Added `/api/v1/emails` with stable pagination and server-side status/category/readiness/review/comparison/mismatch/search/time filters. Queue rows include attachment, mismatch, unresolved, and needs-review summaries.
+- Added `/api/v1/summary` with persisted status/review/readiness/mismatch/unresolved aggregates.
+- Added `/api/v1/emails/{id}` and `/detail` unified detail routes; GET composition uses eager/bulk loading and never runs document readers, OCR, extraction, AI resolution, or comparison.
+- Added read-only `/api/v1/human-review` queue/detail composition and `/api/v1/events` as a deterministic polling-compatible `EMAIL_PROCESSING_UPDATED` feed.
+- Added `/api/v1/sync/initial`, `/api/v1/ingestion/email`, and technical-failure-only `/api/v1/emails/{id}/reprocess` aliases over the existing `SyncService`; legacy `/api/*` routes remain unchanged.
+- Added a provider-isolated `MicrosoftGraphSource` payload adapter with no credentials/network dependency.
+- Added `scripts/demo_phase7.py`, `docs/phase7_api.md`, `reports/phase7_api_audit.md`, `reports/phase7_api_verification.md`, `reports/phase7_demo.md`, and the Phase 7 PostgreSQL/API/provider tests.
+- No migration was required; product responses reuse persisted Phase 0–6 tables and do not expose request payloads, prompts, secrets, or AI cache identities.
 
 ### Phase 6 — targeted hard-case AI layer
 
@@ -358,7 +371,7 @@ Fast compare
 
 ## In Progress
 
-- Phase 6 implementation and all applicable local/PostgreSQL gates are complete. Live provider verification and public scoreboard execution remain intentionally unperformed.
+- Phase 7 implementation is complete locally; PostgreSQL integration, live API/demo execution, full evaluation, traceability refresh, and network push remain unverified because this environment has no PostgreSQL/Docker and cannot reach GitHub.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
@@ -381,11 +394,9 @@ Fast compare
 
 ## Next
 
-- Review and merge `phase6` if the Phase 6 report is accepted.
-- Optionally validate a real structured AI/OCR provider in a credentialed environment before production use.
-- Begin Phase 7 only after explicit authorization; Human Review UI remains out of scope.
-
-- Stop after Phase 5 closure. Do not begin Phase 6 or Phase 7 from this task. Human review of the synchronized `origin/phase5` branch is the next action.
+- Run the isolated PostgreSQL integration/product suite and live `scripts/demo_phase7.py` workflow.
+- Run the full `make check` equivalent, Phase 7 trace, security/overfit scan, and AI-disabled compatibility evaluation.
+- Review/commit/push `phase7` when network access is available; do not merge it. Human Review UI/actions remain out of scope.
 
 Recommended implementation order after the dataset audit:
 
@@ -667,19 +678,28 @@ No new public route was added in Phase 5. Existing `/api/sync` and `/api/email/i
 
 Phase 6 adds no public route and does not change the submission schema. Migration `20260920_0011` adds internal `ai_resolutions`. `field_comparisons` retains the original extraction foreign keys while canonical/evidence values may describe an accepted overlay. AI-enabled comparison identity includes resolver/provider/model/schema versions; disabled identity remains `phase4-deterministic-v1`. Existing API and batch constructors now activate the configured factory when enabled.
 
-Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
+Phase 7 adds no migration. It reuses `email_messages`, `attachments`, `classification_results`, `documents`, `document_extractions`, `extracted_fields`, `comparison_results`, `field_comparisons`, `processing_events`, `human_review_cases`, and `ai_resolutions` through explicit product schemas. GET routes never invoke the processing pipeline. A forced `SyncService.sync_one(..., force=True)` path is used only by the technical-failure reprocess control.
 
-Planned interfaces from requirements include:
+Implemented product interfaces:
 
 ```text
 POST /api/v1/sync/initial
 POST /api/v1/ingestion/email
 GET  /api/v1/emails
 GET  /api/v1/emails/{email_id}
-POST /api/v1/emails/{email_id}/reprocess   [optional]
+GET  /api/v1/emails/{email_id}/detail
+GET  /api/v1/summary
+GET  /api/v1/human-review
+GET  /api/v1/human-review/{review_id}
+GET  /api/v1/events
+POST /api/v1/emails/{email_id}/reprocess
 ```
 
-Codex must replace this section with actual implemented routes/contracts as work proceeds.
+`/api/v1/emails` supports status, category, comparison readiness, needs-review,
+review status, comparison state, mismatch, subject/sender/external-id search,
+received time, and bounded skip/limit filters. Detail preserves raw/canonical/
+normalized values, SI-vs-BL direction, comparison states, evidence, review
+context, and safe AI provenance. The legacy `/api/*` contract remains intact.
 
 ---
 
@@ -724,6 +744,21 @@ When adding an environment variable:
 ---
 
 ## Tests & Validation
+
+### Phase 7 executed evidence
+
+- `python -m pytest backend/tests/test_phase7_product_api.py backend/tests/test_phase7_provider_contract.py -q` → PASS: 12 tests, 0 failures, 1 existing Starlette/TestClient deprecation warning.
+- `python -m pytest backend/tests/test_api.py backend/tests/test_submission_adapter.py backend/tests/test_phase5_retry_timeout.py backend/tests/test_phase5_reliability.py backend/tests/test_storage_models.py backend/tests/test_phase7_product_api.py backend/tests/test_phase7_provider_contract.py -q` → PASS: 46 tests, 0 failures, 1 existing deprecation warning.
+- `python -m pytest backend/tests -q` → PASS: 212 tests, 59 skips (database-dependent tests), 1 existing deprecation warning.
+- `python -m pytest backend/tests/test_phase7_product_api_postgres.py -q` → 2 skipped: `HOLYSHIP_TEST_DATABASE_URL` is unset; no PostgreSQL client/Docker service is available in this environment.
+- `python -m compileall -q backend/app backend/tests scripts` → PASS.
+- `python -m alembic heads` → PASS: `20260920_0011`.
+- PostgreSQL dialect compilation of queue/count statements → PASS; live SQL execution remains unverified.
+- `mingw32-make check-fast` → PASS: inherited 34-test gate, compileall, and diff check.
+- `mingw32-make check` and `python scripts/run_tests.py -q` → NOT RUN successfully: required `DATABASE_URL` and `HOLYSHIP_TEST_DATABASE_URL` are unset.
+- Production-code safety scan → PASS: no private-reference access or per-email production lookup was added; configured secret handling remains environment-backed.
+- `git diff --check` → PASS with expected Windows LF/CRLF conversion warnings.
+- Live `scripts/demo_phase7.py`, full PostgreSQL check, public evaluation, scoreboard, and remote push → NOT RUN/UNVERIFIED: no PostgreSQL/Docker service and GitHub/network access unavailable.
 
 ### Phase 6 executed evidence
 
@@ -967,15 +1002,24 @@ Never fabricate test results.
 
 Current document-level limitations:
 
-- Human Review UI/workflow is not specified in this milestone.
-- Microsoft Graph integration may be an integration path rather than an implemented hackathon dependency.
-- Exact model/OCR/provider choices are intentionally not locked until repository constraints are inspected.
+- Phase 7 exposes read-only Human Review queue/detail context; reviewer UI/actions and authentication remain out of scope.
+- Microsoft Graph is a provider-isolated payload adapter only; OAuth, live polling, persisted provider checkpoints, and startup workers are not implemented.
+- `/api/v1/sync/initial` is a synchronous initial-sync boundary that returns a product job ID for the completed request; background job progress persistence is not implemented.
+- PostgreSQL joins, live demo, full evaluation, latency measurements, and N+1 query counts are not verified in this environment because PostgreSQL/Docker is unavailable.
+- `scripts/demo_phase7.py` uses existing public-bundle cases for persisted document scenarios and incoming API messages for new-message scenarios; it does not fabricate database rows.
 - Exact participant-facing challenge submission schema must be verified against the public `sample_submission.json` used by the team.
-- No implementation claim should be made from this document until source code is inspected.
 
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 7 product-facing API and live-demo boundary
+
+- **Changed:** Added explicit `/api/v1` queue, summary, unified detail, read-only Human Review, polling-event, initial-sync, ingestion, and technical-reprocess contracts; added persisted-only query composition, Graph adapter skeleton, demo script, API docs/audit, and product/PostgreSQL/provider tests.
+- **Why:** Phase 0–6 processing and persistence existed, but dashboard/extension/reviewer clients had no stable product contract and would otherwise need to join internal tables or rerun processing.
+- **Files:** `backend/app/api/product_schemas.py`, `backend/app/api/product_queries.py`, `backend/app/api/router.py`, `backend/app/api/schemas.py`, `backend/app/ingestion/graph_source.py`, `backend/app/ingestion/models.py`, `backend/app/sync/service.py`, Phase 7 tests, `scripts/demo_phase7.py`, `docs/phase7_api.md`, Phase 7 reports, this handoff, and the Phase 7 design/plan docs.
+- **Validation:** New product/provider suite 12 passed; inherited focused suite with Phase 7 46 passed; `mingw32-make check-fast`, compileall, Alembic head, SQL compilation, and diff check passed. PostgreSQL integration (2 tests), live demo, full check/evaluation, and push are not verified because PostgreSQL/Docker/network are unavailable.
+- **Next:** Run PostgreSQL/live-demo/full-gate verification in a service-enabled environment, then commit and push `phase7`; do not merge.
 
 ### 2026-09-20 — Phase 6 targeted hard-case AI layer and focused closure
 

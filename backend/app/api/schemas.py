@@ -140,6 +140,11 @@ class SyncReportOut(BaseModel):
     failed: int
 
 
+class InitialSyncOut(SyncReportOut):
+    job_id: uuid.UUID
+    status: Literal["COMPLETED"] = "COMPLETED"
+
+
 # ---------------------------------------------------------------------------
 # Incoming email schema
 # ---------------------------------------------------------------------------
