@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase 2 document materialization and role-validation closure
-**Repository state:** Phase 2 implementation and executable evidence are complete: all requirements owned by phases 0–2 are 46 PASS, 0 TODO, 0 FAIL. Final Phase 2 gates are recorded below; the public scoreboard remains intentionally uncalled.
+**Updated by:** Phase P3A-2 one-pass deterministic extraction and persistence
+**Repository state:** Phase 2 remains complete. P3A-2 closes deterministic one-pass extraction, structured provenance, and seven-row persistence. Phase 3 still has only `EXT-03` parallel orchestration and `EXT-06` SHA/version cache behavior outstanding; comparison remains untouched.
 
 ---
 
@@ -98,10 +98,10 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Attachment retrieval | IMPLEMENTED | Lazy source-owned retrieval only for READY_FOR_COMPARISON; SHA-256 and storage identity persisted |
 | Document router | IMPLEMENTED | TXT/PDF/DOCX/XLSX native paths; scanned/image inputs enter OCR/Vision directly; failures are structured |
 | Document role validation | IMPLEMENTED | Content/title/table evidence assigns SI/BL; filename is never proof; clear wrong business documents block |
-| SI/BL extraction | NOT STARTED | Phase 2 persists materialized text/tables only; seven-field extraction is Phase 3 |
-| Canonical field mapping | NOT CONFIRMED | Implementation must be checked |
+| SI/BL extraction | PARTIAL — P3A-2 | Deterministic per-document one-pass extraction and persistence implemented; cross-document parallel orchestration/cache remain pending |
+| Canonical field mapping | IMPLEMENTED | Strict dictionary, bilingual/contextual/table provenance, ambiguity handling, and NET-weight exclusion have executable evidence |
 | Comparison pipeline | NOT CONFIRMED | Implementation must be checked |
-| Persistence | IMPLEMENTED THROUGH PHASE 2 | Processing events plus attachment hashes/retrieval state and document routing/validation outcomes |
+| Persistence | IMPLEMENTED THROUGH P3A-2 | Processing events, attachment/document materialization, and complete seven-field raw/canonical extraction rows with provenance |
 | Dashboard backend API | NOT CONFIRMED | Implementation must be checked |
 | Email-extension backend API | NOT CONFIRMED | Implementation must be checked |
 | Human Review UI/workflow | OUT OF SCOPE | Next milestone |
@@ -209,6 +209,33 @@ Fast compare
 
 ## Implemented
 
+### Phase 3 — P3A-2 one-pass deterministic extraction and persistence
+
+- `DeterministicDocumentExtractor.extract()` performs one coordinated scan of an already-materialized `UnifiedDocument` and always returns exactly seven field slots. Missing fields remain explicit `MISSING` rows; malformed values become `UNRESOLVED`; conflicting candidates become `AMBIGUOUS` with candidate evidence.
+- Each field result preserves canonical field, original raw label/value, typed canonical value, status, confidence, mapping method, structured source location, and evidence. Raw data is additive and is never replaced by canonicalization.
+- Text provenance records page, source line, and text span. Table provenance records table/sheet name, original row number, label cell, and value cell.
+- `XlsxReader` now retains native cell values and A1 coordinates while continuing to expose the existing row values. `DocxReader` adds table cell positions. Phase 2 materialization now persists page/table/cell structure instead of discarding titles and coordinates.
+- Deterministic inputs cover `Label: Value`, conservative multiline entity blocks, TXT, text PDF, DOCX tables, and XLSX key/value or header/value tables. No attachment is reopened after `UnifiedDocument` materialization.
+- Table-position mappings emit `table_structure`; their underlying label-dictionary method remains in evidence. The full six-value provenance vocabulary is preserved, while deterministic Phase 3 never emits `llm_resolved`.
+- `To the Order of ...` produces a contextual consignee only for an explicit negotiable draft-BL role and consignee context. It never populates notify party or crosses documents.
+- Numeric extraction preserves raw values while producing typed values: `22,000 KG` and `22000 kg` become `22000`; native XLSX `22000` remains an integer; `6 x 40'HC` becomes count `6` with `40'HC` retained only as auxiliary evidence.
+- `NET WEIGHT` and other explicitly non-gross labels cannot populate `gross_weight_kg`. Gross and net labels coexist independently; absent gross remains missing.
+- Alembic `20260920_0007` additively extends existing extraction tables with extractor version, raw label/native raw JSON, canonical JSON value, source location, mapping method, exact field/status/method/confidence constraints, and one-row-per-field uniqueness. It adds no cache lookup or cache uniqueness.
+- Valid Phase 2 SI/BL materializations now persist all seven downstream field rows and remain at `EXTRACTING`; no comparison state or outcome is created.
+- Closed `EXT-01`, `EXT-02`, `EXT-04`, `EXT-05a`, and `MAP-04`. `EXT-03` and `EXT-06` intentionally remain TODO for P3B.
+
+### Phase 3 — P3A-1 canonical field contract and strict label mapping
+
+- The authoritative in-memory vocabulary contains exactly `shipper`, `consignee`, `notify_party`, `port_of_loading`, `port_of_discharge`, `container_count`, and `gross_weight_kg`; auxiliary data cannot become an eighth canonical field.
+- `backend/app/extraction/field_labels.json` is the single configurable mapping dictionary. It contains general shipping-label aliases only and no email IDs, filenames, corpus answers, or private reference data.
+- Lookup normalization is deliberately conservative: Unicode NFKC, surrounding/repeated whitespace, case-folding, and a trailing label colon. It does not use fuzzy matching, edit distance, embeddings, substring guessing, or broad parenthesis removal.
+- Supported bilingual/descriptive labels are explicit dictionary entries, so their complete original `raw_label` is preserved. Meaningful unsupported parenthesized qualifiers remain unresolved.
+- `To the Order of ...` maps to `consignee` only when the caller supplies explicit negotiable Bill-of-Lading, consignee-section context. Ordinary order language and SI/unrelated contexts remain unresolved.
+- Explicit net/tare-weight labels, including `NET WEIGHT`, `Net Wt`, `Net Weight (KG)`, and `净重`, are blocked from `gross_weight_kg`. A gross label remains independently eligible when gross and net labels coexist.
+- Mapping provenance is a closed six-value enum: `exact_label`, `alias_dictionary`, `bilingual_label_normalization`, `contextual_business_rule`, `table_structure`, and `llm_resolved`. P3A-1 emits only the first four deterministic methods; `table_structure` and `llm_resolved` are reserved and never fabricated.
+- Matrix rows `MAP-01`, `MAP-02`, `MAP-03`, `MAP-05`, and `MAP-06` are closed with substantive tests. `MAP-04` intentionally remains TODO until P3A-2 exercises and persists table-structure provenance.
+- No extraction orchestration, document parsing changes, database migration, field persistence, cache, SI/BL parallelism, comparison, LLM, or Vision behavior was added.
+
 ### Phase 2 — document materialization and role validation
 
 - Only `document_comparison / READY_FOR_COMPARISON` enters attachment retrieval. Non-comparison mail, `AWAITING_DOCUMENTS`, and unresolved readiness never load attachment bytes.
@@ -297,7 +324,7 @@ Fast compare
 
 ## Next
 
-- Stop after Phase 2. Begin deterministic seven-field extraction and canonical mapping only when Phase 3 is explicitly authorized in a new phase session.
+- Stop after Phase 3. Begin SI-vs-BL comparison only when Phase 4 is explicitly authorized in a new phase session.
 
 Recommended implementation order after the dataset audit:
 
@@ -533,6 +560,13 @@ Phase 2 persistence is additive in migration `20260920_0006`:
 - Database checks constrain retrieval status, routing outcomes, and validation outcomes. No category, readiness, or processing-status vocabulary changed.
 - No new external dependency or environment variable was added.
 
+Phase 3 persistence is additive in migration `20260920_0007`:
+
+- `document_extractions.extractor_version` identifies the producing extraction schema without implementing cache lookup.
+- `extracted_fields` adds `raw_label`, native `raw_value_json`, typed `canonical_value`, `source_location`, and `mapping_method`.
+- PostgreSQL constrains the exact seven canonical names, four field statuses, confidence range, six mapping methods, and uniqueness of one canonical field per extraction.
+- No comparison-result schema or Phase 4 state was added.
+
 No repository API/schema changes are confirmed yet.
 
 Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
@@ -633,6 +667,39 @@ When adding an environment variable:
 
 ### Validation log
 
+2026-09-20 — Phase P3B parallel extraction, versioned cache, and Phase 3 closure
+- Focused EXT-03/EXT-06 PostgreSQL evidence (`backend/tests/test_phase3_parallel_cache_postgres.py`) → 6 passed. The barrier test proved two distinct worker threads reached extraction concurrently; SQL event evidence showed all database work remained on the caller thread.
+- Combined Phase 2/Phase 3 focused regression → 36 passed.
+- Public extraction coverage audit → SI=106, BL=98, attempts=204, computations=204, cache hits=0, cache misses=204, failures=0, bounded parallel pairs=98, wall time=2.305 seconds, provider calls=0.
+- PostgreSQL-enabled `python -m pytest` → 144 passed, 0 failed, 0 skipped, 1 existing Starlette/AnyIO deprecation warning.
+- `make reliability` → 10 passed.
+- Standalone `make eval` → 520 emails, 1.678 seconds, 309.926 emails/s.
+- Standalone `make perf` → 520 emails, 1.611 seconds, 322.797 emails/s.
+- `make check-fast` → PASS: compileall, 11 tests passed, and `git diff --check` passed with line-ending warnings only.
+- `make trace PHASE=3` → PASS: 58 PASS, 0 TODO, 0 FAIL, no evidence-reference errors.
+- Final `make check PHASE=3` after cache fresh-session reload evidence → PASS: 144 tests; eval 520 emails in 1.666 seconds (312.108 emails/s); reliability 10 passed; trace 58/0/0.
+- Read-only development verification after all tests: Alembic head `20260920_0007`; `email_messages`, `attachments`, `documents`, `document_extractions`, `extracted_fields`, and `processing_events` all survived.
+- `make score PHASE=3` → NOT RUN by explicit instruction.
+
+2026-09-20 — Phase P3A-2 one-pass deterministic extraction and persistence
+- Test-first focused collection failed as expected because `backend.app.extraction.extractor` did not yet exist.
+- First implementation run → 6 passed, 1 failed; the defect was empty `Shipper:` multiline handling. After repair, the only remaining failure was a fixture line-number expectation (`10`, not `9`).
+- Final focused Phase 3 suite (`test_phase3_label_mapping.py`, `test_phase3_extractor.py`, `test_phase3_extraction_postgres.py`) → 18 passed.
+- Phase 2/document/storage regression subset → 22 passed.
+- Development migration `20260920_0006 -> 20260920_0007` → PASS; `alembic current` reports `20260920_0007 (head)`.
+- PostgreSQL-enabled full regression → 138 passed, 0 failed, 0 skipped, 1 existing Starlette/AnyIO deprecation warning.
+- `make reliability` → 10 passed.
+- `make check-fast` → PASS: compileall, 11 focused tests, and `git diff --check` passed; only line-ending warnings were emitted.
+- Read-only development-schema introspection confirmed head `20260920_0007`, surviving email/document/extraction/event tables, the five new extracted-field columns, all four Phase 3 check constraints, and `uq_extracted_field_extraction_name`.
+- `make trace PHASE=3` → expected FAIL: 56 PASS, 2 TODO (`EXT-03`, `EXT-06`), 0 FAIL, and no evidence-reference errors.
+
+2026-09-20 — Phase P3A-1 canonical field contract and strict label mapping
+- Focused mapper/model suite: `python -m pytest backend/tests/test_phase3_label_mapping.py -vv` → 11 passed.
+- First full run without a test-database environment → 102 passed, 29 skipped, 1 warning; not accepted as the regression gate.
+- PostgreSQL-enabled full regression against `holyship_test`: `python -m pytest` → 131 passed, 0 failed, 0 skipped, 1 Starlette/AnyIO deprecation warning.
+- Safety scan of `backend/app/extraction` found no participant email IDs, answer filenames, `ground_truth`, `data_v2`, fuzzy libraries, embeddings, LLM calls, or Vision calls.
+- `make check-fast` through the installed MSYS make executable → PASS: compileall passed, 11 focused API/submission tests passed with 1 existing deprecation warning, and `git diff --check` passed with line-ending warnings only.
+
 2026-09-20 — Phase 2 document materialization and role validation
 - Required pre-change `make check-fast` first exposed a broken local `.venv` launcher whose base Python no longer existed. A workspace-local native Windows Python 3.13 environment was created and populated only from `backend/requirements.txt`; the repository dependency declaration itself was unchanged.
 - Test-first red evidence: `python -m pytest backend/tests/test_phase2_document_contract.py -vv` failed collection because the Phase 2 materialization module did not yet exist.
@@ -712,6 +779,10 @@ Never fabricate test results.
 
 ## Known Limitations
 
+- Phase 3 stops after deterministic extraction in `EXTRACTING`; actual SI-vs-BL comparison remains Phase 4 work.
+- Extraction remains deterministic and native. OCR and model-backed hard-case resolution remain later-phase work; `llm_resolved` is an allowed persisted provenance value but is never emitted here.
+- The pipeline intentionally remains at `EXTRACTING`; it does not compare SI against BL, create MATCH/MISMATCH states, discrepancies, or an overall result.
+
 - The public classification audit provides semantic/input evidence, not hidden-label correctness. No private ground truth or evaluator data was used.
 - OCR/Tesseract is unavailable in the verified environment. Phase 2 therefore routes six public image-only PDFs correctly and persists a clean unreadable/blocking outcome; a working OCR implementation remains owned by `DOC-07b` in Phase 6A.
 - Phase 2 materializes readable document content and validates SI/BL roles but intentionally does not extract the seven canonical shipment fields or compare documents. Those are Phase 3/4 responsibilities.
@@ -732,6 +803,36 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase P3B parallel extraction, versioned cache, and closure
+
+- **EXT-03 architecture:** Valid SI and BL documents are submitted together to a bounded `ThreadPoolExecutor(max_workers=2)`. Worker threads receive only already-materialized `UnifiedDocument` values and perform pure deterministic computation; every SQLAlchemy cache query, savepoint, field write, status update, and commit remains on the owning caller thread. A barrier-based test proves both work units start before either finishes, and a SQLAlchemy event spy proves worker threads execute no SQL.
+- **Failure isolation and retry:** Each side persists behind its own nested transaction. Extractor failure records `DOCUMENT_FIELD_EXTRACTION_FAILED` on only that document extraction, preserves the other side's seven durable fields, transitions the case to technical `FAILED`, and never fabricates fields from the other role. Both SI-fails and BL-fails directions are executable evidence. A later extraction retry recognizes the already-complete side, leaves its field row IDs intact, reruns only the failed side, and finishes with exactly seven unique rows per extraction.
+- **Version/cache contract:** The single runtime version is `EXTRACTOR_VERSION = "phase3-deterministic-v1"`. Cache identity is exactly attachment `content_sha256` plus extractor version. Repository lookup joins the current document to its attachment hash; a hit copies only content-derived raw/native/canonical/provenance payload into the current document's own extraction and field rows. Same bytes across distinct attachment/document identities compute once; different bytes or a version change recompute. Same-pair duplicate keys are deduplicated before worker submission, and the existing per-extraction seven-field uniqueness constraint prevents duplicate rows.
+- **Schema:** No migration `0008` was added. Migration `20260920_0007` already provides `attachments.content_sha256`, `document_extractions.extractor_version`, current-document ownership, and the unique `(extraction_id, field_name)` contract needed for safe lookup and reuse.
+- **Public extraction audit:** `scripts/run_extraction_coverage.py` reads only `data/bundle`, writes `reports/extraction_coverage.md` and `reports/unmapped_labels.md`, and does not use private reference labels. It observed SI=106, BL=98, attempts=204, computations=204, cache hits=0, cache misses=204, failures=0, and 98 bounded parallel pairs in 2.305 seconds. Format distribution: PLAIN_TEXT=160, PDF_TEXT=14, DOCX=8, XLSX=22. Field status counts are recorded in the report; no accuracy percentage is claimed. LLM/OCR/Vision provider calls were all 0.
+- **Files:** Extraction version/orchestration service; materialization integration; cache repositories; PostgreSQL concurrency/cache evidence; public audit script and reports; matrix; this handoff.
+- **Dependencies:** None.
+- **Validation:** Focused EXT-03/EXT-06 6 passed; combined Phase 2/3 focused 36 passed; full PostgreSQL suite 144 passed, 0 failed, 0 skipped, 1 warning; reliability 10 passed; eval 520 emails at 1.678 seconds / 309.926 emails/s; perf 520 emails at 1.611 seconds / 322.797 emails/s; check-fast 11 passed plus diff check; trace 58 PASS / 0 TODO / 0 FAIL; final Phase 3 check passed with 144 tests and a 1.666-second eval.
+- **Next:** Stop. Do not begin comparison or call the scoreboard; Phase 4 requires explicit authorization.
+
+### 2026-09-20 — Phase P3A-2 one-pass deterministic extraction and persistence
+
+- **Changed:** Added the one-pass seven-field extractor, typed/raw field contract, structured page/table/cell provenance, XLSX native cell coordinates, DOCX table positions, additive field persistence, runtime materialization integration, migration `20260920_0007`, and substantive extraction/PostgreSQL tests.
+- **Why:** Phase 3 requires independent deterministic SI/BL field results with durable raw evidence before parallelism, caching, or comparison can be built.
+- **Files:** Extraction models/extractor; document models/readers/materialization; storage models/repositories; Alembic `0007`; Phase 3 tests; matrix; this handoff.
+- **Dependencies:** None.
+- **Validation:** Focused Phase 3 18 passed; Phase 2 regression subset 22 passed; full PostgreSQL suite 138 passed with zero skips; reliability 10 passed; check-fast passed; development DB migrated to `20260920_0007`.
+- **Next:** Stop after P3A-2. P3B owns only `EXT-03` parallel isolation and `EXT-06` cache/version invalidation; do not begin either here.
+
+### 2026-09-20 — Phase P3A-1 canonical field contract and strict label mapping
+
+- **Changed:** Added the exact seven-field contract, closed provenance vocabulary, JSON-backed strict label mapper, conservative lookup normalization, explicit bilingual mappings, context-gated `To the Order of` handling, gross-vs-net protection, and substantive mapper tests.
+- **Why:** Phase 3 needs an auditable mapping boundary before field extraction and persistence are designed.
+- **Files:** `backend/app/extraction/*`, `backend/tests/test_phase3_label_mapping.py`, `docs/requirements_matrix.md`, and this handoff.
+- **Dependencies:** None.
+- **Validation:** Focused suite 11 passed; PostgreSQL-enabled full suite 131 passed with zero skips; safety scan clean; `make check-fast` passed.
+- **Next:** Stop after P3A-1. P3A-2 may later add deterministic extraction/table-structure evidence; do not begin it in this task.
 
 ### 2026-09-20 — Phase 2 document materialization and role-validation closure
 

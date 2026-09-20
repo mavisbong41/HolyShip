@@ -2,9 +2,10 @@ from __future__ import annotations
 
 from uuid import UUID
 
-from sqlalchemy import select
+from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
+from backend.app.extraction.models import DocumentExtractionResult
 from backend.app.ingestion.models import EmailMessage
 from backend.app.storage.models import (
     AttachmentRecord,
@@ -232,6 +233,36 @@ class DocumentExtractionRepository:
             .order_by(DocumentExtractionRecord.created_at.desc())
         )
 
+    def find_cached_by_content(
+        self,
+        *,
+        content_sha256: str,
+        extractor_version: str,
+        exclude_extraction_ids: set[UUID] | None = None,
+    ) -> DocumentExtractionRecord | None:
+        """Return a complete reusable payload without changing document ownership."""
+
+        statement = (
+            select(DocumentExtractionRecord)
+            .join(DocumentRecord, DocumentRecord.id == DocumentExtractionRecord.document_id)
+            .join(AttachmentRecord, AttachmentRecord.id == DocumentRecord.attachment_id)
+            .where(
+                AttachmentRecord.content_sha256 == content_sha256,
+                DocumentExtractionRecord.extractor_version == extractor_version,
+                DocumentExtractionRecord.extraction_status == "EXTRACTED",
+            )
+            .options(selectinload(DocumentExtractionRecord.fields))
+            .order_by(DocumentExtractionRecord.created_at.desc())
+        )
+        if exclude_extraction_ids:
+            statement = statement.where(
+                DocumentExtractionRecord.id.not_in(exclude_extraction_ids)
+            )
+        for candidate in self.session.scalars(statement).unique():
+            if len(candidate.fields) == 7 and len({row.field_name for row in candidate.fields}) == 7:
+                return candidate
+        return None
+
     def create(
         self,
         *,
@@ -242,6 +273,7 @@ class DocumentExtractionRepository:
         raw_text: str = "",
         pages_count: int = 1,
         metadata_json: dict | None = None,
+        extractor_version: str = "materialization-v1",
     ) -> DocumentExtractionRecord:
         record = DocumentExtractionRecord(
             document_id=document_id,
@@ -251,6 +283,7 @@ class DocumentExtractionRepository:
             raw_text=raw_text,
             pages_count=pages_count,
             metadata_json=metadata_json or {},
+            extractor_version=extractor_version,
         )
         self.session.add(record)
         self.session.flush()
@@ -267,21 +300,110 @@ class ExtractedFieldRepository:
         extraction_id: UUID,
         field_name: str,
         raw_value: str | None,
-        status: str = "EXTRACTED",
+        raw_label: str | None = None,
+        raw_value_json: object | None = None,
+        canonical_value: object | None = None,
+        status: str = "MISSING",
         confidence: float = 1.0,
         evidence: dict | None = None,
-        extraction_method: str = "FAST_KEY_VALUE",
+        source_location: dict | None = None,
+        mapping_method: str | None = None,
+        extraction_method: str = "DETERMINISTIC_ONE_PASS",
     ) -> ExtractedFieldRecord:
         record = ExtractedFieldRecord(
             extraction_id=extraction_id,
             field_name=field_name,
+            raw_label=raw_label,
             raw_value=raw_value,
+            raw_value_json=raw_value_json,
+            canonical_value=canonical_value,
             status=status,
             confidence=confidence,
             evidence=evidence or {},
+            source_location=source_location or {},
+            mapping_method=mapping_method,
             extraction_method=extraction_method,
         )
         self.session.add(record)
         self.session.flush()
         return record
+
+    def create_result(
+        self,
+        extraction_id: UUID,
+        result: DocumentExtractionResult,
+    ) -> list[ExtractedFieldRecord]:
+        records: list[ExtractedFieldRecord] = []
+        for field_name, field_result in result.fields.items():
+            raw_text = None if field_result.raw_value is None else str(field_result.raw_value)
+            records.append(
+                self.create(
+                    extraction_id=extraction_id,
+                    field_name=field_name.value,
+                    raw_label=field_result.raw_label,
+                    raw_value=raw_text,
+                    raw_value_json=field_result.raw_value,
+                    canonical_value=field_result.canonical_value,
+                    status=field_result.status.value,
+                    confidence=field_result.confidence,
+                    evidence=field_result.evidence,
+                    source_location=field_result.source_location.to_dict(),
+                    mapping_method=(
+                        field_result.mapping_method.value
+                        if field_result.mapping_method is not None
+                        else None
+                    ),
+                )
+            )
+        return records
+
+    def list_by_extraction_id(self, extraction_id: UUID) -> list[ExtractedFieldRecord]:
+        return list(
+            self.session.scalars(
+                select(ExtractedFieldRecord)
+                .where(ExtractedFieldRecord.extraction_id == extraction_id)
+                .order_by(ExtractedFieldRecord.field_name)
+            ).all()
+        )
+
+    def has_complete_result(self, extraction_id: UUID) -> bool:
+        records = self.list_by_extraction_id(extraction_id)
+        return len(records) == 7 and len({record.field_name for record in records}) == 7
+
+    def clear_result(self, extraction_id: UUID) -> None:
+        self.session.execute(
+            delete(ExtractedFieldRecord).where(
+                ExtractedFieldRecord.extraction_id == extraction_id
+            )
+        )
+        self.session.flush()
+
+    def copy_result(
+        self,
+        *,
+        source_extraction_id: UUID,
+        target_extraction_id: UUID,
+    ) -> list[ExtractedFieldRecord]:
+        source = self.list_by_extraction_id(source_extraction_id)
+        if len(source) != 7 or len({record.field_name for record in source}) != 7:
+            raise ValueError("cached extraction must contain exactly seven unique fields")
+        records: list[ExtractedFieldRecord] = []
+        for field in source:
+            records.append(
+                self.create(
+                    extraction_id=target_extraction_id,
+                    field_name=field.field_name,
+                    raw_label=field.raw_label,
+                    raw_value=field.raw_value,
+                    raw_value_json=field.raw_value_json,
+                    canonical_value=field.canonical_value,
+                    status=field.status,
+                    confidence=field.confidence,
+                    evidence=field.evidence,
+                    source_location=field.source_location,
+                    mapping_method=field.mapping_method,
+                    extraction_method=field.extraction_method,
+                )
+            )
+        return records
 

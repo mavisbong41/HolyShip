@@ -186,6 +186,7 @@ class DocumentExtractionRecord(TimestampMixin, Base):
     raw_text: Mapped[str] = mapped_column(Text, nullable=False, default="")
     pages_count: Mapped[int] = mapped_column(nullable=False, default=1)
     metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    extractor_version: Mapped[str] = mapped_column(String(80), nullable=False, default="materialization-v1")
 
     document: Mapped[DocumentRecord] = relationship(back_populates="extractions")
     fields: Mapped[list[ExtractedFieldRecord]] = relationship(
@@ -197,15 +198,39 @@ class DocumentExtractionRecord(TimestampMixin, Base):
 
 class ExtractedFieldRecord(Base):
     __tablename__ = "extracted_fields"
+    __table_args__ = (
+        UniqueConstraint("extraction_id", "field_name", name="uq_extracted_field_extraction_name"),
+        CheckConstraint(
+            "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_extracted_field_name",
+        ),
+        CheckConstraint(
+            "status IN ('RESOLVED','MISSING','UNRESOLVED','AMBIGUOUS')",
+            name="ck_extracted_field_status",
+        ),
+        CheckConstraint(
+            "confidence >= 0.0 AND confidence <= 1.0",
+            name="ck_extracted_field_confidence",
+        ),
+        CheckConstraint(
+            "mapping_method IS NULL OR mapping_method IN ('exact_label','alias_dictionary','bilingual_label_normalization','contextual_business_rule','table_structure','llm_resolved')",
+            name="ck_extracted_field_mapping_method",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     extraction_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("document_extractions.id", ondelete="CASCADE"), nullable=False, index=True)
-    field_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)  # shipper | consignee | notify_party | port_of_loading | port_of_discharge | container_count | gross_weight
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    raw_label: Mapped[str | None] = mapped_column(Text)
     raw_value: Mapped[str | None] = mapped_column(Text)
-    status: Mapped[str] = mapped_column(String(50), nullable=False, default="EXTRACTED")  # EXTRACTED | MISSING | AMBIGUOUS | LOW_CONFIDENCE | INVALID | UNREADABLE
+    raw_value_json: Mapped[object | None] = mapped_column(JSONB)
+    canonical_value: Mapped[object | None] = mapped_column(JSONB)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="MISSING")
     confidence: Mapped[float] = mapped_column(Float, nullable=False, default=1.0)
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
-    extraction_method: Mapped[str] = mapped_column(String(80), nullable=False, default="FAST_KEY_VALUE")
+    source_location: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    mapping_method: Mapped[str | None] = mapped_column(String(80))
+    extraction_method: Mapped[str] = mapped_column(String(80), nullable=False, default="DETERMINISTIC_ONE_PASS")
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     extraction: Mapped[DocumentExtractionRecord] = relationship(back_populates="fields")

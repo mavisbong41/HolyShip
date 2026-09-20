@@ -2639,8 +2639,8 @@
     "source_failures": [],
     "total": 520
   },
-  "throughput_emails_per_second": 310.422,
+  "throughput_emails_per_second": 312.108,
   "total_bundle_emails": 520,
   "unhandled_exceptions": 0,
-  "wall_seconds": 1.675
+  "wall_seconds": 1.666
 }

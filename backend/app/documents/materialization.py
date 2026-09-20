@@ -14,10 +14,24 @@ from backend.app.documents.role_validation import (
     RoleValidationOutcome,
     RoleValidationResult,
 )
+from backend.app.extraction.extractor import DeterministicDocumentExtractor
+from backend.app.extraction.service import (
+    DocumentFieldExtractionService,
+    ExtractionTarget,
+)
 from backend.app.ingestion.models import EmailMessage
 from backend.app.ingestion.sources import EmailSource
-from backend.app.storage.models import AttachmentRecord, EmailMessageRecord
-from backend.app.storage.repositories import DocumentExtractionRepository, DocumentRepository
+from backend.app.storage.models import (
+    AttachmentRecord,
+    DocumentExtractionRecord,
+    DocumentRecord,
+    EmailMessageRecord,
+)
+from backend.app.storage.repositories import (
+    DocumentExtractionRepository,
+    DocumentRepository,
+    ExtractedFieldRepository,
+)
 from backend.app.storage.transitions import transition
 
 
@@ -42,7 +56,10 @@ class MaterializationResult:
 
 @dataclass
 class _PersistedDocument:
-    record: object
+    record: DocumentRecord
+    extraction: DocumentExtractionRecord
+    document: UnifiedDocument
+    content_sha256: str
     role: DocumentType
     outcome: PreExtractionOutcome
 
@@ -55,12 +72,15 @@ class DocumentMaterializationService:
         session: Session,
         reader: CompositeDocumentReader | None = None,
         role_validator: DocumentRoleValidator | None = None,
+        field_extractor: DeterministicDocumentExtractor | None = None,
     ):
         self.session = session
         self.reader = reader or CompositeDocumentReader()
         self.role_validator = role_validator or DocumentRoleValidator()
+        self.field_extractor = field_extractor or DeterministicDocumentExtractor()
         self.document_repo = DocumentRepository(session)
         self.extraction_repo = DocumentExtractionRepository(session)
+        self.field_repo = ExtractedFieldRepository(session)
 
     def process(
         self,
@@ -121,6 +141,7 @@ class DocumentMaterializationService:
             parse_duration_ms = (time.perf_counter() - started) * 1000.0
 
             validation, outcome = self._classify_materialization(content, document)
+            document.document_type = validation.document_type
             document_record = self.document_repo.create(
                 email_id=email_record.id,
                 attachment_id=attachment_record.id,
@@ -134,22 +155,51 @@ class DocumentMaterializationService:
                 validation_outcome=validation.outcome.value,
                 parse_duration_ms=parse_duration_ms,
             )
-            self.extraction_repo.create(
+            extraction_record = self.extraction_repo.create(
                 document_id=document_record.id,
                 reader_used=document.reader_used,
-                extraction_status=document.extraction_status,
                 extraction_quality=document.extraction_quality,
                 raw_text=document.raw_text,
                 pages_count=document.total_pages,
                 metadata_json={
                     **document.metadata,
                     "error": document.error_message,
-                    "tables": [table.rows for table in document.tables],
+                    "pages": [
+                        {"page_number": page.page_number, "text": page.text}
+                        for page in document.pages
+                    ],
+                    "tables": [
+                        {
+                            "title": table.title,
+                            "page_number": table.page_number,
+                            "rows": self._json_safe(table.rows),
+                            "cells": [
+                                [self._json_safe(cell.to_dict()) for cell in row]
+                                for row in table.cells
+                            ],
+                        }
+                        for table in document.tables
+                    ],
                 },
+                extraction_status=(
+                    "PENDING"
+                    if validation.outcome == RoleValidationOutcome.VALID
+                    and validation.document_type in {DocumentType.SI, DocumentType.DRAFT_BL}
+                    else document.extraction_status
+                ),
+                extractor_version=(
+                    self.field_extractor.version
+                    if validation.outcome == RoleValidationOutcome.VALID
+                    and validation.document_type in {DocumentType.SI, DocumentType.DRAFT_BL}
+                    else "materialization-v1"
+                ),
             )
             persisted.append(
                 _PersistedDocument(
                     record=document_record,
+                    extraction=extraction_record,
+                    document=document,
+                    content_sha256=attachment_record.content_sha256,
                     role=validation.document_type,
                     outcome=outcome,
                 )
@@ -185,7 +235,34 @@ class DocumentMaterializationService:
             return self._blocked(email_record, PreExtractionOutcome.MISSING_REQUIRED_ATTACHMENT.value)
 
         transition(self.session, email_record, "EXTRACTING", "DOCUMENTS_MATERIALIZED")
-        return MaterializationResult("EXTRACTING", "DOCUMENTS_MATERIALIZED")
+        field_service = DocumentFieldExtractionService(
+            self.session,
+            self.field_extractor,
+            max_workers=2,
+        )
+        batch = field_service.extract(
+            [
+                ExtractionTarget(
+                    document=item.document,
+                    content_sha256=item.content_sha256,
+                    extraction=item.extraction,
+                )
+                for item in (si_documents[0], bl_documents[0])
+            ]
+        )
+        if batch.failed:
+            transition(
+                self.session,
+                email_record,
+                "FAILED",
+                "DOCUMENT_FIELD_EXTRACTION_FAILED",
+            )
+            return MaterializationResult(
+                "FAILED",
+                "DOCUMENT_FIELD_EXTRACTION_FAILED",
+                technical_failure=True,
+            )
+        return MaterializationResult("EXTRACTING", "FIELDS_EXTRACTED")
 
     def _classify_materialization(
         self,
@@ -233,3 +310,17 @@ class DocumentMaterializationService:
             if record.source_reference == source_reference:
                 return record
         return records[fallback_index]
+
+    @classmethod
+    def _json_safe(cls, value):
+        if value is None or isinstance(value, (str, int, float, bool)):
+            return value
+        if isinstance(value, list):
+            return [cls._json_safe(item) for item in value]
+        if isinstance(value, tuple):
+            return [cls._json_safe(item) for item in value]
+        if isinstance(value, dict):
+            return {str(key): cls._json_safe(item) for key, item in value.items()}
+        if hasattr(value, "isoformat"):
+            return value.isoformat()
+        return str(value)

@@ -3,7 +3,7 @@ from __future__ import annotations
 import io
 from pathlib import Path
 
-from backend.app.documents.models import DocumentFormat, DocumentPage, DocumentTable, UnifiedDocument
+from backend.app.documents.models import DocumentCell, DocumentFormat, DocumentPage, DocumentTable, UnifiedDocument
 from backend.app.documents.readers.base import DocumentReader
 
 
@@ -27,7 +27,8 @@ class DocxReader(DocumentReader):
 
             for t_idx, table in enumerate(doc.tables, start=1):
                 table_rows: list[list[str]] = []
-                for row in table.rows:
+                table_cells: list[list[DocumentCell]] = []
+                for row_idx, row in enumerate(table.rows, start=1):
                     cells = [cell.text.strip().replace("\n", " ") for cell in row.cells]
                     # Deduplicate adjacent duplicate cells caused by merged cells
                     deduped: list[str] = []
@@ -36,12 +37,30 @@ class DocxReader(DocumentReader):
                             deduped.append(c)
                     if any(deduped):
                         table_rows.append(deduped)
+                        table_cells.append(
+                            [
+                                DocumentCell(
+                                    value=value,
+                                    row_index=row_idx,
+                                    column_index=column_idx,
+                                    coordinate=f"R{row_idx}C{column_idx}",
+                                )
+                                for column_idx, value in enumerate(deduped, start=1)
+                            ]
+                        )
                         if len(deduped) >= 2:
                             text_lines.append(f"{deduped[0]}: {' '.join(deduped[1:])}")
                         elif len(deduped) == 1:
                             text_lines.append(deduped[0])
                 if table_rows:
-                    tables.append(DocumentTable(rows=table_rows, page_number=1, title=f"Table_{t_idx}"))
+                    tables.append(
+                        DocumentTable(
+                            rows=table_rows,
+                            page_number=1,
+                            title=f"Table_{t_idx}",
+                            cells=table_cells,
+                        )
+                    )
 
             full_text = "\n".join(text_lines)
             page = DocumentPage(page_number=1, text=full_text)
