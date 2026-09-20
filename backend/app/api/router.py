@@ -326,8 +326,17 @@ def receive_incoming_email(
     for attachment in payload.attachments:
         source_reference = attachment.source_reference or attachment.filename
         if attachment.content_base64 is not None:
+            max_encoded_length = 4 * ((settings.max_attachment_bytes + 2) // 3)
+            if len(attachment.content_base64) > max_encoded_length:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "Attachment content exceeds the configured "
+                        f"{settings.max_attachment_bytes}-byte limit"
+                    ),
+                )
             try:
-                attachment_contents[source_reference] = base64.b64decode(
+                content = base64.b64decode(
                     attachment.content_base64,
                     validate=True,
                 )
@@ -336,6 +345,15 @@ def receive_incoming_email(
                     status_code=422,
                     detail=f"Invalid base64 attachment content for {attachment.filename}",
                 ) from exc
+            if len(content) > settings.max_attachment_bytes:
+                raise HTTPException(
+                    status_code=413,
+                    detail=(
+                        "Attachment content exceeds the configured "
+                        f"{settings.max_attachment_bytes}-byte limit"
+                    ),
+                )
+            attachment_contents[source_reference] = content
         incoming_attachments.append(
             IncomingAttachmentInput(
                 filename=attachment.filename,

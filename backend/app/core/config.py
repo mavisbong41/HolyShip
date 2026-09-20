@@ -17,6 +17,7 @@ class Settings(BaseSettings):
     classification_margin_threshold: float = 0.25
     sync_max_workers: int = Field(default=4, ge=1, le=32)
     extraction_max_workers: int = Field(default=2, ge=1, le=2)
+    max_attachment_bytes: int = Field(default=25 * 1024 * 1024, ge=1, le=100 * 1024 * 1024)
     organizer_http_timeout_seconds: float = Field(default=10.0, gt=0.0, le=120.0)
     retry_max_attempts: int = Field(default=3, ge=1, le=8)
     retry_backoff_seconds: float = Field(default=0.25, ge=0.0, le=10.0)
