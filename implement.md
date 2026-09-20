@@ -44,7 +44,7 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 
 **Date:** 2026-09-20  
 **Updated by:** Phase 7 product-facing API and live-demo implementation
-**Repository state:** Local `phase7` is based on the clean Phase 6 tip `f38b42d27ecc8e63a1dc5e972c24043d2ee058ac` (`ad29157` is the preceding Phase 6 runtime commit). The configured remote `feature/email-classification` is stale at `a415000`; fetch/push require network access that was unavailable during this session.
+**Repository state:** Local `phase7` is based on the clean Phase 6 tip `f38b42d27ecc8e63a1dc5e972c24043d2ee058ac` (`ad29157` is the preceding Phase 6 runtime commit). The configured remote `feature/email-classification` was stale at `a415000`; Phase 7 commit `ccffc98` is pushed to `origin/phase7`.
 
 ---
 
@@ -371,7 +371,7 @@ Fast compare
 
 ## In Progress
 
-- Phase 7 implementation is complete locally; PostgreSQL integration, live API/demo execution, full evaluation, traceability refresh, and network push remain unverified because this environment has no PostgreSQL/Docker and cannot reach GitHub.
+- Phase 7 implementation is complete and pushed to `origin/phase7`; PostgreSQL integration, live API/demo execution, and full evaluation remain unverified because this environment has no PostgreSQL/Docker service.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
@@ -394,9 +394,9 @@ Fast compare
 
 ## Next
 
-- Run the isolated PostgreSQL integration/product suite and live `scripts/demo_phase7.py` workflow.
-- Run the full `make check` equivalent, Phase 7 trace, security/overfit scan, and AI-disabled compatibility evaluation.
-- Review/commit/push `phase7` when network access is available; do not merge it. Human Review UI/actions remain out of scope.
+- Run the isolated PostgreSQL integration/product suite and live `scripts/demo_phase7.py` workflow in a service-enabled environment.
+- Run the full `make check` equivalent, Phase 7 trace, and AI-disabled compatibility evaluation there; the local security/overfit scan and unit suite are complete.
+- Review `origin/phase7`; do not merge until the service-backed gates pass. Human Review UI/actions remain out of scope.
 
 Recommended implementation order after the dataset audit:
 
@@ -758,7 +758,7 @@ When adding an environment variable:
 - `mingw32-make check` and `python scripts/run_tests.py -q` → NOT RUN successfully: required `DATABASE_URL` and `HOLYSHIP_TEST_DATABASE_URL` are unset.
 - Production-code safety scan → PASS: no private-reference access or per-email production lookup was added; configured secret handling remains environment-backed.
 - `git diff --check` → PASS with expected Windows LF/CRLF conversion warnings.
-- Live `scripts/demo_phase7.py`, full PostgreSQL check, public evaluation, scoreboard, and remote push → NOT RUN/UNVERIFIED: no PostgreSQL/Docker service and GitHub/network access unavailable.
+- Live `scripts/demo_phase7.py`, full PostgreSQL check, public evaluation, and scoreboard → NOT RUN/UNVERIFIED: no PostgreSQL/Docker service is available. `git push -u origin phase7` → PASS.
 
 ### Phase 6 executed evidence
 
@@ -1018,8 +1018,8 @@ Current document-level limitations:
 - **Changed:** Added explicit `/api/v1` queue, summary, unified detail, read-only Human Review, polling-event, initial-sync, ingestion, and technical-reprocess contracts; added persisted-only query composition, Graph adapter skeleton, demo script, API docs/audit, and product/PostgreSQL/provider tests.
 - **Why:** Phase 0–6 processing and persistence existed, but dashboard/extension/reviewer clients had no stable product contract and would otherwise need to join internal tables or rerun processing.
 - **Files:** `backend/app/api/product_schemas.py`, `backend/app/api/product_queries.py`, `backend/app/api/router.py`, `backend/app/api/schemas.py`, `backend/app/ingestion/graph_source.py`, `backend/app/ingestion/models.py`, `backend/app/sync/service.py`, Phase 7 tests, `scripts/demo_phase7.py`, `docs/phase7_api.md`, Phase 7 reports, this handoff, and the Phase 7 design/plan docs.
-- **Validation:** New product/provider suite 12 passed; inherited focused suite with Phase 7 46 passed; `mingw32-make check-fast`, compileall, Alembic head, SQL compilation, and diff check passed. PostgreSQL integration (2 tests), live demo, full check/evaluation, and push are not verified because PostgreSQL/Docker/network are unavailable.
-- **Next:** Run PostgreSQL/live-demo/full-gate verification in a service-enabled environment, then commit and push `phase7`; do not merge.
+- **Validation:** New product/provider suite 12 passed; inherited focused suite with Phase 7 46 passed; full repository unit collection 212 passed/59 skipped; `mingw32-make check-fast`, compileall, Alembic head, SQL compilation, and diff check passed. PostgreSQL integration (2 tests), live demo, and full check/evaluation remain unverified; push to `origin/phase7` passed.
+- **Next:** Run PostgreSQL/live-demo/full-gate verification in a service-enabled environment; do not merge.
 
 ### 2026-09-20 — Phase 6 targeted hard-case AI layer and focused closure
 

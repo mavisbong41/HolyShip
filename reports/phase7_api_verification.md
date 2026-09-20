@@ -17,6 +17,7 @@
 | `git diff --check` | Passed; only expected Windows line-ending warnings |
 | Live demo | Not run; no database/service available |
 | Full `make check`/evaluation | Not run; no database/service available |
+| Push | Passed: `origin/phase7` created from the Phase 7 branch |
 
 ## Safety checks
 
