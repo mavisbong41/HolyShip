@@ -22,6 +22,7 @@ services:
     environment:
       DATABASE_URL: postgresql+psycopg://${POSTGRES_USER:-holyship}:${POSTGRES_PASSWORD:-holyship}@postgres:5432/${POSTGRES_DB:-holyship}
       ORGANIZER_BUNDLE_PATH: /app/data/bundle
+      CORS_ALLOWED_ORIGINS: ${CORS_ALLOWED_ORIGINS:-http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173}
     ports:
       - "8000:8000"
     depends_on:
@@ -29,6 +30,7 @@ services:
         condition: service_healthy
     volumes:
       - ./data/bundle:/app/data/bundle:ro
+      - ./backend:/app/backend
 
 volumes:
   holyship_postgres_data:

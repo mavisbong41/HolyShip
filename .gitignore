@@ -8,3 +8,6 @@ __pycache__/
 venv/
 sdoc-hackathon-bundle/
 sdoc-hackathon-docker/
+node_modules/
+dist/
+*.tsbuildinfo
