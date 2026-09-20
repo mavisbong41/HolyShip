@@ -28,6 +28,17 @@ def resolved_urls() -> tuple[str, str]:
     return dev, test
 
 
+def resolved_eval_url() -> str:
+    dotenv = load_dotenv()
+    eval_url = os.environ.get(
+        "HOLYSHIP_EVAL_DATABASE_URL",
+        dotenv.get("HOLYSHIP_EVAL_DATABASE_URL", ""),
+    )
+    if not eval_url:
+        raise SystemExit("HOLYSHIP_EVAL_DATABASE_URL must be configured.")
+    return eval_url
+
+
 def database_identity(url: str) -> tuple[str, str, int | None, str]:
     parsed = urlsplit(url)
     return (parsed.hostname or "", parsed.username or "", parsed.port, parsed.path.lstrip("/"))
@@ -38,3 +49,24 @@ def require_isolation() -> tuple[str, str]:
     if database_identity(dev) == database_identity(test):
         raise SystemExit("Refusing to run: DATABASE_URL and HOLYSHIP_TEST_DATABASE_URL resolve to the same database.")
     return dev, test
+
+
+def require_eval_isolation() -> tuple[str, str, str]:
+    """Return dev/test/eval URLs only when destructive eval cleanup is safe."""
+    dev, test = require_isolation()
+    eval_url = resolved_eval_url()
+    eval_identity = database_identity(eval_url)
+    if eval_identity == database_identity(dev):
+        raise SystemExit(
+            "Refusing evaluation reset: HOLYSHIP_EVAL_DATABASE_URL resolves to DATABASE_URL."
+        )
+    if eval_identity == database_identity(test):
+        raise SystemExit(
+            "Refusing evaluation reset: HOLYSHIP_EVAL_DATABASE_URL resolves to "
+            "HOLYSHIP_TEST_DATABASE_URL."
+        )
+    if eval_identity[3].lower() in {"", "postgres", "template0", "template1"}:
+        raise SystemExit(
+            "Refusing evaluation reset: use a dedicated non-maintenance database."
+        )
+    return dev, test, eval_url

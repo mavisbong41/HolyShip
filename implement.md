@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase P4C comparison persistence, pipeline, submission boundary, and Phase 4 closure
-**Repository state:** Phases 0–4 are complete. Seven-field SI-reference comparison is versioned and persisted, pipeline states advance through COMPARING to COMPLETED/BLOCKED, and the isolated submission adapter compresses the richer internal result only at the public boundary.
+**Updated by:** Self-evaluation harness database isolation repair after Phase 4
+**Repository state:** Phases 0–4 remain frozen and complete. Evaluation now rebuilds a dedicated `holyship_eval` database from Alembic head for every run, preventing historical development rows from producing a stale submission.
 
 ---
 
@@ -208,6 +208,16 @@ Fast compare
 ---
 
 ## Implemented
+
+### Self-evaluation harness — dedicated clean evaluation database
+
+- `make eval`, `make perf`, and the eval stage of `make check` now require `HOLYSHIP_EVAL_DATABASE_URL` and use it exclusively for evaluation persistence. The normal development and test URLs retain their original roles.
+- Evaluation fails before destructive work if eval resolves to dev, test, an empty database name, or PostgreSQL maintenance databases (`postgres`, `template0`, `template1`). Unit tests cover each refusal path.
+- Every evaluation drops only the dedicated eval database's `public` schema, recreates it, applies the complete Alembic chain through `20260920_0008`, processes every public bundle ID with current code, validates the generated public contract against `sample_submission.json`, and writes the normal reports.
+- Two independent clean runs produced byte-identical `reports/latest/submission.json` files with SHA-256 `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`.
+- Observed regression distribution remains category `BL_COMPARISON=203`, `SI_REQUEST=141`, `INVOICE_QUERY=84`, `GENERAL=66`, `SPAM=26`; status `OK=317`, `MISMATCH=0`, `NEEDS_REVIEW=203`. These values are observed evidence only and are not runtime assertions or prediction rules.
+- Read-only dev fingerprints before and after all eval/check work matched exactly (`6346f45875e8581f51e85833dd56f9f58037af7938f7ad61f2cff1478307dd3b`), with Alembic still at `20260920_0008` and all row counts unchanged. Eval runs also left the test fingerprint unchanged; the later full test target performed its existing intentional test-fixture cleanup independently.
+- No classifier, readiness, routing, extraction, comparison, or submission mapping behavior changed. No dependency was added and no scoreboard call was made.
 
 ### Phase 4 — P4C comparison persistence, pipeline, and submission boundary
 
@@ -606,7 +616,15 @@ Codex must replace this section with actual implemented routes/contracts as work
 
 ## Configuration / Environment
 
-No implementation-specific environment variables are confirmed yet.
+The three PostgreSQL roles are intentionally separate:
+
+```text
+DATABASE_URL                 -> holyship_dev
+HOLYSHIP_TEST_DATABASE_URL   -> holyship_test
+HOLYSHIP_EVAL_DATABASE_URL   -> holyship_eval
+```
+
+`HOLYSHIP_EVAL_DATABASE_URL` is required for `make eval` and scoring preflight. It must identify a dedicated non-maintenance database distinct from dev and test. The database itself must exist and be owned by or writable by the configured application user; the harness owns only its eval schema lifecycle. `.env.example` documents the safe local names, while the local `.env` remains ignored and uncommitted.
 
 Likely categories may include:
 
@@ -685,6 +703,17 @@ When adding an environment variable:
 - all seven match → `No mismatch detected`
 
 ### Validation log
+
+2026-09-20 — Self-evaluation harness isolation repair
+- Isolation guard unit suite → 6 passed. `make check-fast` → PASS: compileall, 19 tests, and diff check.
+- Clean eval run 1 → 520/520 processed in 15.530 seconds; submission SHA-256 `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`.
+- Clean eval run 2 after another eval-only schema reset/migration → 520/520 processed in 14.755 seconds; identical SHA-256 and byte-for-byte comparison PASS.
+- Required standalone `make eval` → PASS: 520 emails in 17.250 seconds / 30.145 emails/s.
+- Final `make check PHASE=4` → PASS: 205 tests, 0 failed, 0 skipped, 1 warning; clean eval 520 emails in 15.284 seconds / 34.023 emails/s; reliability 10 passed; trace 76 PASS / 0 TODO / 0 FAIL.
+- Final submission after the check retained the same SHA-256 as both determinism runs and the exact observed category/status distribution.
+- Dev remained at `20260920_0008`; pre/post data fingerprint and every table row count matched. Dev modified/reset by evaluation: NO.
+- Dev, test, and eval URL identities were confirmed pairwise distinct. Test was unchanged across all standalone eval runs; the full test target then used its pre-existing fixtures to clean test tables as designed. Eval never connected to or reset test.
+- `make score PHASE=4` and `POST /submit` → NOT RUN by instruction.
 
 2026-09-20 — Phase P4C comparison persistence and Phase 4 closure
 - Test-first focused collection failed because comparison persistence and new submission workflow types did not yet exist. The first PostgreSQL run exposed a same-session idempotency defect; linking child rows through the ORM relationship fixed it without changing comparison semantics.
@@ -823,7 +852,7 @@ Never fabricate test results.
 - OCR/Tesseract is unavailable in the verified environment. Phase 2 therefore routes six public image-only PDFs correctly and persists a clean unreadable/blocking outcome; a working OCR implementation remains owned by `DOC-07b` in Phase 6A.
 - Zero-signal messages intentionally remain low-confidence neutral results. A future model-backed resolver may improve their semantics, but Phase 1 does not invent unsupported specialized intent.
 - The development database retains 21 historical Human Review rows and the legacy read-only Human Review API for compatibility. Current Phase 1 processing creates none.
-- The Phase 0 baseline in `reports/latest/eval.md` contains historical classifications and skips unchanged emails; current Phase 1 classifier behavior is represented by `reports/classification_audit.md`, not by reinterpreting the historical baseline.
+- `holyship_dev` intentionally retains historical Phase 0 rows, but the evaluation harness no longer reads them; `reports/latest/eval.md` is generated from a clean dedicated evaluation database.
 - Per-email p50/p95 and peak RSS remain unavailable because the existing sync/eval harness has no per-email timing or cross-platform process-metrics instrumentation.
 - Public scoreboard results are not verified; no score call was made in Phase 4.
 
@@ -838,6 +867,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Dedicated self-evaluation database repair
+
+- **Changed:** Added `HOLYSHIP_EVAL_DATABASE_URL`, fail-closed three-database identity checks, eval-only schema reset plus Alembic rebuild, and public submission contract validation inside the evaluation harness.
+- **Why:** Idempotent processing against historical dev rows could export stale classifications, and `make score` depends on the evaluation path. A fresh, dedicated database makes evaluation current, repeatable, and non-destructive to development data.
+- **Files:** `.env.example`, local ignored `.env`, `scripts/database_isolation.py`, `scripts/evaluation_database.py`, `scripts/run_baseline.py`, `backend/tests/test_evaluation_harness.py`, generated evaluation reports, and this handoff.
+- **Validation:** Six guard tests; two clean 520-email evaluations with identical SHA-256; standalone eval passed; final Phase 4 check passed with 205 tests, reliability 10, and trace 76/0/0. Dev fingerprint/head remained unchanged; eval did not touch test.
+- **Next:** Stop. Start the organizer server and explicitly authorize the Phase 4 score call separately; do not begin Phase 5 or tune from score movement.
 
 ### 2026-09-20 — Phase P4C comparison persistence, pipeline, and Phase 4 closure
 

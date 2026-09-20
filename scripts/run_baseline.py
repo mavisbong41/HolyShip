@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 import json
-import statistics
+import os
 import sys
 import time
 from collections import Counter
@@ -12,11 +12,11 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import inspect, select
+from sqlalchemy import create_engine, inspect, select
+from sqlalchemy.orm import sessionmaker
 
 from backend.app.core.config import get_settings
 from backend.app.ingestion.sources import StaticBundleSource
-from backend.app.storage.database import SessionLocal
 from backend.app.storage.models import (
     ClassificationResultRecord,
     ComparisonResultRecord,
@@ -25,44 +25,106 @@ from backend.app.storage.models import (
 )
 from backend.app.submission_adapter import SubmissionWorkflowOutcome, build_submission
 from backend.app.sync.service import SyncService
-from database_isolation import require_isolation
+from database_isolation import require_eval_isolation
+from evaluation_database import reset_and_migrate
 
 
 LATEST = ROOT / "reports" / "latest"
+PUBLIC_CATEGORIES = {"BL_COMPARISON", "SI_REQUEST", "INVOICE_QUERY", "GENERAL", "SPAM"}
+PUBLIC_STATUSES = {"OK", "MISMATCH", "NEEDS_REVIEW"}
+PUBLIC_REVIEW_REASONS = {None, "wrong_doc_type", "missing_attachment", "unreadable", "missing_value"}
+PUBLIC_DEFECT_FIELDS = {
+    "shipper",
+    "consignee",
+    "notify_party",
+    "port_of_loading",
+    "port_of_discharge",
+    "container_count",
+    "gross_weight_kg",
+}
+
+
+def validate_submission(submission: dict, public_ids: list[str]) -> None:
+    sample = json.loads(
+        (ROOT / "data" / "bundle" / "sample_submission.json").read_text(encoding="utf-8")
+    )
+    if len(public_ids) != len(set(public_ids)):
+        raise SystemExit("Evaluation source contains duplicate public email IDs.")
+    if set(public_ids) != set(sample) or set(submission) != set(sample):
+        raise SystemExit("Submission IDs do not exactly match sample_submission.json.")
+    required_keys = set(next(iter(sample.values())))
+    for email_id, item in submission.items():
+        if set(item) != required_keys:
+            raise SystemExit(f"Submission entry {email_id} has incorrect output keys.")
+        if item["category"] not in PUBLIC_CATEGORIES:
+            raise SystemExit(f"Submission entry {email_id} has an invalid category.")
+        if item["status"] not in PUBLIC_STATUSES:
+            raise SystemExit(f"Submission entry {email_id} has an invalid status.")
+        if item["review_reason"] not in PUBLIC_REVIEW_REASONS:
+            raise SystemExit(f"Submission entry {email_id} has an invalid review reason.")
+        defect_fields = item["defect_fields"]
+        if (
+            not isinstance(defect_fields, list)
+            or len(defect_fields) != len(set(defect_fields))
+            or any(field not in PUBLIC_DEFECT_FIELDS for field in defect_fields)
+        ):
+            raise SystemExit(f"Submission entry {email_id} has invalid defect fields.")
+        is_mismatch = item["status"] == "MISMATCH"
+        if item["has_defect"] is not is_mismatch:
+            raise SystemExit(f"Submission entry {email_id} has inconsistent has_defect.")
+        if is_mismatch and (not defect_fields or item["review_reason"] is not None):
+            raise SystemExit(f"Submission entry {email_id} has inconsistent mismatch output.")
+        if not is_mismatch and defect_fields:
+            raise SystemExit(f"Submission entry {email_id} exposes defects without MISMATCH.")
+        if item["status"] == "NEEDS_REVIEW" and item["review_reason"] is None:
+            raise SystemExit(f"Submission entry {email_id} lacks a review reason.")
+        if item["status"] == "OK" and item["review_reason"] is not None:
+            raise SystemExit(f"Submission entry {email_id} has a review reason while OK.")
 
 
 def main() -> None:
-    require_isolation()
+    _dev_url, _test_url, eval_url = require_eval_isolation()
+    reset_and_migrate(eval_url)
+    os.environ["DATABASE_URL"] = eval_url
+    get_settings.cache_clear()
     source = StaticBundleSource(get_settings().organizer_bundle_path)
+    engine = create_engine(eval_url, pool_pre_ping=True)
+    session_factory = sessionmaker(bind=engine, autoflush=False, expire_on_commit=False)
     started = time.perf_counter()
-    with SessionLocal() as session:
-        if "email_messages" not in inspect(session.bind).get_table_names():
-            raise SystemExit(
-                "Baseline database is not initialized: email_messages is absent. "
-                "Apply a verified schema before running the public baseline."
-            )
-        report = SyncService(session).sync(source)
-        rows = session.execute(
-            select(EmailMessageRecord, ClassificationResultRecord)
-            .outerjoin(ClassificationResultRecord, ClassificationResultRecord.email_id == EmailMessageRecord.id)
-            .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
-            .order_by(ClassificationResultRecord.created_at.desc())
-        ).all()
-        emails = session.scalars(
-            select(EmailMessageRecord)
-            .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
-        ).all()
-        email_ids = [email.id for email in emails]
-        comparison_rows = session.scalars(
-            select(ComparisonResultRecord)
-            .where(ComparisonResultRecord.email_id.in_(email_ids))
-            .order_by(ComparisonResultRecord.created_at.desc())
-        ).all()
-        event_rows = session.scalars(
-            select(ProcessingEventRecord)
-            .where(ProcessingEventRecord.email_id.in_(email_ids))
-            .order_by(ProcessingEventRecord.created_at.desc(), ProcessingEventRecord.id.desc())
-        ).all()
+    try:
+        with session_factory() as session:
+            if "email_messages" not in inspect(session.bind).get_table_names():
+                raise SystemExit("Evaluation migrations did not initialize email_messages.")
+            report = SyncService(session).sync(source)
+            rows = session.execute(
+                select(EmailMessageRecord, ClassificationResultRecord)
+                .outerjoin(
+                    ClassificationResultRecord,
+                    ClassificationResultRecord.email_id == EmailMessageRecord.id,
+                )
+                .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
+                .order_by(ClassificationResultRecord.created_at.desc())
+            ).all()
+            emails = session.scalars(
+                select(EmailMessageRecord)
+                .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
+            ).all()
+            email_ids = [email.id for email in emails]
+            comparison_rows = session.scalars(
+                select(ComparisonResultRecord)
+                .where(ComparisonResultRecord.email_id.in_(email_ids))
+                .order_by(ComparisonResultRecord.created_at.desc())
+            ).all()
+            event_rows = session.scalars(
+                select(ProcessingEventRecord)
+                .where(ProcessingEventRecord.email_id.in_(email_ids))
+                .order_by(
+                    ProcessingEventRecord.created_at.desc(),
+                    ProcessingEventRecord.id.desc(),
+                )
+            ).all()
+    finally:
+        engine.dispose()
 
     elapsed = time.perf_counter() - started
     latest_by_email: dict[str, tuple[str, dict[str, float]]] = {}
@@ -108,6 +170,7 @@ def main() -> None:
         ((email_id, *latest_by_email.get(email_id, ("GENERAL_MAIL", {}))) for email_id in public_ids),
         workflow_by_email=workflow_by_email,
     )
+    validate_submission(submission, public_ids)
     LATEST.mkdir(parents=True, exist_ok=True)
     (LATEST / "submission.json").write_text(json.dumps(submission, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     metrics = {
