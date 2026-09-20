@@ -4,50 +4,44 @@ Date: 2026-09-20
 Branch: `phase5`  
 Base: `feature/email-classification` at `67f00f2`
 
+## Verification environment
+
+- Temporary local PostgreSQL 18.6 binary cluster on `127.0.0.1:55432`.
+- Separate databases: `holyship_dev`, `holyship_test`, and `holyship_eval`, all owned by the non-superuser `holyship`.
+- No repository production infrastructure was changed. The temporary server was used only for isolated verification.
+
 ## Evidence summary
 
-| Scenario | Expected | Observed | Status | Evidence |
-|---|---|---|---|---|
-| Finite retry success/exhaustion | Transient failures retry finitely; deterministic failures do not | 3-attempt success, 3-attempt exhaustion, and no-retry deterministic tests passed | PASS | `backend/tests/test_phase5_retry_timeout.py` |
-| Timeout boundary | Slow resolver returns structured unresolved without holding the batch | Timeout test returned `SEMANTIC_RESOLUTION_TIMEOUT` within the bound | PASS | `backend/tests/test_phase5_reliability.py` |
-| Malformed resolver output | Invalid provider shape becomes unresolved | Returned `SEMANTIC_RESOLUTION_INVALID` | PASS | `backend/tests/test_phase5_reliability.py` |
-| HTTP retry diagnostics | Retry transient 5xx with bounded backoff and record attempt type | 503 retried once; structured `HTTPError` event recorded | PASS | `backend/tests/test_phase5_retry_timeout.py` |
-| Repeated initial sync | Same unchanged messages converge to one logical graph | PostgreSQL test added; live run unavailable | NOT VERIFIED | `backend/tests/test_phase5_reliability_postgres.py` |
-| Concurrent duplicate ingestion | Two concurrent requests create one email/job/classification graph | Database-backed unique/conflict paths implemented; live run unavailable | NOT VERIFIED | Migration `20260920_0009`, PostgreSQL test |
-| Restart/resume | Interrupted technical state completes without duplicate email/graph | Resume path and test added; live database unavailable | NOT VERIFIED | `SyncService`, PostgreSQL test |
-| Single worker vs parallel | Semantic snapshots are equal | Bounded worker implementation and regression test added; live database unavailable | NOT VERIFIED | `SyncService`, PostgreSQL test |
-| Cache same-version reuse | Exact bytes plus extractor version may reuse fields | Durable cache identity and metadata constraints compiled; live migration/cache test unavailable | NOT VERIFIED | Migration `20260920_0010`, existing Phase 3 tests |
-| Cache version invalidation | Changed extractor version must recompute | Version remains part of lookup key; live PostgreSQL test unavailable | NOT VERIFIED | `DocumentExtractionRepository` |
-| Database concurrency protections | Unique identities plus conflict recovery | ORM metadata contains the five Phase 5 identity constraints | PASS (metadata) / NOT VERIFIED (live DB) | `backend/tests/test_storage_models.py`, migrations |
-| Failure isolation | One bad case cannot crash unrelated work | Existing reader/parser unit suite passed; database batch isolation unavailable | PASS (unit) / NOT VERIFIED (batch DB) | Existing reader tests, Phase 5 PostgreSQL tests |
-| Evaluation unhandled exceptions | Zero process-wide exceptions | Existing Phase 4 artifact reports 0; Phase 5 clean evaluation was not runnable | NOT VERIFIED | `reports/latest/eval.json` baseline only |
+| Scenario | Observed result | Status | Evidence |
+|---|---|---|---|
+| Clean Alembic upgrade | All migrations applied through `20260920_0010` | PASS | `python -m alembic -c alembic.ini upgrade head` |
+| Phase 5 migration downgrade/upgrade | Downgrade to `20260920_0008`, then upgrade to `20260920_0010` succeeded | PASS | Alembic output and live schema query |
+| Repeated initial sync | Two runs converged to one email/job/classification graph per source message | PASS | `test_repeated_initial_sync_converges_without_duplicate_graph` |
+| Provider-message idempotency | Repeated provider identity resolves to one logical email/case | PASS | PostgreSQL reliability suite |
+| Concurrent duplicate ingestion | Two concurrent ingesters produced one email, one job, and one classification; no uncaught error | PASS | `test_concurrent_duplicate_ingestion_creates_one_logical_case` |
+| Restart/resume | Persisted `CLASSIFYING` work resumed to `COMPLETED` without a new email or duplicate graph | PASS (service-level restart simulation) | `test_restart_resumes_interrupted_classification_without_new_email` |
+| Single worker vs parallel | Database snapshots and official submission output matched | PASS | Phase 5 PostgreSQL suite plus worker evaluation |
+| Cache same-version reuse | Exact content/version reused safely with current document provenance | PASS | `test_sha_version_cache_reuses_payload_with_current_document_provenance` |
+| Cache version invalidation | Changed extractor version recomputed instead of reusing stale extraction | PASS | Same PostgreSQL cache test |
+| Cache concurrency/identity | PostgreSQL cache/pipeline suite passed; extraction graph remained distinct and consistent | PASS | `backend/tests/test_phase3_parallel_cache_postgres.py` (6 passed) |
+| Failure isolation | Full suite and reliability suite passed; malformed/corrupt/parser/resolver/partial-side paths remained structured | PASS | Full pytest plus Phase 5 reliability tests |
+| Evaluation unhandled exceptions | `0` in clean evaluations and worker comparisons | PASS | `reports/latest/eval.json` |
 
-## Database and restart notes
+## Target results
 
-The Phase 5 persistence design uses PostgreSQL uniqueness as the final protection, not an in-memory lock. Insert paths use savepoints and re-fetch the winning row after an `IntegrityError`. New jobs and classifications carry the source content hash; attachment, document, and extraction-cache identities are versioned and additive.
+- `mingw32-make reliability`: **14 passed**.
+- `mingw32-make test`: **222 passed**, 1 pre-existing HTTP-client deprecation warning, 0 skipped.
+- `python -m pytest backend/tests/test_phase3_parallel_cache_postgres.py -q`: **6 passed**.
+- `python -m pytest backend/tests/test_phase5_retry_timeout.py backend/tests/test_phase5_reliability.py -q`: **11 passed**.
+- Full `mingw32-make check`: **PASS**; its test, evaluation, reliability, performance, and trace stages all completed successfully.
 
-The current host has no `.env`, `DATABASE_URL`, `HOLYSHIP_TEST_DATABASE_URL`, `HOLYSHIP_EVAL_DATABASE_URL`, PostgreSQL service, or Docker executable. Therefore the PostgreSQL-gated duplicate, resume, cache, and worker-equivalence scenarios are explicitly `NOT VERIFIED` here.
+## Targeted defect found and fixed
 
-## Failure-injection matrix
+The first live PostgreSQL run exposed that the duplicate-protection insert flushed an `EmailMessageRecord` before assigning its required `content_hash`. The repository now initializes `content_hash` in the insert object, preserving the existing savepoint/conflict-recovery design. The focused PostgreSQL suite then passed 4/4, including concurrent ingestion.
 
-| Input/failure | Handling | Status |
-|---|---|---|
-| Corrupt PDF | Composite reader returns structured `FAILED`/`UNREADABLE`/`PARTIAL` result | PASS in existing unit test |
-| Zero-byte attachment | Materialization maps empty content to `CORRUPTED_ATTACHMENT` | NOT VERIFIED without PostgreSQL pipeline |
-| Large text input | No arbitrary tiny rejection; standard reader path remains bounded by caller policy | NOT VERIFIED as a measured RSS test |
-| Odd encoding | Reader boundary returns a structured document outcome rather than crashing the batch | NOT VERIFIED as a dedicated Phase 5 case |
-| Unicode filename | UTF-8 filename boundary test passed | PASS |
-| Parser exception | Materialization catches reader exception and persists `DOCUMENT_READER_FAILED` | Existing PostgreSQL test is skipped here |
-| Transient DB failure | Retry classification is bounded for `OperationalError`; live fault injection unavailable | NOT VERIFIED |
-| Resolver timeout | Structured unresolved result within timeout | PASS |
-| Malformed resolver output | Structured unresolved result | PASS |
-| SI succeeds / BL fails | Existing extraction service preserves completed side; live DB regression unavailable | NOT VERIFIED here |
+## Remaining limits
 
-## Tests and limitations
-
-- `mingw32-make check-fast`: PASS, 34 tests, 0 failures, 1 warning.
-- `python -m pytest backend/tests -q`: PASS, 175 passed, 47 skipped, 1 warning. The skips are PostgreSQL-gated.
-- `mingw32-make check`: NOT VERIFIED; stopped before pytest because the required database URLs are not configured.
-- `git diff --check`: PASS (only line-ending warnings from Git on Windows).
-- Alembic migration files compile; applying them to a live database is NOT VERIFIED.
-- `make score` was not called. No score-history entry was fabricated.
+- The restart test is a persisted-state/service-level resume simulation, not an OS process kill and restart.
+- Peak RSS was not measured because the repository has no cross-platform process-metrics dependency.
+- A real provider cursor/polling deployment remains outside Phase 5.
+- No Phase 5 scoreboard call was made.

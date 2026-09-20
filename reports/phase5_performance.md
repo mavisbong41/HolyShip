@@ -3,60 +3,42 @@
 Date: 2026-09-20  
 Branch: `phase5`
 
-## Baseline
+## Comparable measurement
 
-The preserved Phase 4/pre-Phase-5 evaluation artifact reports:
+The final clean Phase 5 evaluation used the public 520-email bundle, a clean isolated `holyship_eval` database, and the normal `SYNC_MAX_WORKERS=4` configuration.
 
-- Workload: 520 emails (observed bundle size, not a runtime assumption)
-- Full-run wall time: 15.284 seconds
-- Throughput: 34.023 emails/second
-- Per-email p50/p95: NOT MEASURED by the legacy harness
-- Peak RSS: NOT MEASURED
-- Cache/reader/extractor/OCR/Vision counts: legacy artifact recorded only `cache=0`, `llm=0`, `ocr=0`, `vision=0`; reader/extractor call counts were NOT MEASURED in that run
-- Unhandled exceptions: 0 in the preserved artifact
-- Baseline submission SHA-256: `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`
+| Metric | Phase 4 baseline | Phase 5 final | Difference |
+|---|---:|---:|---:|
+| Full-run wall time | 15.284 s | 13.351 s | -1.933 s (-12.65%) |
+| Throughput | 34.023 emails/s | 38.949 emails/s | +4.926 emails/s (+14.48%) |
+| Per-email p50 | NOT MEASURED | 0.024455 s | measured |
+| Per-email p95 | NOT MEASURED | 0.106313 s | measured |
+| Peak RSS | NOT MEASURED | NOT MEASURED | no cross-platform metrics dependency |
 
-## Measured bottlenecks
+The comparable wall-time result is faster than the Phase 4 baseline; the greater-than-20% regression gate is **NO**.
 
-No new full evaluation was available on this host, so a Phase 5 bottleneck ranking is NOT MEASURED. The implementation adds instrumentation for wall time, throughput, per-email p50/p95, worker count, retries, reader/extractor/OCR/Vision calls, cache hits/misses, and unhandled worker exceptions for the next database-enabled run.
+## Phase 5 instrumentation
 
-## Optimizations implemented
+Final evaluation metrics:
 
-### Bounded email-level concurrency
+- Workers: 4
+- Cache hits / misses: 0 / 196
+- Reader calls: 216
+- Extractor calls: 196
+- OCR calls: 6
+- Vision calls: 0
+- LLM/resolver calls: 0
+- Retries: 0
+- Failed emails: 0
+- Unhandled exceptions: 0
 
-- What changed: `SyncService` uses a bounded in-flight window and one session per worker when configured; default-safe callers remain sequential.
-- Why: Allows backlog work to progress without unbounded task creation or sharing a SQLAlchemy session across threads.
-- Correctness risk: Completion order can differ; semantic output must not. A PostgreSQL single-vs-parallel regression test protects this.
-- Before/after: NOT MEASURED; no comparable Phase 5 full run was possible.
+The cache correctness gate was exercised separately against PostgreSQL. The clean public-bundle run has zero cache hits because it starts from a clean evaluation database by design; this is not evidence that cache reuse is disabled.
 
-### Durable duplicate protection and resume
+## Worker comparison
 
-- What changed: Content-version identities and unique constraints cover jobs, classifications, attachments, documents, and extraction cache entries; savepoint conflict recovery re-fetches the winner.
-- Why: Avoids duplicate graphs under concurrent ingestion and enables safe continuation of interrupted technical states.
-- Correctness risk: Integrity-conflict handling must not hide a real content change; changed content remains a new classification version.
-- Before/after: NOT MEASURED.
+Clean worker evaluations produced the same byte-identical submission SHA-256 with workers=1 and workers=4. Measured wall times were 14.843 s and 14.198 s respectively for those runs; the semantic comparison ignores timing metadata and found no business-output difference. The final post-gate workers=4 run was 13.351 s.
 
-### Bounded HTTP/resolver work
+## Limitations
 
-- What changed: Finite exponential backoff, transient-status filtering, request timeouts, structured retry events, resolver timeout, and malformed-output validation.
-- Why: Prevents infinite waits/retry loops and isolates provider failures.
-- Correctness risk: A transient service may be unavailable after the finite budget; the final state remains structured failure/unresolved rather than fabricated success.
-- Before/after: NOT MEASURED for a live provider.
-
-### Versioned extraction cache
-
-- What changed: Added durable `(content_sha256, extractor_version)` cache identity with race-safe registration and current-document field copying.
-- Why: Reuses exact deterministic work while invalidating stale extractor versions.
-- Correctness risk: Cache reuse must preserve current document provenance; field rows are copied into the target extraction rather than re-pointed.
-- Before/after: Existing Phase 3 tests cover the logical contract; live Phase 5 cache-race measurements are NOT VERIFIED here.
-
-## Final metrics
-
-- Post-Phase-5 full-run wall time: NOT MEASURED
-- Post-Phase-5 throughput: NOT MEASURED
-- Post-Phase-5 p50/p95: NOT MEASURED
-- Post-Phase-5 peak RSS: NOT MEASURED
-- Post-Phase-5 cache hit rate: NOT MEASURED
-- Performance regression/improvement: NOT CLAIMED
-
-The next database-enabled run should compare the new `reports/latest/eval.json` fields with the preserved baseline, repeat clean evaluation twice, and investigate any slowdown greater than approximately 20% before declaring the performance gate.
+- Peak RSS was not measured because adding a process-metrics dependency was outside this closure task.
+- No optimization was made after measurement; the observed Phase 5 run is already faster than the baseline.

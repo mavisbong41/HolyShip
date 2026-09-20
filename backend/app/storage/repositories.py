@@ -54,6 +54,7 @@ class EmailRepository:
             record = EmailMessageRecord(
                 source_type=message.source_type,
                 external_message_id=message.external_message_id,
+                content_hash=message.content_hash,
             )
             try:
                 with self.session.begin_nested():
