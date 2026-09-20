@@ -5,15 +5,18 @@ from uuid import UUID
 from sqlalchemy import delete, select
 from sqlalchemy.orm import Session, selectinload
 
-from backend.app.extraction.models import DocumentExtractionResult
+from backend.app.comparison.models import ComparisonBatchResult
+from backend.app.extraction.models import CanonicalField, DocumentExtractionResult
 from backend.app.ingestion.models import EmailMessage
 from backend.app.storage.models import (
     AttachmentRecord,
     ClassificationResultRecord,
+    ComparisonResultRecord,
     DocumentExtractionRecord,
     DocumentRecord,
     EmailMessageRecord,
     ExtractedFieldRecord,
+    FieldComparisonRecord,
     HumanReviewCaseRecord,
     ProcessingJobRecord,
 )
@@ -406,4 +409,112 @@ class ExtractedFieldRepository:
                 )
             )
         return records
+
+
+class ComparisonResultRepository:
+    def __init__(self, session: Session):
+        self.session = session
+
+    def get(self, result_id: UUID) -> ComparisonResultRecord | None:
+        return self.session.get(
+            ComparisonResultRecord,
+            result_id,
+            options=[selectinload(ComparisonResultRecord.fields)],
+        )
+
+    def get_by_identity(
+        self,
+        *,
+        email_id: UUID,
+        si_extraction_id: UUID,
+        bl_extraction_id: UUID,
+        comparison_version: str,
+    ) -> ComparisonResultRecord | None:
+        return self.session.scalar(
+            select(ComparisonResultRecord)
+            .where(
+                ComparisonResultRecord.email_id == email_id,
+                ComparisonResultRecord.si_extraction_id == si_extraction_id,
+                ComparisonResultRecord.bl_extraction_id == bl_extraction_id,
+                ComparisonResultRecord.comparison_version == comparison_version,
+            )
+            .options(selectinload(ComparisonResultRecord.fields))
+        )
+
+    def get_latest_by_email_id(self, email_id: UUID) -> ComparisonResultRecord | None:
+        return self.session.scalar(
+            select(ComparisonResultRecord)
+            .where(ComparisonResultRecord.email_id == email_id)
+            .options(selectinload(ComparisonResultRecord.fields))
+            .order_by(ComparisonResultRecord.created_at.desc())
+        )
+
+    def upsert_result(
+        self,
+        *,
+        email_id: UUID,
+        si_extraction_id: UUID,
+        bl_extraction_id: UUID,
+        comparison_version: str,
+        batch: ComparisonBatchResult,
+        si_fields: dict[CanonicalField, ExtractedFieldRecord],
+        bl_fields: dict[CanonicalField, ExtractedFieldRecord],
+    ) -> ComparisonResultRecord:
+        record = self.get_by_identity(
+            email_id=email_id,
+            si_extraction_id=si_extraction_id,
+            bl_extraction_id=bl_extraction_id,
+            comparison_version=comparison_version,
+        )
+        if record is None:
+            record = ComparisonResultRecord(
+                email_id=email_id,
+                si_extraction_id=si_extraction_id,
+                bl_extraction_id=bl_extraction_id,
+                comparison_version=comparison_version,
+            )
+            self.session.add(record)
+
+        record.comparison_state = batch.comparison_state
+        record.mismatch_found = batch.mismatch_found
+        record.all_fields_definite = batch.all_fields_definite
+        record.mismatched_fields = [name.value for name in batch.mismatched_fields]
+        record.unresolved_fields = [name.value for name in batch.unresolved_fields]
+        record.reason_code = batch.reason_code
+        record.message = batch.message
+        self.session.flush()
+
+        existing = {field.field_name: field for field in record.fields}
+        expected_names = {name.value for name in batch.fields}
+        for stale_name in set(existing) - expected_names:
+            self.session.delete(existing[stale_name])
+
+        for field_name, result in batch.fields.items():
+            si_source = si_fields[field_name]
+            bl_source = bl_fields[field_name]
+            field_record = existing.get(field_name.value)
+            if field_record is None:
+                field_record = FieldComparisonRecord(
+                    comparison_result=record,
+                    field_name=field_name.value,
+                )
+                self.session.add(field_record)
+            field_record.si_field_id = si_source.id
+            field_record.bl_field_id = bl_source.id
+            field_record.si_raw_value = si_source.raw_value_json
+            field_record.bl_raw_value = bl_source.raw_value_json
+            field_record.si_canonical_value = si_source.canonical_value
+            field_record.bl_canonical_value = bl_source.canonical_value
+            field_record.si_normalized_value = result.normalized_si
+            field_record.bl_normalized_value = result.normalized_bl
+            field_record.comparison_layer = result.layer.value
+            field_record.status = result.status.value
+            field_record.reason_code = result.reason_code
+            field_record.evidence = {
+                "comparison": result.evidence,
+                "si_source_location": si_source.source_location,
+                "bl_source_location": bl_source.source_location,
+            }
+        self.session.flush()
+        return record
 

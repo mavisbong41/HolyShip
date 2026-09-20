@@ -56,6 +56,11 @@ class EmailMessageRecord(TimestampMixin, Base):
     classification_results: Mapped[list[ClassificationResultRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     human_review_cases: Mapped[list[HumanReviewCaseRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
     processing_events: Mapped[list[ProcessingEventRecord]] = relationship(back_populates="email", cascade="all, delete-orphan")
+    comparison_results: Mapped[list[ComparisonResultRecord]] = relationship(
+        back_populates="email",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class ProcessingEventRecord(Base):
@@ -234,6 +239,113 @@ class ExtractedFieldRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     extraction: Mapped[DocumentExtractionRecord] = relationship(back_populates="fields")
+
+
+class ComparisonResultRecord(TimestampMixin, Base):
+    __tablename__ = "comparison_results"
+    __table_args__ = (
+        UniqueConstraint(
+            "email_id",
+            "si_extraction_id",
+            "bl_extraction_id",
+            "comparison_version",
+            name="uq_comparison_identity_version",
+        ),
+        CheckConstraint(
+            "comparison_state IN ('COMPLETED','BLOCKED')",
+            name="ck_comparison_result_state",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    email_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("email_messages.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    si_extraction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_extractions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    bl_extraction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_extractions.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    comparison_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    comparison_state: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    mismatch_found: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    all_fields_definite: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    mismatched_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    unresolved_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+
+    email: Mapped[EmailMessageRecord] = relationship(back_populates="comparison_results")
+    fields: Mapped[list[FieldComparisonRecord]] = relationship(
+        back_populates="comparison_result",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class FieldComparisonRecord(Base):
+    __tablename__ = "field_comparisons"
+    __table_args__ = (
+        UniqueConstraint(
+            "comparison_result_id",
+            "field_name",
+            name="uq_field_comparison_result_name",
+        ),
+        CheckConstraint(
+            "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_field_comparison_name",
+        ),
+        CheckConstraint(
+            "status IN ('MATCH','MISMATCH','UNRESOLVED')",
+            name="ck_field_comparison_status",
+        ),
+        CheckConstraint(
+            "comparison_layer IN ('PRECONDITION','L0','L1','L2')",
+            name="ck_field_comparison_layer",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    comparison_result_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("comparison_results.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    si_field_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extracted_fields.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    bl_field_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extracted_fields.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    si_raw_value: Mapped[object | None] = mapped_column(JSONB)
+    bl_raw_value: Mapped[object | None] = mapped_column(JSONB)
+    si_canonical_value: Mapped[object | None] = mapped_column(JSONB)
+    bl_canonical_value: Mapped[object | None] = mapped_column(JSONB)
+    si_normalized_value: Mapped[object | None] = mapped_column(JSONB)
+    bl_normalized_value: Mapped[object | None] = mapped_column(JSONB)
+    comparison_layer: Mapped[str] = mapped_column(String(50), nullable=False)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
+    evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    comparison_result: Mapped[ComparisonResultRecord] = relationship(back_populates="fields")
 
 
 class HumanReviewCaseRecord(Base):

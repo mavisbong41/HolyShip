@@ -295,7 +295,8 @@ class SyncService:
             )
 
         # ---- CLASSIFIED ----------------------------------------------- #
-        job.status = "CLASSIFIED"
+        if job.status not in {"BLOCKED", "FAILED"}:
+            job.status = "CLASSIFIED"
         self.session.flush()
 
         logger.info(

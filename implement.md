@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase P3A-2 one-pass deterministic extraction and persistence
-**Repository state:** Phase 2 remains complete. P3A-2 closes deterministic one-pass extraction, structured provenance, and seven-row persistence. Phase 3 still has only `EXT-03` parallel orchestration and `EXT-06` SHA/version cache behavior outstanding; comparison remains untouched.
+**Updated by:** Phase P4C comparison persistence, pipeline, submission boundary, and Phase 4 closure
+**Repository state:** Phases 0–4 are complete. Seven-field SI-reference comparison is versioned and persisted, pipeline states advance through COMPARING to COMPLETED/BLOCKED, and the isolated submission adapter compresses the richer internal result only at the public boundary.
 
 ---
 
@@ -98,10 +98,10 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Attachment retrieval | IMPLEMENTED | Lazy source-owned retrieval only for READY_FOR_COMPARISON; SHA-256 and storage identity persisted |
 | Document router | IMPLEMENTED | TXT/PDF/DOCX/XLSX native paths; scanned/image inputs enter OCR/Vision directly; failures are structured |
 | Document role validation | IMPLEMENTED | Content/title/table evidence assigns SI/BL; filename is never proof; clear wrong business documents block |
-| SI/BL extraction | PARTIAL — P3A-2 | Deterministic per-document one-pass extraction and persistence implemented; cross-document parallel orchestration/cache remain pending |
+| SI/BL extraction | IMPLEMENTED | Deterministic independent seven-field extraction, bounded SI/BL parallel work, persistence, and versioned content-hash reuse |
 | Canonical field mapping | IMPLEMENTED | Strict dictionary, bilingual/contextual/table provenance, ambiguity handling, and NET-weight exclusion have executable evidence |
-| Comparison pipeline | NOT CONFIRMED | Implementation must be checked |
-| Persistence | IMPLEMENTED THROUGH P3A-2 | Processing events, attachment/document materialization, and complete seven-field raw/canonical extraction rows with provenance |
+| Comparison pipeline | IMPLEMENTED — PHASE 4 | Persisted SI-reference comparison with exact MATCH/MISMATCH/UNRESOLVED evidence and COMPLETED/BLOCKED transitions |
+| Persistence | IMPLEMENTED THROUGH PHASE 4 | Processing events, attachment/document/extraction evidence, versioned comparison aggregates, and seven per-field comparison rows |
 | Dashboard backend API | NOT CONFIRMED | Implementation must be checked |
 | Email-extension backend API | NOT CONFIRMED | Implementation must be checked |
 | Human Review UI/workflow | OUT OF SCOPE | Next milestone |
@@ -208,6 +208,18 @@ Fast compare
 ---
 
 ## Implemented
+
+### Phase 4 — P4C comparison persistence, pipeline, and submission boundary
+
+- `comparison_results` preserves email, SI extraction, BL extraction, comparison version, state, exact mismatch/unresolved lists, definite-mismatch and all-fields-definite flags, reason code, and message. `field_comparisons` preserves all seven side-by-side raw, canonical, and normalized values plus layer, final status, reason, evidence, and source field identities.
+- Central `COMPARISON_VERSION = "phase4-deterministic-v1"` and the unique email/SI/BL/version identity make reruns idempotent. PostgreSQL checks constrain comparison state, exact canonical fields, field statuses, and layers.
+- Pipeline integration consumes persisted Phase 3 extraction rows without reopening attachments or invoking readers/extractors. It records `EXTRACTING -> COMPARING -> COMPLETED` when all fields are definite and `EXTRACTING -> COMPARING -> BLOCKED` with `COMPARISON_UNRESOLVED` when any field is unresolved.
+- A definite mismatch is a completed business result, not a technical failure. Mixed mismatch plus unresolved preserves both fact sets internally and remains BLOCKED. Unexpected comparison exceptions become structured `COMPARISON_FAILED / FAILED` outcomes inside the existing per-email transaction boundary; prior results survive and later emails continue.
+- Comparison normalization is additive. PostgreSQL reload evidence proves Phase 3 raw/native/canonical/provenance rows are byte-for-byte logically unchanged while comparison-normalized values live only on field-comparison rows.
+- The isolated submission adapter maps completed clean to `OK`, completed definite mismatch to `MISMATCH`, and supported blocked reasons to `NEEDS_REVIEW` with only the public reason strings. The provisional `AWAITING_DOCUMENTS -> NEEDS_REVIEW/missing_value` policy remains explicitly `UNVALIDATED`. Mixed internal mismatch/unresolved state is compressed at this boundary without mutating or discarding its internal facts.
+- Additive migration `20260920_0008_add_phase4_comparison.py` creates both comparison tables, foreign keys, uniqueness, checks, and lookup indexes. Read-only development introspection confirmed head `20260920_0008` and all expected tables/constraints/indexes after the test suite.
+- `reports/comparison_sanity.md` uses only public participant data and claims no accuracy: 112 comparison-ready emails, 98 valid SI/BL pairs attempted, 0 clean, 0 fully definite mismatch, 98 blocked unresolved, 0 failed; L0=267, L1=7, L2=29. Comparison itself caused 0 reader/extractor calls and all LLM/OCR/Vision provider calls were 0.
+- Closed `CMP-09`, `CMP-10`, `CMP-11`, `STA-05`, `SUB-02`, and `SUB-03`. Phase 4 trace is 76 PASS / 0 TODO / 0 FAIL.
 
 ### Phase 3 — P3A-2 one-pass deterministic extraction and persistence
 
@@ -324,7 +336,7 @@ Fast compare
 
 ## Next
 
-- Stop after Phase 3. Begin SI-vs-BL comparison only when Phase 4 is explicitly authorized in a new phase session.
+- Stop after Phase 4. Begin Phase 5 only when explicitly authorized in a new phase session. Do not add Phase 7 API behavior or call the scoreboard as part of this closure.
 
 Recommended implementation order after the dataset audit:
 
@@ -567,6 +579,13 @@ Phase 3 persistence is additive in migration `20260920_0007`:
 - PostgreSQL constrains the exact seven canonical names, four field statuses, confidence range, six mapping methods, and uniqueness of one canonical field per extraction.
 - No comparison-result schema or Phase 4 state was added.
 
+Phase 4 persistence is additive in migration `20260920_0008`:
+
+- `comparison_results` owns the versioned email/SI-extraction/BL-extraction result identity and aggregate state.
+- `field_comparisons` owns seven per-field side-by-side values, additive normalized values, layer, final status, and structured evidence linked to both extraction-field rows.
+- Internal comparison states remain project-owned (`COMPLETED`/`BLOCKED`, field `MATCH`/`MISMATCH`/`UNRESOLVED`). Public `OK`/`MISMATCH`/`NEEDS_REVIEW` strings remain isolated in `submission_adapter.py`.
+- No external dependency or environment variable was added.
+
 No repository API/schema changes are confirmed yet.
 
 Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
@@ -666,6 +685,21 @@ When adding an environment variable:
 - all seven match → `No mismatch detected`
 
 ### Validation log
+
+2026-09-20 — Phase P4C comparison persistence and Phase 4 closure
+- Test-first focused collection failed because comparison persistence and new submission workflow types did not yet exist. The first PostgreSQL run exposed a same-session idempotency defect; linking child rows through the ORM relationship fixed it without changing comparison semantics.
+- Focused P4C suite (`test_phase4_comparison_postgres.py`, Phase 2 pipeline integration, submission adapter, metamorphic suite) → 47 passed, 0 skipped.
+- PostgreSQL-enabled full regression → 199 passed, 0 failed, 0 skipped, 1 existing Starlette/AnyIO deprecation warning.
+- `make reliability` → 10 passed.
+- Standalone `make eval` → 520 emails, 1.727 seconds, 301.125 emails/s.
+- Standalone `make perf` → 520 emails, 1.676 seconds, 310.207 emails/s.
+- `make check-fast` → PASS: compileall, 19 tests passed with 1 warning, and `git diff --check` passed with line-ending warnings only.
+- `make trace PHASE=4` → PASS: 76 PASS, 0 TODO, 0 FAIL.
+- `make check PHASE=4` → PASS: 199 tests; eval 520 emails in 1.700 seconds (305.857 emails/s); reliability 10 passed; trace 76/0/0.
+- Development Alembic upgrade `20260920_0007 -> 20260920_0008` → PASS. Read-only introspection confirmed `comparison_results`, `field_comparisons`, `email_messages`, and `processing_events`; comparison identity uniqueness, four aggregate indexes, and all three field check constraints survived the test suite.
+- Public comparison sanity audit → 98 pairs attempted, 0 clean, 0 fully definite mismatch, 98 blocked unresolved, 0 failed; field mismatch counts are shipper=0, consignee=0, notify_party=0, port_of_loading=0, port_of_discharge=0, container_count=3, gross_weight_kg=4; unresolved counts are 76, 66, 51, 47, 47, 75, and 50 respectively. L0=267, L1=7, L2=29; no accuracy claim.
+- Metamorphic formatting-only false alarms → 0. Single-material-defect case → PASS with exactly one mismatch and exact `mismatched_fields`.
+- `make score PHASE=4` → NOT RUN by explicit instruction.
 
 2026-09-20 — Phase P3B parallel extraction, versioned cache, and Phase 3 closure
 - Focused EXT-03/EXT-06 PostgreSQL evidence (`backend/tests/test_phase3_parallel_cache_postgres.py`) → 6 passed. The barrier test proved two distinct worker threads reached extraction concurrently; SQL event evidence showed all database work remained on the caller thread.
@@ -779,18 +813,19 @@ Never fabricate test results.
 
 ## Known Limitations
 
-- Phase 3 stops after deterministic extraction in `EXTRACTING`; actual SI-vs-BL comparison remains Phase 4 work.
+- P4B L1 remains deliberately conservative: unapproved port spellings and entity aliases without an exact safe rule pass to the default-unresolved L2 boundary rather than being guessed.
+- The default L2 resolver performs zero provider calls and returns uncertainty. A real semantic resolver remains optional later-phase work.
 - Extraction remains deterministic and native. OCR and model-backed hard-case resolution remain later-phase work; `llm_resolved` is an allowed persisted provenance value but is never emitted here.
-- The pipeline intentionally remains at `EXTRACTING`; it does not compare SI against BL, create MATCH/MISMATCH states, discrepancies, or an overall result.
+- The public `AWAITING_DOCUMENTS` mapping remains a configurable provisional `NEEDS_REVIEW/missing_value` policy and is explicitly UNVALIDATED because the public contract does not define this internal waiting state.
+- The public comparison sanity audit found all 98 attempted public pairs contained at least one unresolved field under the conservative deterministic/default-L2 policy. This is coverage evidence, not a private-label accuracy measurement and was not used to tune rules.
 
 - The public classification audit provides semantic/input evidence, not hidden-label correctness. No private ground truth or evaluator data was used.
 - OCR/Tesseract is unavailable in the verified environment. Phase 2 therefore routes six public image-only PDFs correctly and persists a clean unreadable/blocking outcome; a working OCR implementation remains owned by `DOC-07b` in Phase 6A.
-- Phase 2 materializes readable document content and validates SI/BL roles but intentionally does not extract the seven canonical shipment fields or compare documents. Those are Phase 3/4 responsibilities.
 - Zero-signal messages intentionally remain low-confidence neutral results. A future model-backed resolver may improve their semantics, but Phase 1 does not invent unsupported specialized intent.
 - The development database retains 21 historical Human Review rows and the legacy read-only Human Review API for compatibility. Current Phase 1 processing creates none.
 - The Phase 0 baseline in `reports/latest/eval.md` contains historical classifications and skips unchanged emails; current Phase 1 classifier behavior is represented by `reports/classification_audit.md`, not by reinterpreting the historical baseline.
 - Per-email p50/p95 and peak RSS remain unavailable because the existing sync/eval harness has no per-email timing or cross-platform process-metrics instrumentation.
-- Public scoreboard results are not verified; no score call was made in Phase 1.
+- Public scoreboard results are not verified; no score call was made in Phase 4.
 
 Current document-level limitations:
 
@@ -803,6 +838,42 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase P4C comparison persistence, pipeline, and Phase 4 closure
+
+- **Changed:** Added additive comparison-result and per-field persistence, centralized comparison versioning/idempotency, real EXTRACTING/COMPARING/COMPLETED-or-BLOCKED orchestration, structured comparison failure isolation, rich internal mixed-state semantics, and an isolated explicit public submission mapping.
+- **Why:** Phase 4 required durable side-by-side mismatch evidence and exact overall semantics without mutating Phase 3 extraction data or forcing project-owned states into the five-key participant schema.
+- **Files:** Comparison domain/persistence, storage models/repositories, sync/materialization orchestration, migration `20260920_0008`, submission adapter/baseline mapping, PostgreSQL/pipeline/submission/metamorphic tests, comparison sanity script/report, matrix, and this handoff.
+- **Dependencies/config:** None. Reused SQLAlchemy/PostgreSQL and the existing reader/extractor stack; added no environment variables.
+- **Validation:** Focused P4C 47 passed; full PostgreSQL suite 199 passed with 0 failures/skips and 1 warning; reliability 10 passed; eval/perf/check-fast passed; Phase 4 trace 76/0/0; final `make check PHASE=4` passed. Dev remains at Alembic `20260920_0008` with expected tables/constraints/indexes.
+- **Audit:** Public-only sanity report attempted 98 pairs: 0 clean, 0 fully definite mismatch, 98 blocked unresolved, 0 failed; L0=267, L1=7, L2=29. Comparison-time reader/extractor and provider calls were zero. No private ground truth was used and no score was called.
+- **Next:** Stop after Phase 4. Do not begin Phase 5, Phase 7 API work, real providers, or scoreboard evaluation until explicitly requested.
+
+### 2026-09-20 — Phase P4B field-specific L1 and metamorphic accuracy
+
+- **Architecture:** Added `FieldSpecificL1Comparator` with separate dispatch paths for container count, gross kilograms, port values, and entity values. P4A still runs L0 first, L1 only after an L0 difference, and L2 only after L1 returns no decision; real-L1 counters prove 0/0, 1/0, and 1/1 call patterns.
+- **Container policy:** Prefer Phase 3 numeric canonical counts. Deterministic compatibility parsing accepts simple counts and compound `count x type` forms; only count participates in comparison, type remains auxiliary evidence, count differences are mismatches, and unparseable input remains unresolved.
+- **Gross-weight policy:** Prefer Phase 3 native numeric kilograms. Deterministic L1 accepts numeric values or kilograms with validated comma/decimal formatting, performs no invented unit conversion, and produces definite numeric differences. A real NET-only extraction remains missing for gross weight and comparison stays unresolved.
+- **Entity policy:** Only abbreviation periods immediately following a letter and preceding whitespace/end are removed after L0. No legal, company, business, or geographic token is stripped—including `SDN BHD`, `BERHAD`, `LTD`, `LIMITED`, `LLC`, `INC`, `PTE LTD`, `MALAYSIA`, `SINGAPORE`, `LOGISTICS`, or `TRADING`. Unproved aliases proceed to L2/default unresolved.
+- **Port policy:** Added exact configurable aliases in `port_aliases.json`, backed only by published UN/LOCODE entries: `PORT KLANG` ↔ `MYPKG` / `MY PKG`, and `SINGAPORE` ↔ `SGSIN` / `SG SIN`. The registry rejects conflicting aliases and uses no fuzzy, edit-distance, substring, or similarity matching. `reports/port_aliases_review.md` records every runtime alias and rationale.
+- **Anti-overfitting:** No email IDs, filenames, participant rows, corpus counts, or known-answer overrides are used. Every rule is a field-level business rule or explicit externally sourced configuration entry; provider/model calls remain zero.
+- **Metamorphic evidence:** Thirteen deterministic equivalence-preserving transformations produced 13 MATCH results and zero false alarms. Five semantic negative controls—company word, geography, port, container count, and gross weight—had zero failures and were never normalized to MATCH.
+- **Files:** Comparison L1 module/config/default wiring; P4B unit and metamorphic tests; port review report; matrix; this handoff. No dependency, schema, migration, persistence, API, or submission change.
+- **Validation:** Initial P4B red run: 8 passed / 12 failed before L1 existed. Final focused Phase 4 suite: 39 passed. PostgreSQL-enabled full regression: 183 passed, 0 failed, 0 skipped, 1 warning. `make reliability`: 10 passed. `make check-fast`: compileall and diff check passed; 11 tests passed with 1 warning.
+- **Closed rows:** `MAP-07`, `CMP-05`, `CMP-06`, `CMP-07`, `CMP-12`.
+- **Next:** Stop after P4B. P4C owns `CMP-09`, `CMP-10`, `CMP-11`, `STA-05`, `SUB-02`, and `SUB-03`.
+
+### 2026-09-20 — Phase P4A core comparison contract and layered dispatch
+
+- **Contract:** Added an in-memory result model whose only final per-field states are `MATCH`, `MISMATCH`, and `UNRESOLVED`. Every batch contains exactly the seven canonical extraction fields and enforces SI as the reference and `DRAFT_BL` as the candidate.
+- **Conservative uncertainty:** Missing, ambiguous, unresolved, or otherwise non-materialized canonical values stop at a structured precondition result and never become a fabricated match or mismatch. The default L1 comparator makes no decision; the default L2 resolver returns `{equivalent: None, confidence: 0.0, reason: SEMANTIC_RESOLUTION_NOT_CONFIGURED}` and makes zero provider calls.
+- **Layering:** Safe L0 applies NFKC Unicode normalization, trimming/whitespace and line-break collapse, and case folding without deleting punctuation or meaningful words. Strict dispatch short-circuits after L0 or L1 decisions and invokes L2 only after cheaper comparison remains undecided; call-counter tests prove the boundaries.
+- **Purity:** Comparison consumes the immutable Phase 3 `DocumentExtractionResult` values directly. It neither reopens documents nor reruns extraction, and tests prove both input objects remain unchanged.
+- **Files:** `backend/app/comparison/__init__.py`, `models.py`, `normalization.py`, `service.py`; `backend/tests/test_phase4_comparison_core.py`; requirements matrix; this handoff.
+- **Dependencies/schema:** No dependency, database model, migration, persistence, API, or submission change.
+- **Validation:** Test-first collection failed because the package did not yet exist; after implementation the focused suite passed 16 tests. PostgreSQL-enabled full regression passed 160 tests with 0 failures, 0 skips, and 1 Starlette/AnyIO deprecation warning. `make reliability` passed 10 tests. `make check-fast` passed compileall, 11 tests with 1 warning, and `git diff --check`.
+- **Closed rows:** `CMP-01`, `CMP-02`, `CMP-03`, `CMP-04`, `CMP-08`, `CMP-13`, `REL-04`.
+- **Next:** Stop after P4A. Do not begin field-specific P4B rules or P4C persistence/output until explicitly authorized.
 
 ### 2026-09-20 — Phase P3B parallel extraction, versioned cache, and closure
 

@@ -13,11 +13,13 @@ from backend.app.documents.models import DocumentFormat
 from backend.app.storage.database import Base
 from backend.app.storage.models import (
     AttachmentRecord,
+    ComparisonResultRecord,
     DocumentExtractionRecord,
     DocumentRecord,
     EmailMessageRecord,
     ProcessingEventRecord,
 )
+from backend.app.comparison.service import ComparisonService
 from backend.app.sync.service import SyncService
 
 
@@ -115,7 +117,7 @@ def test_only_ready_comparisons_retrieve_attachment_content(db_factory):
 
     assert report.failed == 0
     assert source.reads == ["memory/ready/a.txt", "memory/ready/b.txt"]
-    assert states == {"invoice": "COMPLETED", "awaiting": "AWAITING_DOCUMENTS", "ready": "EXTRACTING"}
+    assert states == {"invoice": "COMPLETED", "awaiting": "AWAITING_DOCUMENTS", "ready": "BLOCKED"}
 
 
 @pytest.mark.req("DOC-02")
@@ -124,8 +126,16 @@ def test_only_ready_comparisons_retrieve_attachment_content(db_factory):
 def test_valid_pair_preserves_identity_hashes_raw_materialization_and_state_events(db_factory):
     message = _message("valid", "Please compare the attached SI and draft BL now.", ["candidate_BL.txt", "candidate_SI.txt"])
     content = {
-        "memory/valid/candidate_BL.txt": b"SHIPPING INSTRUCTION\nShipper: A\nConsignee: B",
-        "memory/valid/candidate_SI.txt": b"BILL OF LADING (DRAFT)\nShipper: A\nConsignee: B",
+        "memory/valid/candidate_BL.txt": (
+            b"SHIPPING INSTRUCTION\nShipper: A\nConsignee: B\nNotify Party: C\n"
+            b"Port of Loading: Port Klang\nPort of Discharge: Singapore\n"
+            b"Container Count: 6 x 40'HC\nGross Weight: 22,000 KG"
+        ),
+        "memory/valid/candidate_SI.txt": (
+            b"BILL OF LADING (DRAFT)\nShipper: A\nConsignee: B\nNotify Party: C\n"
+            b"Port of Loading: Port Klang\nPort of Discharge: Singapore\n"
+            b"Container Count: 6\nGross Weight: 22000 kg"
+        ),
     }
 
     report, _source = _run(db_factory, message, content)
@@ -150,7 +160,16 @@ def test_valid_pair_preserves_identity_hashes_raw_materialization_and_state_even
             )
         )
 
-        assert email.processing_status == "EXTRACTING"
+        comparisons = list(
+            session.scalars(
+                select(ComparisonResultRecord).where(ComparisonResultRecord.email_id == email.id)
+            )
+        )
+        assert email.processing_status == "COMPLETED"
+        assert len(comparisons) == 1
+        assert comparisons[0].mismatch_found is False
+        assert comparisons[0].mismatched_fields == []
+        assert comparisons[0].message == "No mismatch detected."
         assert {row.document_type for row in documents} == {"SI", "DRAFT_BL"}
         assert {row.routing_outcome for row in documents} == {"SI_FOUND", "BL_FOUND"}
         assert all(row.content_sha256 == hashlib.sha256(content[row.source_reference]).hexdigest() for row in attachments)
@@ -159,7 +178,73 @@ def test_valid_pair_preserves_identity_hashes_raw_materialization_and_state_even
             "SHIPPING INSTRUCTION",
             "BILL OF LADING (DRAFT)",
         }
-        assert [event.new_status for event in events][-2:] == ["RETRIEVING_ATTACHMENTS", "EXTRACTING"]
+        assert [event.new_status for event in events][-4:] == [
+            "RETRIEVING_ATTACHMENTS",
+            "EXTRACTING",
+            "COMPARING",
+            "COMPLETED",
+        ]
+
+
+@pytest.mark.req("STA-05")
+def test_comparison_failure_isolated_per_email_and_later_work_continues(db_factory):
+    class FailSecondComparison:
+        def __init__(self):
+            self.calls = 0
+            self.delegate = ComparisonService()
+
+        def compare(self, si, bl):
+            self.calls += 1
+            if self.calls == 2:
+                raise RuntimeError("synthetic comparison failure")
+            return self.delegate.compare(si, bl)
+
+    def pair(eid: str):
+        message = _message(eid, "Please compare the attached SI and draft BL now.", ["si.txt", "bl.txt"])
+        values = (
+            "Shipper: A\nConsignee: B\nNotify Party: C\n"
+            "Port of Loading: Port Klang\nPort of Discharge: Singapore\n"
+            "Container Count: 6\nGross Weight: 22000 kg"
+        )
+        return message, {
+            f"memory/{eid}/si.txt": f"SHIPPING INSTRUCTION\n{values}".encode(),
+            f"memory/{eid}/bl.txt": f"BILL OF LADING (DRAFT)\n{values}".encode(),
+        }
+
+    first, first_content = pair("comparison-first")
+    broken, broken_content = pair("comparison-broken")
+    later = EmailMessage(
+        **{
+            **_message("comparison-later", "Please clarify this invoice charge.", []).model_dump(),
+            "subject": "Invoice question",
+        }
+    )
+    source = MemorySource([first, broken, later], {**first_content, **broken_content})
+
+    with db_factory() as session:
+        service = SyncService(session)
+        service._document_service.comparison_service.comparator = FailSecondComparison()
+        report = service.sync(source)
+        states = dict(
+            session.execute(
+                select(EmailMessageRecord.external_message_id, EmailMessageRecord.processing_status)
+            ).all()
+        )
+        result_emails = set(
+            session.scalars(
+                select(EmailMessageRecord.external_message_id)
+                .join(ComparisonResultRecord, ComparisonResultRecord.email_id == EmailMessageRecord.id)
+            )
+        )
+
+    assert (report.classified, report.failed) == (2, 1)
+    assert states == {
+        "comparison-first": "COMPLETED",
+        "comparison-broken": "FAILED",
+        "comparison-later": "COMPLETED",
+    }
+    assert result_emails == {"comparison-first"}
+    assert report.outcomes[1].error == "COMPARISON_FAILED"
 
 
 @pytest.mark.req("CLS-09")

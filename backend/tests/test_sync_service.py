@@ -282,7 +282,7 @@ def test_sync_processing_job_state_transition(svc, session):
 
     jobs = session.query(ProcessingJobRecord).all()
     assert len(jobs) == 1
-    assert jobs[0].status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED", "FAILED")
+    assert jobs[0].status in ("CLASSIFIED", "HUMAN_REVIEW_REQUIRED", "BLOCKED", "FAILED")
 
 
 # ---------------------------------------------------------------------------

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
 import hashlib
+import logging
 import time
 from dataclasses import dataclass
 from enum import Enum
 
 from sqlalchemy.orm import Session
 
+from backend.app.comparison.persistence import PersistedComparisonService
 from backend.app.documents.models import DocumentFormat, DocumentType, UnifiedDocument
 from backend.app.documents.readers.composite import CompositeDocumentReader
 from backend.app.documents.role_validation import (
@@ -33,6 +35,9 @@ from backend.app.storage.repositories import (
     ExtractedFieldRepository,
 )
 from backend.app.storage.transitions import transition
+
+
+logger = logging.getLogger(__name__)
 
 
 class PreExtractionOutcome(str, Enum):
@@ -81,6 +86,7 @@ class DocumentMaterializationService:
         self.document_repo = DocumentRepository(session)
         self.extraction_repo = DocumentExtractionRepository(session)
         self.field_repo = ExtractedFieldRepository(session)
+        self.comparison_service = PersistedComparisonService(session)
 
     def process(
         self,
@@ -262,7 +268,30 @@ class DocumentMaterializationService:
                 "DOCUMENT_FIELD_EXTRACTION_FAILED",
                 technical_failure=True,
             )
-        return MaterializationResult("EXTRACTING", "FIELDS_EXTRACTED")
+        try:
+            with self.session.begin_nested():
+                comparison = self.comparison_service.compare_and_persist(
+                    email_record,
+                    si_extraction_id=si_documents[0].extraction.id,
+                    bl_extraction_id=bl_documents[0].extraction.id,
+                )
+        except Exception:
+            logger.exception("Comparison failed for email %s", email_record.id)
+            transition(
+                self.session,
+                email_record,
+                "FAILED",
+                "COMPARISON_FAILED",
+            )
+            return MaterializationResult(
+                "FAILED",
+                "COMPARISON_FAILED",
+                technical_failure=True,
+            )
+        return MaterializationResult(
+            comparison.record.comparison_state,
+            comparison.record.reason_code,
+        )
 
     def _classify_materialization(
         self,

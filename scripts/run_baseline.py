@@ -17,8 +17,13 @@ from sqlalchemy import inspect, select
 from backend.app.core.config import get_settings
 from backend.app.ingestion.sources import StaticBundleSource
 from backend.app.storage.database import SessionLocal
-from backend.app.storage.models import ClassificationResultRecord, EmailMessageRecord
-from backend.app.submission_adapter import build_submission
+from backend.app.storage.models import (
+    ClassificationResultRecord,
+    ComparisonResultRecord,
+    EmailMessageRecord,
+    ProcessingEventRecord,
+)
+from backend.app.submission_adapter import SubmissionWorkflowOutcome, build_submission
 from backend.app.sync.service import SyncService
 from database_isolation import require_isolation
 
@@ -43,6 +48,21 @@ def main() -> None:
             .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
             .order_by(ClassificationResultRecord.created_at.desc())
         ).all()
+        emails = session.scalars(
+            select(EmailMessageRecord)
+            .where(EmailMessageRecord.source_type == StaticBundleSource.source_type)
+        ).all()
+        email_ids = [email.id for email in emails]
+        comparison_rows = session.scalars(
+            select(ComparisonResultRecord)
+            .where(ComparisonResultRecord.email_id.in_(email_ids))
+            .order_by(ComparisonResultRecord.created_at.desc())
+        ).all()
+        event_rows = session.scalars(
+            select(ProcessingEventRecord)
+            .where(ProcessingEventRecord.email_id.in_(email_ids))
+            .order_by(ProcessingEventRecord.created_at.desc(), ProcessingEventRecord.id.desc())
+        ).all()
 
     elapsed = time.perf_counter() - started
     latest_by_email: dict[str, tuple[str, dict[str, float]]] = {}
@@ -55,11 +75,38 @@ def main() -> None:
         stage_counts[classification.resolved_at_stage] += 1
         confidences.append(classification.confidence)
 
+    latest_comparison = {}
+    for comparison in comparison_rows:
+        latest_comparison.setdefault(comparison.email_id, comparison)
+    latest_reason = {}
+    for event in event_rows:
+        latest_reason.setdefault(event.email_id, event.reason_code)
+    workflow_by_email: dict[str, SubmissionWorkflowOutcome] = {}
+    for email in emails:
+        comparison = latest_comparison.get(email.id)
+        if comparison is not None:
+            workflow_by_email[email.external_message_id] = SubmissionWorkflowOutcome(
+                processing_status=comparison.comparison_state,
+                reason_code=comparison.reason_code,
+                mismatch_found=comparison.mismatch_found,
+                mismatched_fields=tuple(comparison.mismatched_fields),
+                unresolved_fields=tuple(comparison.unresolved_fields),
+            )
+        else:
+            workflow_by_email[email.external_message_id] = SubmissionWorkflowOutcome(
+                processing_status=email.processing_status,
+                reason_code=latest_reason.get(email.id) or "MISSING_COMPARISON_RESULT",
+                mismatch_found=False,
+                mismatched_fields=(),
+                unresolved_fields=(),
+            )
+
     # The adapter still writes every public id even if a future technical run
     # leaves a row without classification, using the safe GENERAL fallback.
     public_ids = [message.external_message_id for message in StaticBundleSource(get_settings().organizer_bundle_path).iter_messages()]
     submission = build_submission(
-        (email_id, *latest_by_email.get(email_id, ("GENERAL_MAIL", {}))) for email_id in public_ids
+        ((email_id, *latest_by_email.get(email_id, ("GENERAL_MAIL", {}))) for email_id in public_ids),
+        workflow_by_email=workflow_by_email,
     )
     LATEST.mkdir(parents=True, exist_ok=True)
     (LATEST / "submission.json").write_text(json.dumps(submission, indent=2, sort_keys=True) + "\n", encoding="utf-8")
