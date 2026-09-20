@@ -28,6 +28,7 @@ from backend.app.ingestion.sources import (
     StaticBundleSource,
     map_incoming_payload,
 )
+from backend.app.storage.database import SessionLocal
 from backend.app.storage.models import (
     ClassificationResultRecord,
     EmailMessageRecord,
@@ -67,6 +68,10 @@ def sync(
         session,
         confidence_threshold=settings.classification_threshold,
         margin_threshold=settings.classification_margin_threshold,
+        max_workers=settings.sync_max_workers,
+        session_factory=SessionLocal,
+        retry_max_attempts=settings.retry_max_attempts,
+        semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
     )
 
     if body.source == "http":
@@ -75,7 +80,11 @@ def sync(
                 status_code=422,
                 detail="organizer_http_url is required when source=http",
             )
-        email_source = OrganizerHttpSource(body.organizer_http_url)
+        email_source = OrganizerHttpSource(
+            body.organizer_http_url,
+            timeout_seconds=settings.organizer_http_timeout_seconds,
+            retry_policy=settings.retry_policy,
+        )
     else:
         email_source = StaticBundleSource(settings.organizer_bundle_path)
 
@@ -237,6 +246,10 @@ def receive_incoming_email(
         session,
         confidence_threshold=settings.classification_threshold,
         margin_threshold=settings.classification_margin_threshold,
+        max_workers=settings.sync_max_workers,
+        session_factory=SessionLocal,
+        retry_max_attempts=settings.retry_max_attempts,
+        semantic_resolver_timeout_seconds=settings.semantic_resolver_timeout_seconds,
     )
     outcome = svc.sync_one(message)
 
