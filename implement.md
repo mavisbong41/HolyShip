@@ -44,7 +44,7 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 
 **Date:** 2026-09-20  
 **Updated by:** Phase R Phase 7 closure repair
-**Repository state:** Local `phase7` retains the Phase 7 history. The fetched `origin/feature/email-classification` integration merge contains the same Phase 6 production tree as the Phase 7 base; the difference is merge topology only, so no merge/rebase was performed. The repair is not yet pushed.
+**Repository state:** Local `phase7` retains the Phase 7 history and is clean at pushed commit `c713384`. The fetched `origin/feature/email-classification` integration merge contains the same Phase 6 production tree as the Phase 7 base; the difference is merge topology only, so no merge/rebase was performed.
 
 ---
 
@@ -381,7 +381,7 @@ Fast compare
 
 ## In Progress
 
-- Phase R implementation is complete locally. PostgreSQL migration/integration, live API/demo execution, full evaluation, and the final full gate remain unverified because this environment has no PostgreSQL, Docker, or Podman executable and the required database URLs are unset.
+- Phase R implementation is complete and pushed. PostgreSQL migration/integration, live API/demo execution, full evaluation, and the final full gate remain unverified because this environment has no PostgreSQL, Docker, or Podman executable and the required database URLs are unset.
 - Matrix implementation evidence is repaired; `ING-08` remains TODO until the PostgreSQL checkpoint-restart test and full trace can run in a service-enabled environment.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
@@ -407,7 +407,7 @@ Fast compare
 
 - Run the isolated PostgreSQL integration/checkpoint suite and `scripts/demo.sh` in a service-enabled environment.
 - Run `mingw32-make check-fast`, `python scripts/trace_phase0.py 7`, `mingw32-make check`, and the AI-disabled compatibility evaluation there; do not convert skipped database checks into PASS.
-- Push the local Phase R commits only after the final diff review; do not merge. Human Review UI/actions remain out of scope.
+- Do not merge. Human Review UI/actions remain out of scope.
 
 Recommended implementation order after the dataset audit:
 
@@ -1030,7 +1030,7 @@ Current document-level limitations:
 - **Why:** Phase 7 left ING-08 incomplete and the live demo/DB verification contract too narrow; the product boundary needed a generic restart-safe source coordinator without changing Phase 0–6 semantics.
 - **Files:** `backend/app/ingestion/polling.py`, `backend/app/ingestion/runtime.py`, `backend/app/main.py`, `backend/app/api/router.py`, `backend/app/api/schemas.py`, `backend/app/core/config.py`, `backend/app/storage/models.py`, migration `20260920_0012`, Phase R tests, demo/docs/matrix, `.env.example`, and this handoff.
 - **Validation:** Focused Phase R suite 20 passed/1 PostgreSQL skipped; full repository suite 221 passed/60 skipped; migration head `20260920_0012`; live PostgreSQL, demo, full check, compatibility fingerprint, and performance/N+1 measurements remain NOT VERIFIED because no service/database is available.
-- **Next:** Run the service-backed DB/migration/demo/full-gate workflow, then push the repair and stop.
+- **Next:** Run the service-backed DB/migration/demo/full-gate workflow; the pushed branch remains blocked until those checks execute.
 
 ### 2026-09-20 — Phase 7 product-facing API and live-demo boundary
 
