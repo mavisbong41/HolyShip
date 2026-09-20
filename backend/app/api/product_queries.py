@@ -604,7 +604,11 @@ def list_processing_events(
     validate_page(skip=0, limit=limit)
     classification, comparison, _ = _queue_sources()
     statement = (
-        select(ProcessingEventRecord, classification, comparison)
+        select(
+            ProcessingEventRecord,
+            classification.c.category.label("event_category"),
+            comparison.c.mismatch_found.label("event_mismatch_found"),
+        )
         .outerjoin(
             classification,
             and_(classification.c.email_id == ProcessingEventRecord.email_id, classification.c.rank == 1),
@@ -622,14 +626,14 @@ def list_processing_events(
         statement = statement.where(ProcessingEventRecord.created_at > since)
     rows = session.execute(statement).all()
     result = []
-    for event, classification, comparison in rows:
+    for event, category, mismatch_found in rows:
         result.append(
             ProductEvent(
                 event="EMAIL_PROCESSING_UPDATED",
                 email_id=event.email_id,
                 status=event.new_status,
-                category=classification.category if classification else None,
-                mismatch_found=bool(comparison.mismatch_found) if comparison else False,
+                category=category,
+                mismatch_found=bool(mismatch_found) if mismatch_found is not None else False,
                 updated_at=event.created_at,
                 reason_code=event.reason_code,
             )

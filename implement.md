@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase R Phase 7 closure repair
-**Repository state:** Local `phase7` retains the Phase 7 history and is clean at pushed commit `c713384`. The fetched `origin/feature/email-classification` integration merge contains the same Phase 6 production tree as the Phase 7 base; the difference is merge topology only, so no merge/rebase was performed.
+**Updated by:** Phase 7 service-backed final verification
+**Repository state:** Local `phase7` is clean at verification commit `913c67c` after starting from `f862cb6`; push to `origin/phase7` remains to be confirmed. No merge or rebase was performed.
 
 ---
 
@@ -91,7 +91,7 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | Repository/stack audit | DONE | Python/FastAPI/SQLAlchemy/PostgreSQL stack and public participant bundle verified |
 | Email ingestion | IMPLEMENTED | Source adapters normalize provider messages; duplicate identity is database-backed |
 | Initial sync | IMPLEMENTED | Repeated sync skips completed unchanged messages and processes progressively |
-| Continuous ingestion | IMPLEMENTED — DB GATE PENDING | Generic worker, startup lifespan, configurable 60-second polling, bounded backoff, source checkpoint, and completed-email/attachment dedupe are implemented; live PostgreSQL verification is unavailable here |
+| Continuous ingestion | VERIFIED — PHASE 7 | Generic worker, startup lifespan, configurable 60-second polling, bounded backoff, durable source checkpoint, restart persistence, and completed-email/attachment dedupe passed live PostgreSQL verification |
 | Classification Stage 1 | IMPLEMENTED | Centralized deterministic signals and thresholds; exact five-category output contract |
 | Classification Stage 2 | IMPLEMENTED | Validated five-category output, explicit zero-signal policy, evidence-aware deterministic tie handling |
 | Comparison readiness | IMPLEMENTED | READY_FOR_COMPARISON / AWAITING_DOCUMENTS / UNRESOLVED after document_comparison only |
@@ -381,8 +381,8 @@ Fast compare
 
 ## In Progress
 
-- Phase R implementation is complete and pushed. PostgreSQL migration/integration, live API/demo execution, full evaluation, and the final full gate remain unverified because this environment has no PostgreSQL, Docker, or Podman executable and the required database URLs are unset.
-- Matrix implementation evidence is repaired; `ING-08` remains TODO until the PostgreSQL checkpoint-restart test and full trace can run in a service-enabled environment.
+- Phase R implementation and service-backed verification are complete for the current scope. The live API, PostgreSQL migration/checkpoint path, demo, exporter, AI-disabled evaluation, reliability, performance, and full test gate have evidence below.
+- `ING-08` is now PASS in the requirements matrix after live A/B, restart, and A/B/C polling evidence; no Phase F work has started.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
@@ -405,8 +405,8 @@ Fast compare
 
 ## Next
 
-- Run the isolated PostgreSQL integration/checkpoint suite and `scripts/demo.sh` in a service-enabled environment.
-- Run `mingw32-make check-fast`, `python scripts/trace_phase0.py 7`, `mingw32-make check`, and the AI-disabled compatibility evaluation there; do not convert skipped database checks into PASS.
+- Human review of the Phase 7 evidence and commit is next. Do not merge or start Phase F from this task.
+- Keep the three database identities isolated for any future destructive test/evaluation operation.
 - Do not merge. Human Review UI/actions remain out of scope.
 
 Recommended implementation order after the dataset audit:
@@ -760,16 +760,23 @@ When adding an environment variable:
 
 ### Phase R / Phase 7 executed evidence
 
-- `python -m pytest backend/tests/test_phase7_polling.py backend/tests/test_phase7_product_api.py backend/tests/test_phase7_polling_postgres.py -q` → PASS: 20 passed, 1 PostgreSQL test skipped, 1 existing Starlette/TestClient deprecation warning.
+- Service-backed verification on 2026-09-20: Docker Desktop PostgreSQL 16.15 was healthy; `holyship_dev`, `holyship_test`, and `holyship_eval` were distinct; clean Alembic upgrade reached `20260920_0012`; live schema contained `ingestion_checkpoints`.
+- Focused Phase 7 PostgreSQL/API/polling suite with explicit isolated URLs → 23 passed, 0 skipped, 1 existing Starlette/httpx deprecation warning. Full repository collection after a clean test-schema reset → 284 passed, 0 failed, 0 skipped, 1 warning.
+- Live ING-08 A/B, A/B, restart, and A/B/C sequence → only new messages processed; checkpoint survived restart; attachment reads were 2, 0, 0, 1; backoff was bounded and reset after success.
+- Actual `scripts/demo.sh` through Git Bash → PASS for normal SI/BL, XLSX, wrong document, scanned/image, legitimate `AWAITING_DOCUMENTS`, spam, events, and summary. Live API queue/detail/events/summary/filter/reprocess checks passed; persisted GET query counts were queue 3, detail 12, summary 2.
+- AI-disabled clean evaluation → 520 emails, 0 failed, 0 unhandled; submission SHA-256 `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`. `mingw32-make reliability` → 14 passed; final Phase 7 check evaluation → 16.351s / 31.803 emails/s, p50 `0.034048s`, p95 `0.141978s`; `mingw32-make check-fast` → PASS.
+- `mingw32-make trace PHASE=7` → PASS: 103 PASS, 0 TODO, 0 FAIL, with no evidence-reference errors. The prior trace correctly reported only `ING-08` TODO before the live evidence and matrix update. Scoreboard was not called because no authoritative organizer endpoint was available.
+
+- `python -m pytest backend/tests/test_phase7_polling.py backend/tests/test_phase7_product_api.py backend/tests/test_phase7_polling_postgres.py -q` → historical pre-service run: 20 passed, 1 PostgreSQL test skipped, 1 existing Starlette/TestClient deprecation warning.
 - `python -m compileall -q backend/app backend/tests scripts` → PASS.
 - `python -m alembic heads` → PASS: `20260920_0012`.
-- `python -m pytest backend/tests -q` → PASS: 221 passed, 60 skipped (database-dependent), 1 existing Starlette/TestClient deprecation warning.
+- `python -m pytest backend/tests -q` → historical pre-service run: 221 passed, 60 skipped (database-dependent), 1 existing Starlette/TestClient deprecation warning.
 - PostgreSQL dialect compilation of queue/count statements → PASS; live SQL execution remains unverified.
 - `mingw32-make check-fast` → PASS: inherited 34-test gate, compileall, and diff check.
-- `mingw32-make check` and `python scripts/run_tests.py -q` → NOT RUN successfully: required `DATABASE_URL` and `HOLYSHIP_TEST_DATABASE_URL` are unset.
+- `mingw32-make check PHASE=7` → PASS: 284 tests passed/0 failed/0 skipped with 1 existing Starlette/httpx warning; clean AI-disabled evaluation 520/520 with 0 failed/0 unhandled; reliability 14 passed; perf/eval passed; trace 103 PASS/0 TODO/0 FAIL.
 - Production-code safety scan → PASS by focused source scan: no private-reference access or per-email production lookup was added.
 - `git diff --check` → PASS with expected Windows LF/CRLF conversion warnings.
-- Live `scripts/demo.sh`, full PostgreSQL check, public evaluation, and scoreboard → NOT RUN/UNVERIFIED: no PostgreSQL/Docker/Podman service is available.
+- Live `scripts/demo.sh`, full PostgreSQL check, and public evaluation → verified in the service-backed re-verification entries above; scoreboard intentionally not run.
 
 ### Phase 6 executed evidence
 
@@ -1016,13 +1023,21 @@ Current document-level limitations:
 - Phase 7 exposes read-only Human Review queue/detail context; reviewer UI/actions and authentication remain out of scope.
 - Microsoft Graph is a provider-isolated payload adapter only; OAuth and live Graph polling are not implemented. Generic static/Organizer HTTP polling and startup lifecycle wiring are implemented.
 - `/api/v1/sync/initial` is a synchronous initial-sync boundary that returns a product job ID for the completed request; background job progress persistence is not implemented.
-- PostgreSQL joins/checkpoint migration, live demo, full evaluation, latency measurements, and N+1 query counts are not verified in this environment because PostgreSQL/Docker/Podman is unavailable.
+- PostgreSQL joins/checkpoint migration, live demo, full evaluation, latency measurements, and bounded product-query counts are verified in the 2026-09-20 service-backed report above. Peak RSS remains unavailable by declared dependency design.
 - `scripts/demo.sh` calls the HTTP-only `scripts/demo_phase7.py`, which uses public bundle bytes and incoming API messages; it does not fabricate database rows or read private answers.
 - Exact participant-facing challenge submission schema must be verified against the public `sample_submission.json` used by the team.
 
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 7 service-backed final verification
+
+- **Changed:** Fixed persisted event polling projection unpacking, made the demo script import-safe through its shell execution context, and added a general `win a prize` spam signal; added regression tests and updated Phase 7 evidence/matrix status.
+- **Why:** Live PostgreSQL/API verification reproduced two API/demo defects and one required spam classification gap. Each was fixed at the smallest general boundary and rechecked.
+- **Files:** `backend/app/api/product_queries.py`, `backend/app/classification/signals.py`, the Phase 1/7 regression tests, `scripts/demo_phase7.py`, `docs/requirements_matrix.md`, `reports/phase7_api_verification.md`, `reports/phase7_demo.md`, and this handoff.
+- **Validation:** PostgreSQL 16.15 service healthy; focused Phase 7 suite 23 passed; full repository collection 284 passed/0 failed/0 skipped; live demo PASS; AI-disabled submission SHA matched the required reference; reliability, perf, check-fast, live API/query checks, trace PHASE=7 (103 PASS/0 TODO/0 FAIL), and `mingw32-make check PHASE=7` passed.
+- **Next:** Human review of this report, then decide whether to merge `phase7`; do not start Phase F automatically.
 
 ### 2026-09-20 — Phase R continuous ingestion and Phase 7 closure repair
 

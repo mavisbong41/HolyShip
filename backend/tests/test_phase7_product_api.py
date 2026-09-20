@@ -1,8 +1,11 @@
 from __future__ import annotations
 
 import uuid
+import subprocess
+import sys
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
+from pathlib import Path
 
 import pytest
 from fastapi.testclient import TestClient
@@ -173,6 +176,24 @@ def test_v1_events_contract_is_polling_compatible():
         assert response.json() == []
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.req("ING-04")
+def test_demo_script_can_import_backend_from_script_execution_context():
+    root = Path(__file__).resolve().parents[2]
+    probe = (
+        "import runpy, sys; "
+        "sys.path.pop(0); sys.path.insert(0, 'scripts'); "
+        "namespace = runpy.run_path('scripts/demo_phase7.py', run_name='demo_probe'); "
+        "namespace['find_scanned_pair']()"
+    )
+    result = subprocess.run(
+        [sys.executable, "-c", probe],
+        cwd=root,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr or result.stdout
 
 
 @pytest.mark.req("ING-01")

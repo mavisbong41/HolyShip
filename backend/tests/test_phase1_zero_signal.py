@@ -64,6 +64,18 @@ def test_supported_spam_evidence_is_not_neutralized():
     assert result.reason_code != "ZERO_SIGNAL_GENERAL"
 
 
+@pytest.mark.req("CLS-01")
+def test_obvious_prize_promotion_is_classified_as_spam():
+    result = classify_email(
+        email(
+            "WIN A PRIZE NOW",
+            "Click here for an unrelated promotion.",
+        )
+    )
+
+    assert result.category == EmailCategory.SPAM.value
+
+
 @pytest.mark.req("CLS-07")
 def test_no_attachment_and_bare_draft_bl_mention_is_not_sufficient():
     result = classify_email(

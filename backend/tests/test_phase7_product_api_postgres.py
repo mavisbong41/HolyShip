@@ -8,7 +8,12 @@ import pytest
 from sqlalchemy import create_engine
 from sqlalchemy.orm import sessionmaker
 
-from backend.app.api.product_queries import get_email_detail, get_product_summary, list_email_queue
+from backend.app.api.product_queries import (
+    get_email_detail,
+    get_product_summary,
+    list_email_queue,
+    list_processing_events,
+)
 from backend.app.storage.database import Base
 from backend.app.storage.models import (
     AIResolutionRecord,
@@ -286,3 +291,19 @@ def test_product_queue_detail_and_summary_join_persisted_phase6_rows(db_factory)
 def test_product_detail_missing_email_is_safe(db_factory):
     with db_factory() as session:
         assert get_email_detail(session, "00000000-0000-0000-0000-000000000000") is None
+
+
+@pytest.mark.req("API-06")
+@pytest.mark.req("ING-05")
+def test_processing_events_query_returns_persisted_event_contract(db_factory):
+    with db_factory() as session:
+        email_id = _persist_product_case(session)
+        events = list_processing_events(session, email_id=email_id, limit=100)
+
+        assert len(events) == 1
+        assert events[0].event == "EMAIL_PROCESSING_UPDATED"
+        assert events[0].email_id == email_id
+        assert events[0].status == "COMPLETED"
+        assert events[0].category == "document_comparison"
+        assert events[0].mismatch_found is True
+        assert events[0].reason_code == "COMPARISON_COMPLETE"

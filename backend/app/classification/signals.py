@@ -118,6 +118,7 @@ CATEGORY_SIGNALS: dict[EmailCategory, list[SignalPattern]] = {
     ],
     EmailCategory.SPAM: [
         SignalPattern("congratulations you have won",           weight=5.0),
+        SignalPattern("win a prize",                            weight=5.0),
         SignalPattern("click here to claim",                    weight=5.0),
         SignalPattern("limited time offer",                     weight=4.0),
         SignalPattern("weird trick",                            weight=4.0),

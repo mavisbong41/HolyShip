@@ -63,3 +63,24 @@ demo: PASS
 ```
 
 The script fails loudly on unavailable services or unexpected API responses.
+
+## Service-backed execution — 2026-09-20
+
+The historical unavailable-service result above is retained. With the existing repository Compose PostgreSQL service healthy and the actual Uvicorn API running on `127.0.0.1:8000`, the wrapper was executed through Git Bash:
+
+```text
+export PATH=/usr/bin:/bin:$PATH
+cd /d/dunno/0.AVERIS/HolyShip
+./scripts/demo.sh
+```
+
+The wrapper returned exit code 0 and `demo: PASS`. It processed the 520-email public backlog, then asserted these incoming scenarios through HTTP:
+
+- normal text SI/BL → `document_comparison`, persisted comparison state;
+- XLSX SI/BL → `document_comparison`, persisted comparison state;
+- readable wrong document → `document_comparison` / `BLOCKED` with `WRONG_DOCUMENT_TYPE` evidence;
+- scanned/image-only PDF → `document_comparison` / `BLOCKED` with inconclusive document validation;
+- legitimate no-attachment future draft request → `document_comparison` / `AWAITING_DOCUMENTS`;
+- obvious prize promotion → `spam` / `COMPLETED` without document processing.
+
+The script also asserted observable processing events and a persisted summary. The run emitted expected pypdf warnings for malformed public sample PDFs, but the wrapper completed successfully and did not inject final results into the database or access private reference data.

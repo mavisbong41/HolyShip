@@ -13,6 +13,8 @@ from urllib.request import Request, urlopen
 
 
 ROOT = Path(__file__).resolve().parents[1]
+if str(ROOT) not in sys.path:
+    sys.path.insert(0, str(ROOT))
 BUNDLE_ATTACHMENTS = (ROOT / "data" / "bundle" / "attachments").resolve()
 BASE_URL = os.environ.get("HOLYSHIP_API_URL", "http://127.0.0.1:8000").rstrip("/")
 
@@ -205,7 +207,9 @@ def main() -> None:
         },
     )
     spam = find_case("phase-r-demo-spam")
-    print_case("new incoming non-comparison", spam)
+    print_case("new incoming spam", spam)
+    if (spam.get("classification") or {}).get("category") != "spam":
+        raise RuntimeError(f"Expected spam classification, got {spam_result} / {spam}")
     if spam["email"]["processing_status"] != "COMPLETED":
         raise RuntimeError(f"Expected completed spam path, got {spam_result} / {spam}")
     check_events(spam)
