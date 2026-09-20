@@ -77,6 +77,11 @@ class ProcessingEventRecord(Base):
 class AttachmentRecord(Base):
     __tablename__ = "attachments"
     __table_args__ = (
+        UniqueConstraint(
+            "email_id",
+            "source_reference",
+            name="uq_attachment_email_source_reference",
+        ),
         CheckConstraint(
             "retrieval_status IN ('NOT_RETRIEVED','MATERIALIZED','FAILED')",
             name="ck_attachment_retrieval_status",
@@ -100,6 +105,14 @@ class AttachmentRecord(Base):
 
 class ProcessingJobRecord(TimestampMixin, Base):
     __tablename__ = "processing_jobs"
+    __table_args__ = (
+        UniqueConstraint(
+            "email_id",
+            "job_type",
+            "source_content_hash",
+            name="uq_processing_job_email_type_content",
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
@@ -107,6 +120,8 @@ class ProcessingJobRecord(TimestampMixin, Base):
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING")
     error_message: Mapped[str | None] = mapped_column(Text)
     source_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    source_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
+    attempt_count: Mapped[int] = mapped_column(nullable=False, default=0)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="processing_jobs")
 
@@ -114,6 +129,12 @@ class ProcessingJobRecord(TimestampMixin, Base):
 class ClassificationResultRecord(Base):
     __tablename__ = "classification_results"
     __table_args__ = (
+        UniqueConstraint(
+            "email_id",
+            "source_content_hash",
+            "classifier_version",
+            name="uq_classification_email_content_version",
+        ),
         CheckConstraint(
             "category IN ('document_comparison','new_si_request','invoice_query','general_message','spam')",
             name="ck_classification_category",
@@ -140,6 +161,7 @@ class ClassificationResultRecord(Base):
     resolved_at_stage: Mapped[str] = mapped_column(String(50), nullable=False)
     comparison_readiness: Mapped[str | None] = mapped_column(String(50))
     classifier_version: Mapped[str] = mapped_column(String(80), nullable=False, default="batch1-rule-v1")
+    source_content_hash: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="classification_results")
@@ -148,6 +170,11 @@ class ClassificationResultRecord(Base):
 class DocumentRecord(TimestampMixin, Base):
     __tablename__ = "documents"
     __table_args__ = (
+        UniqueConstraint(
+            "attachment_id",
+            "content_sha256",
+            name="uq_document_attachment_content",
+        ),
         CheckConstraint(
             "routing_outcome IN ('SI_FOUND','BL_FOUND','MULTIPLE_CANDIDATES','MISSING_REQUIRED_ATTACHMENT','UNSUPPORTED_ATTACHMENT','CORRUPTED_ATTACHMENT','UNREADABLE_ATTACHMENT','WRONG_DOCUMENT_TYPE','ROLE_INCONCLUSIVE','LEGACY_UNCLASSIFIED')",
             name="ck_document_routing_outcome",
@@ -170,6 +197,7 @@ class DocumentRecord(TimestampMixin, Base):
     role_evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     validation_outcome: Mapped[str] = mapped_column(String(50), nullable=False, default="INCONCLUSIVE")
     parse_duration_ms: Mapped[float | None] = mapped_column(Float)
+    content_sha256: Mapped[str | None] = mapped_column(String(64), nullable=True, index=True)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="documents")
     attachment: Mapped[AttachmentRecord | None] = relationship(back_populates="document")
@@ -198,6 +226,32 @@ class DocumentExtractionRecord(TimestampMixin, Base):
         back_populates="extraction",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+
+
+class ExtractionCacheRecord(TimestampMixin, Base):
+    """Durable, versioned pointer to one complete extraction payload."""
+
+    __tablename__ = "extraction_cache"
+    __table_args__ = (
+        UniqueConstraint(
+            "content_sha256",
+            "extractor_version",
+            name="uq_extraction_cache_content_version",
+        ),
+        UniqueConstraint(
+            "source_extraction_id",
+            name="uq_extraction_cache_source_extraction",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    content_sha256: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    extractor_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    source_extraction_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("document_extractions.id", ondelete="CASCADE"),
+        nullable=False,
     )
 
 

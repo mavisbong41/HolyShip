@@ -3,6 +3,7 @@ from __future__ import annotations
 from uuid import UUID
 
 from sqlalchemy import delete, select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.comparison.models import ComparisonBatchResult
@@ -13,6 +14,7 @@ from backend.app.storage.models import (
     ClassificationResultRecord,
     ComparisonResultRecord,
     DocumentExtractionRecord,
+    ExtractionCacheRecord,
     DocumentRecord,
     EmailMessageRecord,
     ExtractedFieldRecord,
@@ -48,10 +50,29 @@ class EmailRepository:
         if existing and existing.content_hash == message.content_hash:
             return existing, False
 
-        record = existing or EmailMessageRecord(
-            source_type=message.source_type,
-            external_message_id=message.external_message_id,
-        )
+        if existing is None:
+            record = EmailMessageRecord(
+                source_type=message.source_type,
+                external_message_id=message.external_message_id,
+            )
+            try:
+                with self.session.begin_nested():
+                    self.session.add(record)
+                    self.session.flush()
+            except IntegrityError:
+                # The database uniqueness constraint is the final duplicate
+                # protection when two workers ingest the same provider message.
+                record = self.get_by_source_external_id(
+                    message.source_type,
+                    message.external_message_id,
+                )
+                if record is None:
+                    raise
+                if record.content_hash == message.content_hash:
+                    return record, False
+        else:
+            record = existing
+
         record.sender = message.sender
         record.recipients = message.recipients
         record.subject = message.subject
@@ -59,33 +80,100 @@ class EmailRepository:
         record.received_at = message.received_at
         record.source_metadata = message.source_metadata
         record.content_hash = message.content_hash
-        record.attachments = [
-            AttachmentRecord(
-                filename=attachment.filename,
-                content_type=attachment.content_type,
-                source_reference=attachment.source_reference,
-                external_attachment_id=attachment.external_attachment_id,
-            )
-            for attachment in message.attachments
-        ]
-        self.session.add(record)
+        self._replace_attachments(record, message)
         self.session.flush()
         return record, True
+
+    def _replace_attachments(
+        self,
+        record: EmailMessageRecord,
+        message: EmailMessage,
+    ) -> None:
+        existing = {attachment.source_reference: attachment for attachment in record.attachments}
+        desired: list[AttachmentRecord] = []
+        for attachment in message.attachments:
+            current = existing.pop(attachment.source_reference, None)
+            if current is None:
+                current = AttachmentRecord(
+                    email_id=record.id,
+                    filename=attachment.filename,
+                    content_type=attachment.content_type,
+                    source_reference=attachment.source_reference,
+                    external_attachment_id=attachment.external_attachment_id,
+                )
+            else:
+                current.filename = attachment.filename
+                current.content_type = attachment.content_type
+                current.external_attachment_id = attachment.external_attachment_id
+            desired.append(current)
+        for stale in existing.values():
+            self.session.delete(stale)
+        record.attachments = desired
 
 
 class ProcessingJobRepository:
     def __init__(self, session: Session):
         self.session = session
 
-    def create(self, *, email_id: UUID, job_type: str, status: str = "PENDING", source_metadata: dict | None = None) -> ProcessingJobRecord:
+    def get_by_identity(
+        self,
+        *,
+        email_id: UUID,
+        job_type: str,
+        source_content_hash: str | None,
+    ) -> ProcessingJobRecord | None:
+        return self.session.scalar(
+            select(ProcessingJobRecord).where(
+                ProcessingJobRecord.email_id == email_id,
+                ProcessingJobRecord.job_type == job_type,
+                ProcessingJobRecord.source_content_hash == source_content_hash,
+            ).order_by(ProcessingJobRecord.created_at.desc())
+        )
+
+    def create(
+        self,
+        *,
+        email_id: UUID,
+        job_type: str,
+        status: str = "PENDING",
+        source_metadata: dict | None = None,
+        source_content_hash: str | None = None,
+    ) -> ProcessingJobRecord:
+        existing = self.get_by_identity(
+            email_id=email_id,
+            job_type=job_type,
+            source_content_hash=source_content_hash,
+        )
+        if existing is not None:
+            existing.status = status
+            existing.source_metadata = source_metadata or existing.source_metadata or {}
+            existing.attempt_count += 1
+            self.session.flush()
+            return existing
         record = ProcessingJobRecord(
             email_id=email_id,
             job_type=job_type,
             status=status,
             source_metadata=source_metadata or {},
+            source_content_hash=source_content_hash,
+            attempt_count=1,
         )
-        self.session.add(record)
-        self.session.flush()
+        try:
+            with self.session.begin_nested():
+                self.session.add(record)
+                self.session.flush()
+        except IntegrityError:
+            record = self.get_by_identity(
+                email_id=email_id,
+                job_type=job_type,
+                source_content_hash=source_content_hash,
+            )
+            if record is None:
+                raise
+            record.status = status
+            record.source_metadata = source_metadata or record.source_metadata or {}
+            record.attempt_count += 1
+            self.session.flush()
         return record
 
 
@@ -107,7 +195,18 @@ class ClassificationResultRepository:
         comparison_readiness: str | None = None,
         classifier_version: str = "batch1-rule-v1",
         reason_code: str = "CLASSIFICATION_RESOLVED",
+        source_content_hash: str | None = None,
     ) -> ClassificationResultRecord:
+        if source_content_hash is not None:
+            existing = self.session.scalar(
+                select(ClassificationResultRecord).where(
+                    ClassificationResultRecord.email_id == email_id,
+                    ClassificationResultRecord.source_content_hash == source_content_hash,
+                    ClassificationResultRecord.classifier_version == classifier_version,
+                )
+            )
+            if existing is not None:
+                return existing
         record = ClassificationResultRecord(
             email_id=email_id,
             category=category,
@@ -120,9 +219,24 @@ class ClassificationResultRepository:
             resolved_at_stage=resolved_at_stage,
             comparison_readiness=comparison_readiness,
             classifier_version=classifier_version,
+            source_content_hash=source_content_hash,
         )
-        self.session.add(record)
-        self.session.flush()
+        try:
+            with self.session.begin_nested():
+                self.session.add(record)
+                self.session.flush()
+        except IntegrityError:
+            if source_content_hash is None:
+                raise
+            record = self.session.scalar(
+                select(ClassificationResultRecord).where(
+                    ClassificationResultRecord.email_id == email_id,
+                    ClassificationResultRecord.source_content_hash == source_content_hash,
+                    ClassificationResultRecord.classifier_version == classifier_version,
+                )
+            )
+            if record is None:
+                raise
         return record
 
 
@@ -198,6 +312,7 @@ class DocumentRepository:
         role_evidence: dict | None = None,
         validation_outcome: str = "INCONCLUSIVE",
         parse_duration_ms: float | None = None,
+        content_sha256: str | None = None,
     ) -> DocumentRecord:
         record = DocumentRecord(
             email_id=email_id,
@@ -211,6 +326,7 @@ class DocumentRepository:
             role_evidence=role_evidence or {},
             validation_outcome=validation_outcome,
             parse_duration_ms=parse_duration_ms,
+            content_sha256=content_sha256,
         )
         self.session.add(record)
         self.session.flush()
@@ -245,6 +361,47 @@ class DocumentExtractionRepository:
     ) -> DocumentExtractionRecord | None:
         """Return a complete reusable payload without changing document ownership."""
 
+        cache_statement = (
+            select(DocumentExtractionRecord)
+            .join(
+                ExtractionCacheRecord,
+                ExtractionCacheRecord.source_extraction_id == DocumentExtractionRecord.id,
+            )
+            .where(
+                ExtractionCacheRecord.content_sha256 == content_sha256,
+                ExtractionCacheRecord.extractor_version == extractor_version,
+                DocumentExtractionRecord.extraction_status == "EXTRACTED",
+            )
+            .options(selectinload(DocumentExtractionRecord.fields))
+        )
+
+    def get_by_attachment_content(
+        self,
+        *,
+        attachment_id: UUID,
+        content_sha256: str,
+    ) -> DocumentRecord | None:
+        return self.session.scalar(
+            select(DocumentRecord)
+            .where(
+                DocumentRecord.attachment_id == attachment_id,
+                DocumentRecord.content_sha256 == content_sha256,
+            )
+            .options(
+                selectinload(DocumentRecord.extractions).selectinload(
+                    DocumentExtractionRecord.fields
+                )
+            )
+            .order_by(DocumentRecord.created_at.desc())
+        )
+        for candidate in self.session.scalars(cache_statement).unique():
+            if len(candidate.fields) == 7 and len({row.field_name for row in candidate.fields}) == 7:
+                if not exclude_extraction_ids or candidate.id not in exclude_extraction_ids:
+                    return candidate
+
+        # Backward-compatible fallback for extraction rows created before the
+        # Phase-5 cache table existed. A later successful persistence claims
+        # the durable cache identity.
         statement = (
             select(DocumentExtractionRecord)
             .join(DocumentRecord, DocumentRecord.id == DocumentExtractionRecord.document_id)
@@ -265,6 +422,55 @@ class DocumentExtractionRepository:
             if len(candidate.fields) == 7 and len({row.field_name for row in candidate.fields}) == 7:
                 return candidate
         return None
+
+    def register_cache_entry(
+        self,
+        *,
+        content_sha256: str,
+        extractor_version: str,
+        source_extraction_id: UUID,
+    ) -> DocumentExtractionRecord:
+        existing = self.session.scalar(
+            select(DocumentExtractionRecord)
+            .join(
+                ExtractionCacheRecord,
+                ExtractionCacheRecord.source_extraction_id == DocumentExtractionRecord.id,
+            )
+            .where(
+                ExtractionCacheRecord.content_sha256 == content_sha256,
+                ExtractionCacheRecord.extractor_version == extractor_version,
+            )
+            .options(selectinload(DocumentExtractionRecord.fields))
+        )
+        if existing is not None:
+            return existing
+
+        entry = ExtractionCacheRecord(
+            content_sha256=content_sha256,
+            extractor_version=extractor_version,
+            source_extraction_id=source_extraction_id,
+        )
+        try:
+            with self.session.begin_nested():
+                self.session.add(entry)
+                self.session.flush()
+        except IntegrityError:
+            existing = self.session.scalar(
+                select(DocumentExtractionRecord)
+                .join(
+                    ExtractionCacheRecord,
+                    ExtractionCacheRecord.source_extraction_id == DocumentExtractionRecord.id,
+                )
+                .where(
+                    ExtractionCacheRecord.content_sha256 == content_sha256,
+                    ExtractionCacheRecord.extractor_version == extractor_version,
+                )
+                .options(selectinload(DocumentExtractionRecord.fields))
+            )
+            if existing is None:
+                raise
+            return existing
+        return self.get(source_extraction_id)  # type: ignore[return-value]
 
     def create(
         self,

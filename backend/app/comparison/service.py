@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Any, Protocol
 
+from backend.app.core.reliability import run_with_timeout
 from backend.app.comparison.l1 import FieldSpecificL1Comparator
 from backend.app.comparison.models import (
     ComparisonBatchResult,
@@ -84,9 +85,13 @@ class ComparisonService:
         *,
         l1: L1Comparator | None = None,
         l2: SemanticResolver | None = None,
+        semantic_timeout_seconds: float | None = None,
     ) -> None:
         self.l1 = l1 if l1 is not None else FieldSpecificL1Comparator()
         self.l2 = l2 if l2 is not None else DefaultSemanticResolver()
+        if semantic_timeout_seconds is not None and semantic_timeout_seconds <= 0:
+            raise ValueError("semantic_timeout_seconds must be positive")
+        self.semantic_timeout_seconds = semantic_timeout_seconds
 
     def compare(
         self,
@@ -179,7 +184,7 @@ class ComparisonService:
                 l1_result.evidence,
             )
 
-        l2_result = self.l2.resolve(
+        l2_result = self._resolve_semantically(
             field_name,
             l1_result.si_value,
             l1_result.bl_value,
@@ -201,6 +206,42 @@ class ComparisonService:
             l2_result.reason,
             {"confidence": l2_result.confidence},
         )
+
+    def _resolve_semantically(
+        self,
+        field_name: CanonicalField,
+        si_value: Any,
+        bl_value: Any,
+    ) -> SemanticResolution:
+        def resolve() -> SemanticResolution:
+            return self.l2.resolve(field_name, si_value, bl_value)
+
+        try:
+            result = (
+                run_with_timeout(resolve, timeout_seconds=self.semantic_timeout_seconds)
+                if self.semantic_timeout_seconds is not None
+                else resolve()
+            )
+        except TimeoutError:
+            return SemanticResolution(
+                equivalent=None,
+                confidence=0.0,
+                reason="SEMANTIC_RESOLUTION_TIMEOUT",
+            )
+        except Exception:
+            return SemanticResolution(
+                equivalent=None,
+                confidence=0.0,
+                reason="SEMANTIC_RESOLUTION_FAILED",
+            )
+
+        if not isinstance(result, SemanticResolution):
+            return SemanticResolution(
+                equivalent=None,
+                confidence=0.0,
+                reason="SEMANTIC_RESOLUTION_INVALID",
+            )
+        return result
 
     @staticmethod
     def _is_comparable(field: ExtractedField, normalized_value: Any) -> bool:

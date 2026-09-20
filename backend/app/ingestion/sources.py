@@ -8,6 +8,11 @@ from abc import ABC, abstractmethod
 from pathlib import Path
 from typing import Any, Iterable
 
+from backend.app.core.reliability import (
+    RetryPolicy,
+    is_retryable_http_error,
+    retry_call,
+)
 from backend.app.ingestion.models import (
     AttachmentMetadata,
     EmailMessage,
@@ -74,9 +79,15 @@ class StaticBundleSource(EmailSource):
 class OrganizerHttpSource(EmailSource):
     source_type = "ORGANIZER_HTTP"
 
-    def __init__(self, base_url: str, timeout_seconds: float = 10.0):
+    def __init__(
+        self,
+        base_url: str,
+        timeout_seconds: float = 10.0,
+        retry_policy: RetryPolicy | None = None,
+    ):
         self.base_url = base_url.rstrip("/")
         self.timeout_seconds = timeout_seconds
+        self.retry_policy = retry_policy or RetryPolicy()
 
     def iter_messages(self) -> Iterable[EmailMessage]:
         for record in self._get_json("/emails"):
@@ -88,18 +99,22 @@ class OrganizerHttpSource(EmailSource):
 
     def get_attachment_content(self, attachment: AttachmentMetadata) -> bytes:
         safe_path = urllib.parse.quote(attachment.source_reference.lstrip("/"), safe="/")
-        with urllib.request.urlopen(
-            f"{self.base_url}/{safe_path}",
-            timeout=self.timeout_seconds,
-        ) as response:
-            return response.read()
+        return self._request_bytes(f"{self.base_url}/{safe_path}")
 
     def _get_json(self, path: str) -> Any:
-        with urllib.request.urlopen(
-            f"{self.base_url}{path}",
-            timeout=self.timeout_seconds,
-        ) as response:
-            return json.loads(response.read().decode("utf-8"))
+        payload = self._request_bytes(f"{self.base_url}{path}")
+        return json.loads(payload.decode("utf-8"))
+
+    def _request_bytes(self, url: str) -> bytes:
+        def request() -> bytes:
+            with urllib.request.urlopen(url, timeout=self.timeout_seconds) as response:
+                return response.read()
+
+        return retry_call(
+            request,
+            policy=self.retry_policy,
+            is_retryable=is_retryable_http_error,
+        )
 
     def _map_record(self, record: dict[str, Any]) -> EmailMessage:
         return map_organizer_record(

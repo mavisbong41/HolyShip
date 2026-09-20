@@ -9,6 +9,7 @@ from enum import Enum
 from sqlalchemy.orm import Session
 
 from backend.app.comparison.persistence import PersistedComparisonService
+from backend.app.comparison.service import ComparisonService
 from backend.app.documents.models import DocumentFormat, DocumentType, UnifiedDocument
 from backend.app.documents.readers.composite import CompositeDocumentReader
 from backend.app.documents.role_validation import (
@@ -78,6 +79,7 @@ class DocumentMaterializationService:
         reader: CompositeDocumentReader | None = None,
         role_validator: DocumentRoleValidator | None = None,
         field_extractor: DeterministicDocumentExtractor | None = None,
+        semantic_resolver_timeout_seconds: float | None = None,
     ):
         self.session = session
         self.reader = reader or CompositeDocumentReader()
@@ -86,7 +88,12 @@ class DocumentMaterializationService:
         self.document_repo = DocumentRepository(session)
         self.extraction_repo = DocumentExtractionRepository(session)
         self.field_repo = ExtractedFieldRepository(session)
-        self.comparison_service = PersistedComparisonService(session)
+        self.comparison_service = PersistedComparisonService(
+            session,
+            comparator=ComparisonService(
+                semantic_timeout_seconds=semantic_resolver_timeout_seconds,
+            ),
+        )
 
     def process(
         self,
@@ -148,6 +155,42 @@ class DocumentMaterializationService:
 
             validation, outcome = self._classify_materialization(content, document)
             document.document_type = validation.document_type
+
+            existing_document = self.document_repo.get_by_attachment_content(
+                attachment_id=attachment_record.id,
+                content_sha256=attachment_record.content_sha256,
+            )
+            if existing_document is not None and existing_document.extractions:
+                # A process restart may have committed materialization but
+                # stopped before extraction/comparison. Reuse that durable
+                # graph instead of creating a second document/extraction.
+                existing_extraction = max(
+                    existing_document.extractions,
+                    key=lambda item: item.created_at,
+                )
+                try:
+                    existing_role = DocumentType(existing_document.document_type)
+                except ValueError:
+                    existing_role = DocumentType.UNKNOWN
+                try:
+                    existing_outcome = PreExtractionOutcome(
+                        existing_document.routing_outcome
+                    )
+                except ValueError:
+                    existing_outcome = outcome
+                document.document_type = existing_role
+                persisted.append(
+                    _PersistedDocument(
+                        record=existing_document,
+                        extraction=existing_extraction,
+                        document=document,
+                        content_sha256=attachment_record.content_sha256,
+                        role=existing_role,
+                        outcome=existing_outcome,
+                    )
+                )
+                continue
+
             document_record = self.document_repo.create(
                 email_id=email_record.id,
                 attachment_id=attachment_record.id,
@@ -160,6 +203,7 @@ class DocumentMaterializationService:
                 role_evidence={"markers": validation.markers, "summary": validation.evidence},
                 validation_outcome=validation.outcome.value,
                 parse_duration_ms=parse_duration_ms,
+                content_sha256=attachment_record.content_sha256,
             )
             extraction_record = self.extraction_repo.create(
                 document_id=document_record.id,

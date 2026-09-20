@@ -209,6 +209,11 @@ class DocumentFieldExtractionService:
             status="HIT",
             source_extraction_id=cached.id,
         )
+        self.extraction_repo.register_cache_entry(
+            content_sha256=target.content_sha256,
+            extractor_version=self.extractor.version,
+            source_extraction_id=cached.id,
+        )
         self.session.flush()
 
     def _persist_fresh(
@@ -230,6 +235,22 @@ class DocumentFieldExtractionService:
             status="HIT_IN_BATCH" if reused_in_batch else "MISS",
             source_extraction_id=source_extraction_id,
         )
+        cache_source = self.extraction_repo.register_cache_entry(
+            content_sha256=target.content_sha256,
+            extractor_version=self.extractor.version,
+            source_extraction_id=target.extraction.id,
+        )
+        if cache_source.id != target.extraction.id:
+            self.field_repo.clear_result(target.extraction.id)
+            self.field_repo.copy_result(
+                source_extraction_id=cache_source.id,
+                target_extraction_id=target.extraction.id,
+            )
+            self._set_cache_metadata(
+                target,
+                status="HIT_RACE_RECOVERY",
+                source_extraction_id=cache_source.id,
+            )
         self.session.flush()
 
     def _persist_failure(self, target: ExtractionTarget, error: str) -> None:
