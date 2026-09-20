@@ -332,6 +332,26 @@ class DocumentRepository:
         self.session.flush()
         return record
 
+    def get_by_attachment_content(
+        self,
+        *,
+        attachment_id: UUID,
+        content_sha256: str,
+    ) -> DocumentRecord | None:
+        return self.session.scalar(
+            select(DocumentRecord)
+            .where(
+                DocumentRecord.attachment_id == attachment_id,
+                DocumentRecord.content_sha256 == content_sha256,
+            )
+            .options(
+                selectinload(DocumentRecord.extractions).selectinload(
+                    DocumentExtractionRecord.fields
+                )
+            )
+            .order_by(DocumentRecord.created_at.desc())
+        )
+
 
 class DocumentExtractionRepository:
     def __init__(self, session: Session):
@@ -373,26 +393,6 @@ class DocumentExtractionRepository:
                 DocumentExtractionRecord.extraction_status == "EXTRACTED",
             )
             .options(selectinload(DocumentExtractionRecord.fields))
-        )
-
-    def get_by_attachment_content(
-        self,
-        *,
-        attachment_id: UUID,
-        content_sha256: str,
-    ) -> DocumentRecord | None:
-        return self.session.scalar(
-            select(DocumentRecord)
-            .where(
-                DocumentRecord.attachment_id == attachment_id,
-                DocumentRecord.content_sha256 == content_sha256,
-            )
-            .options(
-                selectinload(DocumentRecord.extractions).selectinload(
-                    DocumentExtractionRecord.fields
-                )
-            )
-            .order_by(DocumentRecord.created_at.desc())
         )
         for candidate in self.session.scalars(cache_statement).unique():
             if len(candidate.fields) == 7 and len({row.field_name for row in candidate.fields}) == 7:

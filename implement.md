@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Self-evaluation harness database isolation repair after Phase 4
-**Repository state:** Phases 0–4 remain frozen and complete. Evaluation now rebuilds a dedicated `holyship_eval` database from Alembic head for every run, preventing historical development rows from producing a stale submission.
+**Updated by:** Phase 5 reliability and performance hardening
+**Repository state:** `phase5` is based on `feature/email-classification` at the Phase 4 merge, with three pushed Phase 5 checkpoints. Phases 0–4 business semantics remain unchanged; reliability controls and additive migrations extend the persistence/runtime boundary.
 
 ---
 
@@ -89,9 +89,9 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 |---|---|---|
 | Requirements | DONE | Backend requirements defined through comparison |
 | Repository/stack audit | DONE | Python/FastAPI/SQLAlchemy/PostgreSQL stack and public participant bundle verified |
-| Email ingestion | NOT CONFIRMED | Implementation must be checked |
-| Initial sync | NOT CONFIRMED | Implementation must be checked |
-| Continuous ingestion | NOT CONFIRMED | Implementation must be checked |
+| Email ingestion | IMPLEMENTED | Source adapters normalize provider messages; duplicate identity is database-backed |
+| Initial sync | IMPLEMENTED | Repeated sync skips completed unchanged messages and processes progressively |
+| Continuous ingestion | PARTIAL | Incoming API and HTTP/static adapters exist; real provider cursor/polling is not implemented |
 | Classification Stage 1 | IMPLEMENTED | Centralized deterministic signals and thresholds; exact five-category output contract |
 | Classification Stage 2 | IMPLEMENTED | Validated five-category output, explicit zero-signal policy, evidence-aware deterministic tie handling |
 | Comparison readiness | IMPLEMENTED | READY_FOR_COMPARISON / AWAITING_DOCUMENTS / UNRESOLVED after document_comparison only |
@@ -101,9 +101,10 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | SI/BL extraction | IMPLEMENTED | Deterministic independent seven-field extraction, bounded SI/BL parallel work, persistence, and versioned content-hash reuse |
 | Canonical field mapping | IMPLEMENTED | Strict dictionary, bilingual/contextual/table provenance, ambiguity handling, and NET-weight exclusion have executable evidence |
 | Comparison pipeline | IMPLEMENTED — PHASE 4 | Persisted SI-reference comparison with exact MATCH/MISMATCH/UNRESOLVED evidence and COMPLETED/BLOCKED transitions |
-| Persistence | IMPLEMENTED THROUGH PHASE 4 | Processing events, attachment/document/extraction evidence, versioned comparison aggregates, and seven per-field comparison rows |
-| Dashboard backend API | NOT CONFIRMED | Implementation must be checked |
-| Email-extension backend API | NOT CONFIRMED | Implementation must be checked |
+| Persistence | IMPLEMENTED THROUGH PHASE 5 | Phase 5 adds durable job/classification/document/cache identities and conflict-safe re-fetch paths |
+| Reliability/performance | IMPLEMENTED — PHASE 5 | Bounded email workers, finite retries/timeouts, resume for interrupted technical states, structured metrics, and failure-isolation tests |
+| Dashboard backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing route boundary; no dashboard behavior was added |
+| Email-extension backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing incoming-email route boundary; no extension UI was added |
 | Human Review UI/workflow | OUT OF SCOPE | Next milestone |
 
 `NOT CONFIRMED` means this file was created before inspecting the repository's actual implementation. Codex must replace these statuses with truthful repository state after inspection.
@@ -218,6 +219,15 @@ Fast compare
 - Observed regression distribution remains category `BL_COMPARISON=203`, `SI_REQUEST=141`, `INVOICE_QUERY=84`, `GENERAL=66`, `SPAM=26`; status `OK=317`, `MISMATCH=0`, `NEEDS_REVIEW=203`. These values are observed evidence only and are not runtime assertions or prediction rules.
 - Read-only dev fingerprints before and after all eval/check work matched exactly (`6346f45875e8581f51e85833dd56f9f58037af7938f7ad61f2cff1478307dd3b`), with Alembic still at `20260920_0008` and all row counts unchanged. Eval runs also left the test fingerprint unchanged; the later full test target performed its existing intentional test-fixture cleanup independently.
 - No classifier, readiness, routing, extraction, comparison, or submission mapping behavior changed. No dependency was added and no scoreboard call was made.
+
+### Phase 5 — reliability and performance hardening
+
+- `SyncService` now supports a bounded in-flight email window with one SQLAlchemy session per worker when a session factory is provided. The default remains single-worker when no factory is supplied, preserving existing callers and deterministic semantics.
+- Repeated unchanged syncs skip completed and business-blocked cases. Interrupted technical states (`NEW`, `QUEUED`, `CLASSIFYING`, `RETRIEVING_ATTACHMENTS`, `EXTRACTING`, and `COMPARING`) are eligible for restart/resume. Source message, job, classification, attachment, document, and extraction identities are persisted with database uniqueness/conflict recovery.
+- Additive migrations `20260920_0009` and `20260920_0010` add job/classification content identities, attachment/document identities, attempt counts, and a durable `(content_sha256, extractor_version)` extraction-cache pointer.
+- Retry/timeout controls are finite and configurable. Organizer HTTP retries only transient network/408/425/429/5xx failures and records structured retry events; deterministic failures are not retried. Injected semantic resolvers receive bounded timeout/malformed-output handling and become structured `UNRESOLVED` results.
+- Sync reports now expose wall time, throughput, per-email p50/p95, retries, reader/extractor/OCR/Vision counts, cache hits/misses, worker count, and unhandled worker exceptions. `run_baseline.py` consumes these values instead of hard-coding external-call counts.
+- No Phase 0–4 category/readiness/field/comparison behavior, Human Review UI, Phase 6 AI provider, or Phase 7 frontend was added.
 
 ### Phase 4 — P4C comparison persistence, pipeline, and submission boundary
 
@@ -596,7 +606,14 @@ Phase 4 persistence is additive in migration `20260920_0008`:
 - Internal comparison states remain project-owned (`COMPLETED`/`BLOCKED`, field `MATCH`/`MISMATCH`/`UNRESOLVED`). Public `OK`/`MISMATCH`/`NEEDS_REVIEW` strings remain isolated in `submission_adapter.py`.
 - No external dependency or environment variable was added.
 
-No repository API/schema changes are confirmed yet.
+Phase 5 persistence/runtime changes are additive:
+
+- Migration `20260920_0009` adds nullable source-content identities for jobs/classifications, bounded job attempt counts, attachment source-reference uniqueness, and document attachment/content uniqueness. Nullable legacy columns preserve older rows while new processing writes content identities.
+- Migration `20260920_0010` adds `extraction_cache`, uniquely keyed by content SHA-256 plus extractor version and pointing to one complete source extraction. Cache reuse copies fields into the current document-owned extraction and keeps raw/provenance values intact.
+- New configuration in `.env.example`: `SYNC_MAX_WORKERS=4`, `ORGANIZER_HTTP_TIMEOUT_SECONDS=10`, `RETRY_MAX_ATTEMPTS=3`, `RETRY_BACKOFF_SECONDS=0.25`, and `SEMANTIC_RESOLVER_TIMEOUT_SECONDS=5`. No secrets or new production dependency were added; Alembic was already declared and was installed in the verification environment only.
+- `SyncReport` adds operational metrics; these fields are additive and existing API response shapes remain backward-compatible.
+
+No new public route was added in Phase 5. Existing `/api/sync` and `/api/email/incoming` now pass bounded worker/retry settings into the shared service; persistence changes are additive Alembic migrations `0009` and `0010`.
 
 Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
 
@@ -625,6 +642,8 @@ HOLYSHIP_EVAL_DATABASE_URL   -> holyship_eval
 ```
 
 `HOLYSHIP_EVAL_DATABASE_URL` is required for `make eval` and scoring preflight. It must identify a dedicated non-maintenance database distinct from dev and test. The database itself must exist and be owned by or writable by the configured application user; the harness owns only its eval schema lifecycle. `.env.example` documents the safe local names, while the local `.env` remains ignored and uncommitted.
+
+Phase 5 worker/retry defaults are safe bounded values documented in `.env.example`. Production `/api/sync` passes `SessionLocal`, the configured worker limit, retry attempts, HTTP timeout policy, and semantic resolver timeout into the shared service. No real Microsoft Graph cursor/polling configuration exists yet.
 
 Likely categories may include:
 
@@ -703,6 +722,14 @@ When adding an environment variable:
 - all seven match → `No mismatch detected`
 
 ### Validation log
+
+2026-09-20 — Phase 5 reliability and performance hardening
+- Branch policy → PASS: `phase5` created from `feature/email-classification` (`67f00f2`), published with upstream, and left separate from the base branch.
+- Pre-Phase-5 baseline → `mingw32-make check-fast` PASS: 19 tests, 0 failures, 1 existing Starlette warning, wall time 6.322s. Existing clean-evaluation artifact fingerprint: `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`; observed legacy full-run metrics were 520 emails, 15.284s, 34.023 emails/s, 0 unhandled exceptions. Per-email p50/p95 and peak RSS were not measured by the legacy artifact.
+- TDD/fast reliability evidence → focused Phase 5 suite 11 passed; refreshed expanded fast gate 34 passed; refreshed complete available test collection 175 passed, 47 skipped, 1 warning. The skipped tests are PostgreSQL-gated and were not silently counted as verified. The final repository-boundary regression assertion is included in both refreshed counts.
+- PostgreSQL reliability tests added for repeated sync idempotency, concurrent duplicate ingestion, restart/resume, and single-worker/parallel semantic snapshots. Current host has no `HOLYSHIP_TEST_DATABASE_URL`, PostgreSQL service, Docker, or `DATABASE_URL`/`.env`; these scenarios are NOT VERIFIED here.
+- Full gate → `mingw32-make check` attempted and stopped at the existing database precondition (`DATABASE_URL and HOLYSHIP_TEST_DATABASE_URL must both be configured`). Scoreboard was not called. `git diff --check` and Alembic migration compilation passed.
+- Private coupling scan → no runtime reads of `ground_truth.json`, `data_v2`, answer lookup, email-specific production rules, or hard-coded 520 processing logic found in Phase 5 changes.
 
 2026-09-20 — Self-evaluation harness isolation repair
 - Isolation guard unit suite → 6 passed. `make check-fast` → PASS: compileall, 19 tests, and diff check.
@@ -842,6 +869,12 @@ Never fabricate test results.
 
 ## Known Limitations
 
+- PostgreSQL concurrency, migration execution against a live database, full clean Phase 5 evaluation, restart durability across a real process boundary, and single-worker/parallel database semantic equivalence are NOT VERIFIED on this host because PostgreSQL/Docker and the configured dev/test/eval URLs are unavailable. The executable PostgreSQL tests are present and skip only when the required test URL is absent.
+- Phase 5 does not add a real provider polling cursor/checkpoint. Static bundle, organizer HTTP, and incoming API sources remain the implemented provider boundary; real Microsoft Graph polling is NOT IMPLEMENTED / NOT VERIFIED.
+- Peak RSS remains NOT MEASURED because no cross-platform process-metrics dependency is declared. The new report records this honestly rather than emitting zero.
+- The semantic timeout helper bounds the caller wait but cannot forcibly cancel an arbitrary provider thread; the timed-out daemon call may finish in the background. Phase 6 provider integration must supply cancellable client calls where possible.
+- Public clean evaluation and scoreboard verification could not be rerun without the dedicated evaluation database and organizer endpoint. The Phase 4 submission fingerprint is preserved as the semantic baseline; no Phase 5 final evaluation fingerprint is claimed.
+
 - P4B L1 remains deliberately conservative: unapproved port spellings and entity aliases without an exact safe rule pass to the default-unresolved L2 boundary rather than being guessed.
 - The default L2 resolver performs zero provider calls and returns uncertainty. A real semantic resolver remains optional later-phase work.
 - Extraction remains deterministic and native. OCR and model-backed hard-case resolution remain later-phase work; `llm_resolved` is an allowed persisted provenance value but is never emitted here.
@@ -867,6 +900,15 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 5 reliability and performance hardening
+
+- **Changed:** Added bounded email-level concurrency, per-worker sessions, finite retry/timeout primitives, transient HTTP retry diagnostics, resolver timeout/malformed-output handling, resumable technical states, database-backed duplicate identities, additive cache identity persistence, and structured sync metrics.
+- **Why:** Phase 5 requires reliable restart/resume, duplicate protection under concurrency, bounded resource use, observable failures, and measured performance while preserving Phase 0–4 semantics.
+- **Files:** `backend/app/core/reliability.py`, sync/source/comparison/materialization/extraction/storage modules, Alembic `0009`/`0010`, `.env.example`, `Makefile`, `scripts/run_baseline.py`, Phase 5 tests, reports, and this handoff.
+- **Dependencies:** No new production dependency. Existing declared Alembic was installed in the verification environment to collect the full suite.
+- **Validation:** refreshed `mingw32-make check-fast` passed with 34 tests; refreshed full available pytest collection passed 175 with 47 PostgreSQL-gated skips. `mingw32-make check` is NOT VERIFIED because required database URLs/PostgreSQL are unavailable. Three Phase 5 commits are pushed to `origin/phase5` after the final documentation checkpoint.
+- **Next:** Run migrations, PostgreSQL reliability tests, clean repeated evaluation, scale/performance comparison, and the full Phase 5 gate in an environment with isolated dev/test/eval databases. Do not begin Phase 6/7 from this task.
 
 ### 2026-09-20 — Dedicated self-evaluation database repair
 

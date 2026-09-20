@@ -1,5 +1,6 @@
 from backend.app.storage.database import Base
 from backend.app.storage import models  # noqa: F401
+from backend.app.storage.repositories import DocumentRepository
 
 
 def test_batch1_database_metadata_contains_required_tables():
@@ -33,3 +34,7 @@ def test_phase5_persistence_identities_are_database_backed():
     for table_name, constraint_name in expected.items():
         table = Base.metadata.tables[table_name]
         assert constraint_name in {constraint.name for constraint in table.constraints}
+
+
+def test_document_repository_exposes_restart_lookup_on_document_boundary():
+    assert callable(getattr(DocumentRepository, "get_by_attachment_content", None))

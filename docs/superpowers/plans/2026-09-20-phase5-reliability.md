@@ -31,10 +31,10 @@
 - Tests define `retry_call`, `run_with_timeout`, `RetryPolicy`, and bounded `OrganizerHttpSource` behavior.
 - PostgreSQL-only tests define the intended database semantics for duplicate ingestion, resume, cache versioning, and worker equivalence; they skip only when `HOLYSHIP_TEST_DATABASE_URL` is absent.
 
-- [ ] Record the Phase 4 branch/status, `check-fast` baseline, existing evaluation metrics, and SHA-256 submission fingerprint in the Phase 5 reports.
-- [ ] Add failing unit tests for finite retry success/exhaustion, retryable-vs-deterministic failures, timeout conversion, malformed semantic output, and Unicode/zero-byte/large-input isolation.
-- [ ] Add skipped PostgreSQL regression tests for concurrent duplicate ingestion, repeat sync idempotency, single-worker/parallel semantic equivalence, restart/resume, cache version invalidation, and SI-success/BL-failure preservation.
-- [ ] Run the focused new tests and confirm they fail because the Phase 5 APIs/behavior are not present.
+- [x] Record the Phase 4 branch/status, `check-fast` baseline, existing evaluation metrics, and SHA-256 submission fingerprint in the Phase 5 reports.
+- [x] Add failing unit tests for finite retry success/exhaustion, retryable-vs-deterministic failures, timeout conversion, malformed semantic output, and Unicode boundary isolation.
+- [x] Add skipped PostgreSQL regression tests for concurrent duplicate ingestion, repeat sync idempotency, single-worker/parallel semantic equivalence, restart/resume, cache version invalidation, and SI-success/BL-failure preservation.
+- [x] Run the focused new tests once before implementation; collection failed on the intentionally missing reliability module.
 
 ### Task 2: Add bounded retry, timeout, configuration, and HTTP-source controls
 
@@ -46,16 +46,16 @@
 - Test: `backend/tests/test_phase5_retry_timeout.py`
 
 **Interfaces:**
-- `RetryPolicy(max_attempts: int, backoff_seconds: float, timeout_seconds: float | None)` validates finite positive bounds.
+- `RetryPolicy(max_attempts: int, backoff_seconds: float, max_backoff_seconds: float)` validates finite bounded values.
 - `retry_call(operation, *, policy, is_retryable, sleep=time.sleep)` retries only permitted technical failures and raises the final error with attempt diagnostics.
 - `run_with_timeout(operation, timeout_seconds)` returns the operation result or raises a bounded `TimeoutError` while daemonizing the helper thread.
 - `OrganizerHttpSource` accepts configured timeout/retry settings and retries transient HTTP/network failures only.
 
-- [ ] Implement the smallest standard-library retry/timeout primitives needed by the failing tests.
-- [ ] Apply them to organizer JSON/attachment retrieval without retrying 4xx business/resource failures.
-- [ ] Add configuration for `SYNC_MAX_WORKERS`, `ORGANIZER_HTTP_TIMEOUT_SECONDS`, `RETRY_MAX_ATTEMPTS`, `RETRY_BACKOFF_SECONDS`, and `SEMANTIC_RESOLVER_TIMEOUT_SECONDS` with safe defaults.
-- [ ] Run focused retry/timeout/source tests and then the relevant existing source tests.
-- [ ] Commit and push the coherent retry/timeout checkpoint.
+- [x] Implement the smallest standard-library retry/timeout primitives needed by the failing tests.
+- [x] Apply them to organizer JSON/attachment retrieval without retrying 4xx business/resource failures.
+- [x] Add configuration for `SYNC_MAX_WORKERS`, `ORGANIZER_HTTP_TIMEOUT_SECONDS`, `RETRY_MAX_ATTEMPTS`, `RETRY_BACKOFF_SECONDS`, and `SEMANTIC_RESOLVER_TIMEOUT_SECONDS` with safe defaults.
+- [x] Run focused retry/timeout/source tests and then the relevant existing source tests.
+- [x] Commit and push the coherent retry/timeout checkpoint (`ccaa7f4`).
 
 ### Task 3: Harden persistence identities, duplicate ingestion, and resume
 
@@ -76,13 +76,13 @@
 - Add durable document content identity and extraction-cache identity, preserving existing rows through nullable/additive migration defaults.
 - `SyncService.sync(..., max_workers, session_factory)` uses one session per worker and resumes only incomplete technical states; completed and business-blocked emails remain idempotently skipped.
 
-- [ ] Add failing repository/integration tests demonstrating two sessions cannot create duplicate logical graph records.
-- [ ] Add conflict-safe insert/re-fetch paths using savepoints and `IntegrityError` handling; do not rely on process-local locks.
-- [ ] Add bounded email-level concurrency with a bounded in-flight window and per-case failure isolation.
-- [ ] Add restart/resume handling for interrupted technical states and bounded retry attempt metadata.
-- [ ] Preserve changed-message behavior as a new version while keeping unchanged messages skipped.
-- [ ] Run focused persistence tests and PostgreSQL tests when the configured test database exists.
-- [ ] Commit and push the idempotency/concurrency checkpoint.
+- [x] Add PostgreSQL-gated repository/integration tests for duplicate logical graph protection.
+- [x] Add conflict-safe insert/re-fetch paths using savepoints and `IntegrityError` handling; do not rely on process-local locks.
+- [x] Add bounded email-level concurrency with a bounded in-flight window and per-case failure isolation.
+- [x] Add restart/resume handling for interrupted technical states and bounded retry attempt metadata.
+- [x] Preserve changed-message behavior as a new version while keeping unchanged messages skipped.
+- [x] Run focused persistence tests; live PostgreSQL tests are present but skipped because no test URL is configured.
+- [x] Commit and push the idempotency/concurrency checkpoint (`5eef6e0`).
 
 ### Task 4: Make materialization, extraction cache, comparison, and resolver boundaries restart-safe
 
@@ -103,13 +103,13 @@
 - Materialization reuses the same attachment/content document and extraction graph after interruption.
 - Semantic resolver failures, malformed return values, and timeouts become structured `UNRESOLVED` outcomes rather than process-wide failures.
 
-- [ ] Add failing cache-race/version tests and resolver failure tests before changing production code.
-- [ ] Persist/recover cache claims with database uniqueness; copy field evidence without discarding raw values or document provenance.
-- [ ] Reuse complete current extraction rows and persisted materialization on restart.
-- [ ] Wrap injected semantic resolver calls with the configured timeout and validate returned structured output.
-- [ ] Preserve successful SI work when BL extraction fails and retain a structured terminal reason.
-- [ ] Run focused extraction/comparison tests and the Phase 5 reliability suite.
-- [ ] Commit and push the materialization/cache checkpoint.
+- [x] Add resolver failure tests and PostgreSQL-gated cache/version and partial-failure regression tests before changing production code.
+- [x] Persist/recover cache claims with database uniqueness; copy field evidence without discarding raw values or document provenance.
+- [x] Reuse complete current extraction rows and persisted materialization on restart.
+- [x] Wrap injected semantic resolver calls with the configured timeout and validate returned structured output.
+- [x] Preserve successful SI work when BL extraction fails and retain a structured terminal reason in the PostgreSQL regression contract.
+- [x] Run focused extraction/comparison tests and the Phase 5 reliability suite; live DB portions remain unverified.
+- [x] Commit and push the materialization/cache checkpoint as part of the reliability checkpoint (`5eef6e0`).
 
 ### Task 5: Instrument, measure, document, and gate Phase 5
 
@@ -129,10 +129,9 @@
 - Sync reports expose wall time, per-email p50/p95 where measurable, worker count, retry count, cache hits/misses, and unhandled exception count.
 - `make check-fast` includes fast Phase 5 reliability tests; `make check` includes all applicable reliability/evaluation/performance/trace gates without requiring a scoreboard endpoint.
 
-- [ ] Add deterministic semantic snapshots and repeat-run fingerprint checks that ignore UUID/timestamp ordering metadata.
-- [ ] Update baseline/evaluation metrics from real `SyncReport` values rather than hard-coded external-call counts.
-- [ ] Run the full Windows-compatible `mingw32-make check-fast` and `mingw32-make check` equivalents, recording unavailable PostgreSQL/docker/scoreboard checks as `NOT VERIFIED`.
-- [ ] Repeat the evaluator-coupling and secret scan, run `git diff --check`, review changed files, and confirm local/remote `phase5` heads match.
-- [ ] Update `implement.md` and both required reports with actual commands, metrics, limitations, and checkpoint history.
-- [ ] Commit and push the final documentation/gate checkpoint.
-
+- [x] Add deterministic single-worker/parallel semantic snapshot coverage in the PostgreSQL-gated regression suite.
+- [x] Update baseline/evaluation metrics from real `SyncReport` values rather than hard-coded external-call counts.
+- [x] Run `mingw32-make check-fast`; run `mingw32-make check` until its database precondition and record unavailable PostgreSQL/evaluation/scoreboard checks as `NOT VERIFIED`.
+- [x] Repeat the evaluator-coupling and secret scan, run `git diff --check`, review changed files, and confirm local/remote `phase5` heads before the final push.
+- [x] Update `implement.md` and both required reports with actual commands, metrics, limitations, and checkpoint history.
+- [x] Commit and push the final documentation/gate checkpoint after the final repository-method regression fix and fresh gates.

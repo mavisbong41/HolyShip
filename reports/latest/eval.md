@@ -1,5 +1,9 @@
 # Current public-bundle evaluation
 
+## Phase 5 evaluation status
+
+No new Phase 5 clean evaluation was run in this environment. The dedicated evaluation URL and PostgreSQL runtime are not configured, so the JSON below remains the preserved Phase 4/pre-Phase-5 artifact. It is a semantic baseline only; no Phase 5 final fingerprint or score is claimed.
+
 ```json
 {
   "attachment_audit": {
