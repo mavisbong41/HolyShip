@@ -43,8 +43,8 @@ Human Review UI/workflow is intentionally not part of the current milestone.
 ## Last Updated
 
 **Date:** 2026-09-20  
-**Updated by:** Phase 5 final verification and closure
-**Repository state:** `phase5` contains the three prior Phase 5 checkpoints plus one targeted PostgreSQL correctness fix and the final verification evidence. Phases 0–4 business semantics remain unchanged; reliability controls and additive migrations extend the persistence/runtime boundary.
+**Updated by:** Phase 6 focused runtime/concurrency review and final verification
+**Repository state:** `phase6` is based on merged Phase 5 commit `a415000b7692648962e2984e35eb7819c23785d0`. It adds an opt-in provider-independent resolver, configured API/batch runtime wiring, bounded OCR, migration `20260920_0011`, and fixture-backed evaluation. The AI-disabled submission remains byte-identical to Phase 5.
 
 ---
 
@@ -101,8 +101,10 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 | SI/BL extraction | IMPLEMENTED | Deterministic independent seven-field extraction, bounded SI/BL parallel work, persistence, and versioned content-hash reuse |
 | Canonical field mapping | IMPLEMENTED | Strict dictionary, bilingual/contextual/table provenance, ambiguity handling, and NET-weight exclusion have executable evidence |
 | Comparison pipeline | IMPLEMENTED — PHASE 4 | Persisted SI-reference comparison with exact MATCH/MISMATCH/UNRESOLVED evidence and COMPLETED/BLOCKED transitions |
-| Persistence | IMPLEMENTED THROUGH PHASE 5 | Phase 5 adds durable job/classification/document/cache identities and conflict-safe re-fetch paths |
-| Reliability/performance | VERIFIED — PHASE 5 | Bounded email workers, finite retries/timeouts, resume coverage, durable identities/cache, structured metrics, live PostgreSQL gates, deterministic evaluation, and measured performance |
+| Targeted hard-case AI | IMPLEMENTED — LIVE PROVIDER NOT VERIFIED | Disabled by default; unresolved extraction fields batch per document; semantic AI runs only after L0/L1 uncertainty; structured results are evidence/type/unit/confidence validated |
+| OCR | IMPLEMENTED / MOCK VERIFIED | Native-first routing, injectable engine, content cache, timeout, call budget, concurrency limit, and clean failure outcomes |
+| Persistence | IMPLEMENTED THROUGH PHASE 6 | Non-destructive AI proposal/audit persistence and versioned request-cache identity added |
+| Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing route boundary; no dashboard behavior was added |
 | Email-extension backend API | EXISTING / OUT OF PHASE 5 | Phase 5 preserved the existing incoming-email route boundary; no extension UI was added |
 | Human Review UI/workflow | OUT OF SCOPE | Next milestone |
@@ -209,6 +211,17 @@ Fast compare
 ---
 
 ## Implemented
+
+### Phase 6 — targeted hard-case AI layer
+
+- The Phase 0–5 deterministic path remains primary. `AI_ESCALATION_ENABLED=false` produces no resolver calls.
+- `backend.app.resolution` supplies provider-independent extraction/semantic contracts, structured validation, finite retry/timeout, per-case budget, concurrency limits, stable versioned cache keys, and single-flight behavior.
+- Environment-backed settings now construct the configured resolver for both API and batch entry points. The factory shares provider limits and duplicate suppression across in-process SQLAlchemy worker sessions; disabled mode constructs no provider.
+- Only `UNRESOLVED`/`AMBIGUOUS` fields with source evidence escalate; hard fields are batched per document. Accepted values are comparison-only overlays. Phase 3 `extracted_fields` rows are never overwritten.
+- Semantic escalation occurs only after L0/L1 make no decision. Definite matches/mismatches bypass AI. Missing/unanchored/conflicting evidence, low confidence, malformed output, unsafe units, timeout, retry exhaustion, or persistence failure remains unresolved.
+- Migration `20260920_0011` adds `ai_resolutions` with versioned request identity, request/response JSON, acceptance, confidence, validation reason, call count, and timestamps.
+- `OcrReader` now supports injected engines and Tesseract detection with SHA-256 cache, timeout, call budget, concurrency limit, and structured unavailable/timeout/exhaustion outcomes. OCR output uses the existing role validator and deterministic extractor.
+- No provider SDK or production dependency was added. Live AI-provider and live Tesseract accuracy are not claimed.
 
 ### Self-evaluation harness — dedicated clean evaluation database
 
@@ -345,7 +358,7 @@ Fast compare
 
 ## In Progress
 
-- Phase 5 final verification is complete. No Phase 5 implementation work remains; the targeted `content_hash` insert fix and all required reports are ready for review.
+- Phase 6 implementation and all applicable local/PostgreSQL gates are complete. Live provider verification and public scoreboard execution remain intentionally unperformed.
 - The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
@@ -367,6 +380,10 @@ Fast compare
 
 
 ## Next
+
+- Review and merge `phase6` if the Phase 6 report is accepted.
+- Optionally validate a real structured AI/OCR provider in a credentialed environment before production use.
+- Begin Phase 7 only after explicit authorization; Human Review UI remains out of scope.
 
 - Stop after Phase 5 closure. Do not begin Phase 6 or Phase 7 from this task. Human review of the synchronized `origin/phase5` branch is the next action.
 
@@ -433,6 +450,11 @@ This order is a planning recommendation. Codex should adjust it to the actual re
 ---
 
 ## Blocked / Open Questions
+
+- Live AI provider choice, credentials, latency, and accuracy are NOT VERIFIED.
+- Live Tesseract accuracy on the six public scanned documents is NOT VERIFIED; injected behavior and failures are covered.
+- The public self-evaluation service was not called in Phase 6; no hidden labels were used.
+- Cross-process provider-call single-flight is not implemented. PostgreSQL uniqueness keeps persisted resolution rows idempotent, but separate application processes may duplicate provider work before a result commits.
 
 ### Phase 0 execution blockers
 
@@ -523,6 +545,22 @@ Do not force uncertain cases into a false match/mismatch.
 ### KD-012 — Dashboard and Email Extension share the same backend state
 
 Do not build duplicate processing pipelines for different frontends.
+
+### KD-021 — AI is an auditable fallback, never the primary path
+
+Only unresolved/ambiguous extraction evidence or L2 comparison uncertainty may invoke it. Accepted proposals are non-destructive overlays persisted separately.
+
+### KD-022 — Missing or contradictory evidence stays unresolved
+
+No provider call is made when evidence is absent. Conflicts, unsafe units, unanchored evidence, and insufficient confidence cannot become definite results.
+
+### KD-023 — Resolver cost and concurrency are bounded
+
+Hard extraction fields batch per document. Calls have finite timeout/retry, per-case and concurrency limits, and versioned cache identities.
+
+### KD-024 — Single-flight scope is explicit
+
+The configured runtime shares resolver/OCR coordination across the process-local multi-session worker pool. Database uniqueness provides cross-process persistence idempotency, not cross-process provider-call suppression.
 
 ---
 
@@ -627,6 +665,8 @@ Phase 5 persistence/runtime changes are additive:
 
 No new public route was added in Phase 5. Existing `/api/sync` and `/api/email/incoming` now pass bounded worker/retry settings into the shared service; persistence changes are additive Alembic migrations `0009` and `0010`.
 
+Phase 6 adds no public route and does not change the submission schema. Migration `20260920_0011` adds internal `ai_resolutions`. `field_comparisons` retains the original extraction foreign keys while canonical/evidence values may describe an accepted overlay. AI-enabled comparison identity includes resolver/provider/model/schema versions; disabled identity remains `phase4-deterministic-v1`. Existing API and batch constructors now activate the configured factory when enabled.
+
 Planned case data now also needs `comparison_readiness` and document-role-validation outcomes.
 
 Planned interfaces from requirements include:
@@ -657,6 +697,8 @@ HOLYSHIP_EVAL_DATABASE_URL   -> holyship_eval
 
 Phase 5 worker/retry defaults are safe bounded values documented in `.env.example`. Production `/api/sync` passes `SessionLocal`, the configured worker limit, retry attempts, HTTP timeout policy, and semantic resolver timeout into the shared service. No real Microsoft Graph cursor/polling configuration exists yet.
 
+Phase 6 adds `EXTRACTION_MAX_WORKERS`, `AI_ESCALATION_ENABLED`, `AI_PROVIDER`, `AI_MODEL`, `AI_ENDPOINT`, optional secret `AI_API_KEY`, `AI_CONFIDENCE_THRESHOLD`, `AI_TIMEOUT_SECONDS`, `AI_MAX_CALLS_PER_CASE`, `AI_MAX_CONCURRENT_CALLS`, `AI_RESOLVER_VERSION`, `AI_PROMPT_SCHEMA_VERSION`, `OCR_TIMEOUT_SECONDS`, `OCR_MAX_CALLS`, and `OCR_MAX_CONCURRENT_CALLS`. No key/token or secret is committed. The built-in configured provider is the vendor-neutral `http_json` boundary; deterministic fake providers are injected at the same runtime factory boundary in tests.
+
 Likely categories may include:
 
 ```text
@@ -682,6 +724,15 @@ When adding an environment variable:
 ---
 
 ## Tests & Validation
+
+### Phase 6 executed evidence
+
+- Focused resolver/OCR/runtime/PostgreSQL suite: 35 passed.
+- Full PostgreSQL suite: 257 passed, 0 failed, 0 skipped, 1 existing deprecation warning. Reliability: 14 passed. Trace: 89 PASS / 0 TODO / 0 FAIL.
+- `mingw32-make check-fast`: 34 passed plus compileall/diff check. `mingw32-make check PHASE=6B`: PASS.
+- Alembic `0011 -> 0010 -> 0011` downgrade/upgrade passed.
+- AI-disabled evaluation: 520 emails, 0 failed, 0 unhandled, SHA-256 `37b33169797c6aef6b781fbcbf1ba99cb92d3a8d96ac184235eeda167d2a4eab`. Measured 15.081s / 34.480 emails/s, p50 0.028657s, p95 0.115928s; 12.39% slower than this machine's 13.419s pre-change baseline, below 20%.
+- Fixture evaluation: 5 attempted, 4 calls, 2 accepted, 3 unresolved, 1 cache hit, 0 provider failures/malformed responses. This is behavior evidence, not live-model accuracy.
 
 ### Required future coverage
 
@@ -890,20 +941,24 @@ Never fabricate test results.
 
 ## Known Limitations
 
+- No live AI credentials were available and no live model call ran. Provider quality/latency/cancellation/accuracy are NOT VERIFIED.
+- Resolver/OCR single-flight, call budgets, and concurrency limits are process-local. Independent processes share durable cache identity only after commit and can duplicate external work during a race.
+- Live Tesseract was not verified on the six public scanned documents. Injected success, unavailable, garbage, timeout, cache, budget, and concurrency paths are tested.
+- Missing values, corrupt/wrong documents, and missing attachments intentionally remain blocked/Human Review outcomes.
+
 - Live PostgreSQL migrations, database concurrency, idempotency, cache versioning, failure isolation, clean evaluation, and database-backed worker equivalence are verified on isolated temporary databases. Restart/resume is verified at the persisted-state/service level; a true OS process kill/restart was not exercised.
 - Phase 5 does not add a real provider polling cursor/checkpoint. Static bundle, organizer HTTP, and incoming API sources remain the implemented provider boundary; real Microsoft Graph polling is NOT IMPLEMENTED / NOT VERIFIED.
 - Peak RSS remains NOT MEASURED because no cross-platform process-metrics dependency is declared. The new report records this honestly rather than emitting zero.
-- The semantic timeout helper bounds the caller wait but cannot forcibly cancel an arbitrary provider thread; the timed-out daemon call may finish in the background. Phase 6 provider integration must supply cancellable client calls where possible.
+- The semantic timeout helper bounds caller wait but cannot forcibly cancel an arbitrary provider thread; production clients should also enforce their own timeout.
 - Public clean evaluation is verified twice and remains byte-identical to the Phase 4 baseline. The public scoreboard was not called because the organizer endpoint is external and unavailable in this environment.
 
 - P4B L1 remains deliberately conservative: unapproved port spellings and entity aliases without an exact safe rule pass to the default-unresolved L2 boundary rather than being guessed.
-- The default L2 resolver performs zero provider calls and returns uncertainty. A real semantic resolver remains optional later-phase work.
-- Extraction remains deterministic and native. OCR and model-backed hard-case resolution remain later-phase work; `llm_resolved` is an allowed persisted provenance value but is never emitted here.
+- The default L2 resolver still performs zero calls; Phase 6 uses the validated resolver only when explicitly injected/enabled.
 - The public `AWAITING_DOCUMENTS` mapping remains a configurable provisional `NEEDS_REVIEW/missing_value` policy and is explicitly UNVALIDATED because the public contract does not define this internal waiting state.
 - The public comparison sanity audit found all 98 attempted public pairs contained at least one unresolved field under the conservative deterministic/default-L2 policy. This is coverage evidence, not a private-label accuracy measurement and was not used to tune rules.
 
 - The public classification audit provides semantic/input evidence, not hidden-label correctness. No private ground truth or evaluator data was used.
-- OCR/Tesseract is unavailable in the verified environment. Phase 2 therefore routes six public image-only PDFs correctly and persists a clean unreadable/blocking outcome; a working OCR implementation remains owned by `DOC-07b` in Phase 6A.
+- Live OCR/Tesseract is unverified; the injected OCR contract closes `DOC-07b`, while unavailable native OCR remains a clean blocking outcome.
 - Zero-signal messages intentionally remain low-confidence neutral results. A future model-backed resolver may improve their semantics, but Phase 1 does not invent unsupported specialized intent.
 - The development database retains 21 historical Human Review rows and the legacy read-only Human Review API for compatibility. Current Phase 1 processing creates none.
 - `holyship_dev` intentionally retains historical Phase 0 rows, but the evaluation harness no longer reads them; `reports/latest/eval.md` is generated from a clean dedicated evaluation database.
@@ -921,6 +976,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-20 — Phase 6 targeted hard-case AI layer and focused closure
+
+- **Changed:** Added bounded structured resolution, non-destructive overlays, per-document batching, durable cache/audit migration `0011`, bounded injectable OCR, configured API/batch runtime wiring, process-shared worker coordination, Phase 6 trace support, and hard-case evaluation/reports.
+- **Why:** Phase 5 left 29 semantic uncertainties, one explicit unresolved extraction, and six OCR-routed documents; only evidence-backed cases should escalate.
+- **Files:** resolution/comparison/materialization/OCR/sync/storage/config modules, migration `0011`, Phase 6 tests/scripts/reports, matrix, `.env.example`, and this handoff.
+- **Validation:** focused 35; full 257; reliability 14; trace 89/0/0; full check PASS; disabled fingerprint identical; fixture 5 attempted / 2 accepted / 3 unresolved; migration through `0011` PASS.
+- **Next:** Review/merge `phase6`; optionally perform live provider/Tesseract verification. Do not begin Phase 7 or Human Review UI here.
 
 ### 2026-09-20 — Phase 5 reliability and performance hardening
 

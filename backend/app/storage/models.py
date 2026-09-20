@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -400,6 +400,44 @@ class FieldComparisonRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     comparison_result: Mapped[ComparisonResultRecord] = relationship(back_populates="fields")
+
+
+class AIResolutionRecord(TimestampMixin, Base):
+    """Durable Phase-6 resolver cache and immutable audit payload."""
+
+    __tablename__ = "ai_resolutions"
+    __table_args__ = (
+        UniqueConstraint("request_hash", name="uq_ai_resolution_request_hash"),
+        CheckConstraint(
+            "purpose IN ('EXTRACTION','SEMANTIC')",
+            name="ck_ai_resolution_purpose",
+        ),
+        CheckConstraint(
+            "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_ai_resolution_field_name",
+        ),
+        CheckConstraint(
+            "confidence >= 0 AND confidence <= 1",
+            name="ck_ai_resolution_confidence",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    request_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
+    purpose: Mapped[str] = mapped_column(String(20), nullable=False, index=True)
+    case_id: Mapped[str] = mapped_column(String(255), nullable=False, index=True)
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    source_identity: Mapped[str] = mapped_column(Text, nullable=False)
+    provider_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    model_name: Mapped[str] = mapped_column(String(160), nullable=False)
+    resolver_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    prompt_schema_version: Mapped[str] = mapped_column(String(80), nullable=False)
+    request_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    response_json: Mapped[dict] = mapped_column(JSONB, nullable=False)
+    accepted: Mapped[bool] = mapped_column(Boolean, nullable=False)
+    confidence: Mapped[float] = mapped_column(Float, nullable=False)
+    validation_reason: Mapped[str] = mapped_column(String(100), nullable=False, index=True)
+    provider_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
 class HumanReviewCaseRecord(Base):

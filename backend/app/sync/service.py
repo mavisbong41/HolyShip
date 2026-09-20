@@ -38,6 +38,8 @@ from backend.app.storage.repositories import (
     ProcessingJobRepository,
 )
 from backend.app.storage.transitions import transition
+from backend.app.resolution.service import ResolutionExecutor
+from backend.app.documents.readers.ocr_reader import OcrSharedState
 
 logger = logging.getLogger(__name__)
 
@@ -59,6 +61,13 @@ class EmailSyncOutcome:
     extractor_calls: int = 0
     ocr_calls: int = 0
     vision_calls: int = 0
+    resolver_calls: int = 0
+    resolver_accepted: int = 0
+    resolver_rejected: int = 0
+    resolver_cache_hits: int = 0
+    resolver_failures: int = 0
+    resolver_malformed: int = 0
+    escalated_cases: int = 0
 
 
 @dataclass
@@ -93,6 +102,13 @@ class SyncReport:
     extractor_calls: int = 0
     ocr_calls: int = 0
     vision_calls: int = 0
+    resolver_calls: int = 0
+    resolver_accepted: int = 0
+    resolver_rejected: int = 0
+    resolver_cache_hits: int = 0
+    resolver_failures: int = 0
+    resolver_malformed: int = 0
+    escalated_cases: int = 0
     unhandled_exceptions: int = 0
 
 
@@ -118,6 +134,12 @@ class SyncService:
         session_factory: Callable[[], Session] | None = None,
         retry_max_attempts: int = 1,
         semantic_resolver_timeout_seconds: float | None = None,
+        extraction_max_workers: int = 2,
+        resolution_executor_factory: Callable[[Session], ResolutionExecutor] | None = None,
+        ocr_timeout_seconds: float = 15.0,
+        ocr_max_calls: int = 8,
+        ocr_max_concurrent_calls: int = 2,
+        ocr_shared_state: OcrSharedState | None = None,
     ):
         if not 1 <= max_workers <= 32:
             raise ValueError("max_workers must be between 1 and 32")
@@ -130,6 +152,15 @@ class SyncService:
         self.session_factory = session_factory
         self.retry_max_attempts = retry_max_attempts
         self.semantic_resolver_timeout_seconds = semantic_resolver_timeout_seconds
+        self.extraction_max_workers = extraction_max_workers
+        self.resolution_executor_factory = resolution_executor_factory
+        self.ocr_timeout_seconds = ocr_timeout_seconds
+        self.ocr_max_calls = ocr_max_calls
+        self.ocr_max_concurrent_calls = ocr_max_concurrent_calls
+        self.ocr_shared_state = ocr_shared_state or OcrSharedState(
+            max_calls=ocr_max_calls,
+            max_concurrent_calls=ocr_max_concurrent_calls,
+        )
 
         self._email_repo = EmailRepository(session)
         self._job_repo = ProcessingJobRepository(session)
@@ -138,6 +169,16 @@ class SyncService:
         self._document_service = DocumentMaterializationService(
             session,
             semantic_resolver_timeout_seconds=semantic_resolver_timeout_seconds,
+            resolution_executor=(
+                resolution_executor_factory(session)
+                if resolution_executor_factory is not None
+                else None
+            ),
+            extraction_max_workers=extraction_max_workers,
+            ocr_timeout_seconds=ocr_timeout_seconds,
+            ocr_max_calls=ocr_max_calls,
+            ocr_max_concurrent_calls=ocr_max_concurrent_calls,
+            ocr_shared_state=self.ocr_shared_state,
         )
 
     # ------------------------------------------------------------------
@@ -177,6 +218,13 @@ class SyncService:
         report.extractor_calls = sum(outcome.extractor_calls for outcome in report.outcomes)
         report.ocr_calls = sum(outcome.ocr_calls for outcome in report.outcomes)
         report.vision_calls = sum(outcome.vision_calls for outcome in report.outcomes)
+        report.resolver_calls = sum(outcome.resolver_calls for outcome in report.outcomes)
+        report.resolver_accepted = sum(outcome.resolver_accepted for outcome in report.outcomes)
+        report.resolver_rejected = sum(outcome.resolver_rejected for outcome in report.outcomes)
+        report.resolver_cache_hits = sum(outcome.resolver_cache_hits for outcome in report.outcomes)
+        report.resolver_failures = sum(outcome.resolver_failures for outcome in report.outcomes)
+        report.resolver_malformed = sum(outcome.resolver_malformed for outcome in report.outcomes)
+        report.escalated_cases = sum(outcome.escalated_cases for outcome in report.outcomes)
         return report
 
     def _sync_sequential(self, source: EmailSource, report: SyncReport) -> None:
@@ -279,6 +327,12 @@ class SyncService:
                 max_workers=1,
                 retry_max_attempts=self.retry_max_attempts,
                 semantic_resolver_timeout_seconds=self.semantic_resolver_timeout_seconds,
+                extraction_max_workers=self.extraction_max_workers,
+                resolution_executor_factory=self.resolution_executor_factory,
+                ocr_timeout_seconds=self.ocr_timeout_seconds,
+                ocr_max_calls=self.ocr_max_calls,
+                ocr_max_concurrent_calls=self.ocr_max_concurrent_calls,
+                ocr_shared_state=self.ocr_shared_state,
             )
             return worker.sync_one(message, source)
 
@@ -437,6 +491,7 @@ class SyncService:
         cache_hits = 0
         cache_misses = 0
         reader_calls = extractor_calls = ocr_calls = vision_calls = 0
+        resolver_delta: dict[str, int | float] = {}
         if result.category != "document_comparison":
             transition(self.session, record, "COMPLETED", "NON_COMPARISON_COMPLETE")
         elif result.comparison_readiness == "AWAITING_DOCUMENTS":
@@ -444,7 +499,9 @@ class SyncService:
         elif result.comparison_readiness == "UNRESOLVED":
             transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
         elif result.comparison_readiness == "READY_FOR_COMPARISON":
+            resolver_before = self._resolution_metrics()
             materialization = self._document_service.process(record, message, source)
+            resolver_delta = _metric_delta(resolver_before, self._resolution_metrics())
             cache_hits = materialization.cache_hits
             cache_misses = materialization.cache_misses
             reader_calls = materialization.reader_calls
@@ -465,6 +522,7 @@ class SyncService:
                     extractor_calls=materialization.extractor_calls,
                     ocr_calls=materialization.ocr_calls,
                     vision_calls=materialization.vision_calls,
+                    **_outcome_resolution_metrics(resolver_delta),
                 )
             if materialization.processing_status == "BLOCKED":
                 job.status = "BLOCKED"
@@ -514,7 +572,12 @@ class SyncService:
             extractor_calls=extractor_calls,
             ocr_calls=ocr_calls,
             vision_calls=vision_calls,
+            **_outcome_resolution_metrics(resolver_delta),
         )
+
+    def _resolution_metrics(self) -> dict[str, int | float]:
+        executor = self._document_service.comparison_service.resolution_executor
+        return executor.metrics.snapshot() if executor is not None else {}
 
 
 def _is_retryable_processing_error(error: Exception) -> bool:
@@ -531,3 +594,26 @@ def _percentile(values: list[float], percentile: float) -> float:
     upper = min(lower + 1, len(values) - 1)
     weight = position - lower
     return values[lower] + (values[upper] - values[lower]) * weight
+
+
+def _metric_delta(
+    before: dict[str, int | float],
+    after: dict[str, int | float],
+) -> dict[str, int | float]:
+    return {
+        key: after.get(key, 0) - before.get(key, 0)
+        for key in after
+        if key != "average_calls_per_escalated_case"
+    }
+
+
+def _outcome_resolution_metrics(metrics: dict[str, int | float]) -> dict[str, int]:
+    return {
+        "resolver_calls": int(metrics.get("provider_calls", 0)),
+        "resolver_accepted": int(metrics.get("accepted", 0)),
+        "resolver_rejected": int(metrics.get("rejected", 0)),
+        "resolver_cache_hits": int(metrics.get("cache_hits", 0)),
+        "resolver_failures": int(metrics.get("provider_failures", 0)),
+        "resolver_malformed": int(metrics.get("malformed_responses", 0)),
+        "escalated_cases": int(metrics.get("escalated_cases", 0)),
+    }

@@ -89,6 +89,7 @@ def _snapshot(factory):
         ]
 
 
+@pytest.mark.req("ING-02")
 def test_repeated_initial_sync_converges_without_duplicate_graph(db_factory):
     messages = [_message("repeat-1"), _message("repeat-2", subject="General update", body="The vessel departed.")]
     source = _MemorySource(messages)
@@ -104,6 +105,7 @@ def test_repeated_initial_sync_converges_without_duplicate_graph(db_factory):
         assert session.scalar(select(func.count(ProcessingJobRecord.id))) == 2
 
 
+@pytest.mark.req("REL-01")
 def test_concurrent_duplicate_ingestion_creates_one_logical_case(db_factory):
     message = _message("concurrent-duplicate")
     barrier = threading.Barrier(2)
@@ -163,6 +165,7 @@ def test_restart_resumes_interrupted_classification_without_new_email(db_factory
         assert session.scalar(select(func.count(ProcessingJobRecord.id))) == 1
 
 
+@pytest.mark.req("PRF-02")
 def test_single_worker_and_parallel_worker_snapshots_match(db_factory):
     messages = [
         _message("parallel-1"),

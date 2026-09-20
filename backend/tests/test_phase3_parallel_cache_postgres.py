@@ -186,6 +186,7 @@ def test_si_and_bl_start_concurrently_without_worker_thread_database_access(db_c
         assert session.query(ExtractedFieldRecord).count() == 14
 
 
+@pytest.mark.req("REL-03")
 @pytest.mark.req("EXT-03")
 @pytest.mark.parametrize("failed_role", [DocumentType.SI, DocumentType.DRAFT_BL])
 def test_one_side_failure_preserves_other_side_and_retry_is_idempotent(
@@ -273,6 +274,7 @@ def test_one_side_failure_preserves_other_side_and_retry_is_idempotent(
         assert counts == {target.extraction.id: 7 for target in targets}
 
 
+@pytest.mark.req("PRF-04")
 @pytest.mark.req("EXT-06")
 def test_sha_version_cache_reuses_payload_with_current_document_provenance(db_context):
     _engine, factory = db_context

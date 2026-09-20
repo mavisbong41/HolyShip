@@ -10,6 +10,7 @@ from backend.app.core.reliability import RetryPolicy, retry_call, run_with_timeo
 from backend.app.ingestion.sources import OrganizerHttpSource
 
 
+@pytest.mark.req("REL-02")
 def test_retry_call_retries_transient_failures_with_bounded_backoff():
     attempts = 0
     sleeps: list[float] = []

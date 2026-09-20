@@ -12,6 +12,7 @@ from backend.app.comparison.persistence import PersistedComparisonService
 from backend.app.comparison.service import ComparisonService
 from backend.app.documents.models import DocumentFormat, DocumentType, UnifiedDocument
 from backend.app.documents.readers.composite import CompositeDocumentReader
+from backend.app.documents.readers.ocr_reader import OcrReader, OcrSharedState
 from backend.app.documents.role_validation import (
     DocumentRoleValidator,
     RoleValidationOutcome,
@@ -24,6 +25,7 @@ from backend.app.extraction.service import (
 )
 from backend.app.ingestion.models import EmailMessage
 from backend.app.ingestion.sources import EmailSource
+from backend.app.resolution.service import ResolutionExecutor
 from backend.app.storage.models import (
     AttachmentRecord,
     DocumentExtractionRecord,
@@ -86,11 +88,25 @@ class DocumentMaterializationService:
         role_validator: DocumentRoleValidator | None = None,
         field_extractor: DeterministicDocumentExtractor | None = None,
         semantic_resolver_timeout_seconds: float | None = None,
+        resolution_executor: ResolutionExecutor | None = None,
+        extraction_max_workers: int = 2,
+        ocr_timeout_seconds: float = 15.0,
+        ocr_max_calls: int = 8,
+        ocr_max_concurrent_calls: int = 2,
+        ocr_shared_state: OcrSharedState | None = None,
     ):
         self.session = session
-        self.reader = reader or CompositeDocumentReader()
+        self.reader = reader or CompositeDocumentReader(
+            ocr_reader=OcrReader(
+                timeout_seconds=ocr_timeout_seconds,
+                max_calls=ocr_max_calls,
+                max_concurrent_calls=ocr_max_concurrent_calls,
+                shared_state=ocr_shared_state,
+            )
+        )
         self.role_validator = role_validator or DocumentRoleValidator()
         self.field_extractor = field_extractor or DeterministicDocumentExtractor()
+        self.extraction_max_workers = extraction_max_workers
         self.document_repo = DocumentRepository(session)
         self.extraction_repo = DocumentExtractionRepository(session)
         self.field_repo = ExtractedFieldRepository(session)
@@ -99,6 +115,7 @@ class DocumentMaterializationService:
             comparator=ComparisonService(
                 semantic_timeout_seconds=semantic_resolver_timeout_seconds,
             ),
+            resolution_executor=resolution_executor,
         )
 
     def process(
@@ -332,7 +349,7 @@ class DocumentMaterializationService:
         field_service = DocumentFieldExtractionService(
             self.session,
             self.field_extractor,
-            max_workers=2,
+            max_workers=self.extraction_max_workers,
         )
         batch = field_service.extract(
             [
