@@ -1673,8 +1673,7 @@ button:disabled {
   box-sizing: border-box;
 }
 
-.detail-panel.detail-panel-empty,
-.detail-panel:has(.empty-state) {
+.detail-panel.detail-panel-empty {
   width: 100%;
   max-width: 340px;
   height: auto;
