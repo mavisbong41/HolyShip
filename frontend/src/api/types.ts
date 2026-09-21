@@ -208,6 +208,7 @@ export interface ProductReview {
   workflow_identity?: string | null;
   source_comparison_id?: string | null;
   reviewer_name?: string | null;
+  claimed_at?: string | null;
   resolution?: string | null;
   notes?: string | null;
   confidence: number | null;
@@ -289,6 +290,8 @@ export interface QueueFilters {
   category?: ProductCategory | "";
   comparison_readiness?: ComparisonReadiness | "";
   needs_review?: "true" | "false" | "";
+  review_status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED" | "";
+  comparison_state?: "COMPLETED" | "BLOCKED" | "";
   has_mismatch?: "true" | "false" | "";
   search?: string;
   skip?: number;
@@ -301,6 +304,7 @@ export interface ReviewQueueFilters {
   reviewer?: string;
   search?: string;
   active_only?: boolean;
+  sort?: "priority" | "age" | "oldest" | "newest";
   skip?: number;
   limit?: number;
 }

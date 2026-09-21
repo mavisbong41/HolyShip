@@ -62,6 +62,8 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
   appendParam(params, "category", filters.category);
   appendParam(params, "comparison_readiness", filters.comparison_readiness);
   appendParam(params, "needs_review", filters.needs_review);
+  appendParam(params, "review_status", filters.review_status);
+  appendParam(params, "comparison_state", filters.comparison_state);
   appendParam(params, "has_mismatch", filters.has_mismatch);
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "skip", filters.skip ?? 0);
@@ -80,9 +82,27 @@ export async function getHumanReviewQueue(filters: ReviewQueueFilters = {}): Pro
   appendParam(params, "reviewer", filters.reviewer?.trim());
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "active_only", filters.active_only ?? true);
+  appendParam(params, "sort", filters.sort);
   appendParam(params, "skip", filters.skip ?? 0);
   appendParam(params, "limit", filters.limit ?? 50);
   return request<HumanReviewPage>(`/human-review?${params.toString()}`);
+}
+
+export async function getAllHumanReviews(filters: ReviewQueueFilters = {}): Promise<HumanReviewPage> {
+  const limit = 500;
+  let skip = 0;
+  let total = 0;
+  const items: HumanReviewPage["items"] = [];
+
+  do {
+    const page = await getHumanReviewQueue({ ...filters, skip, limit });
+    items.push(...page.items);
+    total = page.total;
+    skip += page.items.length;
+    if (page.items.length === 0) break;
+  } while (items.length < total);
+
+  return { items, total, skip: 0, limit: Math.max(items.length, 1) };
 }
 
 export async function getHumanReviewDetail(reviewId: string): Promise<ProductReview> {

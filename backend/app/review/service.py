@@ -109,6 +109,7 @@ class HumanReviewService:
 
     def claim(self, case_id: UUID, *, reviewer_name: str) -> HumanReviewCaseRecord:
         case = self._locked_case(case_id)
+        self._require_active_case(case)
         reviewer = self._required_text(reviewer_name, "reviewer_name", 255)
         if case.status == "IN_REVIEW" and case.reviewer_name == reviewer:
             return case
@@ -133,6 +134,7 @@ class HumanReviewService:
         note: str | None,
     ) -> HumanReviewFieldOverrideRecord:
         case = self._locked_case(case_id)
+        self._require_active_case(case)
         if case.status not in ACTIVE_REVIEW_STATUSES:
             raise ReviewConflictError(f"Cannot change overrides in {case.status} state")
         side = document_side.strip().upper()
@@ -208,6 +210,7 @@ class HumanReviewService:
         notes: str | None = None,
     ) -> tuple[HumanReviewCaseRecord, ComparisonResultRecord]:
         case = self._locked_case(case_id)
+        self._require_active_case(case)
         if case.status == "RESOLVED":
             existing = self.session.scalar(
                 select(ComparisonResultRecord)
@@ -298,6 +301,7 @@ class HumanReviewService:
         notes: str | None = None,
     ) -> HumanReviewCaseRecord:
         case = self._locked_case(case_id)
+        self._require_active_case(case)
         if case.status == "DISMISSED":
             return case
         if case.status == "RESOLVED":
@@ -431,6 +435,11 @@ class HumanReviewService:
             )
         )
         self.session.flush()
+
+    @staticmethod
+    def _require_active_case(case: HumanReviewCaseRecord) -> None:
+        if case.case_origin != "ACTIVE":
+            raise ReviewConflictError("Historical review records are read-only")
 
     @staticmethod
     def _reason_text(reason_code: str) -> str:

@@ -10,7 +10,6 @@ from backend.app.storage.models import (
 )
 from backend.app.api.product_schemas import HumanReviewAnalytics, HumanReviewReconciliation
 from backend.app.api.review_helper import compute_affected_fields, compute_priority, compute_age_minutes
-import json
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
     now = datetime.now(timezone.utc)
@@ -59,9 +58,19 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
         analytics.average_open_age_minutes = sum(open_ages) / len(open_ages)
         
     # Correction insights
+    # Correction insights must use the same ACTIVE-case population as the
+    # headline Human Review metrics. Otherwise historical/legacy corrections
+    # silently leak into Part 1 analytics.
     overrides = session.scalars(
         select(HumanReviewFieldOverrideRecord)
-        .where(HumanReviewFieldOverrideRecord.active == True)
+        .join(
+            HumanReviewCaseRecord,
+            HumanReviewCaseRecord.id == HumanReviewFieldOverrideRecord.review_case_id,
+        )
+        .where(
+            HumanReviewFieldOverrideRecord.active.is_(True),
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+        )
     ).all()
     
     for ov in overrides:
@@ -71,11 +80,11 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
         extracted = session.get(ExtractedFieldRecord, ov.original_field_id)
         reason = "Manual source confirmation"
         if extracted:
-            if extracted.raw_value is None:
+            if extracted.raw_value_json is None:
                 reason = "Missing extraction"
             elif extracted.confidence is not None and extracted.confidence < 0.8:
                 reason = "OCR ambiguity"
-            elif extracted.raw_value == ov.corrected_value and extracted.canonical_value != ov.corrected_canonical_value:
+            elif extracted.raw_value_json == ov.corrected_value and extracted.canonical_value != ov.corrected_canonical_value:
                 reason = "Value normalization"
             elif f in ["shipper", "consignee", "notify_party"]:
                 reason = "Entity ambiguity"
@@ -117,12 +126,12 @@ def get_human_review_reconciliation(session: Session) -> HumanReviewReconciliati
             latest_comparison.c.mismatch_found.is_(True),
         )
     ) or 0)
-    unresolved_count = int(session.scalar(
-        select(func.count()).select_from(latest_comparison).where(
-            latest_comparison.c.rank == 1,
-            func.coalesce(func.jsonb_array_length(latest_comparison.c.unresolved_fields), 0) > 0,
-        )
-    ) or 0)
+    latest_unresolved_rows = session.execute(
+        select(latest_comparison.c.unresolved_fields).where(latest_comparison.c.rank == 1)
+    ).all()
+    # Count emails, not fields. Keeping JSON length evaluation in Python avoids
+    # PostgreSQL jsonb vs SQLite JSON function differences in diagnostics/tests.
+    unresolved_count = sum(1 for (fields,) in latest_unresolved_rows if fields)
     return HumanReviewReconciliation(
         total_emails=int(session.scalar(select(func.count(EmailMessageRecord.id))) or 0),
         processing_status_counts={str(status): int(count) for status, count in status_rows},

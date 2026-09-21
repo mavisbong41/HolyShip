@@ -1,6 +1,4 @@
 from __future__ import annotations
-from sqlalchemy import select
-
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
@@ -83,7 +81,22 @@ def _ranked(model: Any, *, partition: Any) -> Any:
 def _queue_sources() -> tuple[Any, Any, Any]:
     classification = _ranked(ClassificationResultRecord, partition=ClassificationResultRecord.email_id)
     comparison = _ranked(ComparisonResultRecord, partition=ComparisonResultRecord.email_id)
-    review = _ranked(HumanReviewCaseRecord, partition=HumanReviewCaseRecord.email_id)
+    # Queue/summary semantics are about current actionable work. Legacy review
+    # rows remain available in Human Review history, but must never make an
+    # email look actively reviewable.
+    review = (
+        select(
+            HumanReviewCaseRecord,
+            func.row_number()
+            .over(
+                partition_by=HumanReviewCaseRecord.email_id,
+                order_by=[HumanReviewCaseRecord.created_at.desc(), HumanReviewCaseRecord.id.desc()],
+            )
+            .label("rank"),
+        )
+        .where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+        .subquery()
+    )
     return classification, comparison, review
 
 
@@ -266,10 +279,14 @@ def list_email_queue(
 
 def get_product_summary(session: Session) -> ProductSummary:
     classification, comparison, review = _queue_sources()
-    needs_review_value = or_(
-        review.c.status.in_(["OPEN", "IN_REVIEW"]),
-        EmailMessageRecord.processing_status == "BLOCKED",
-        comparison.c.comparison_state == "BLOCKED",
+    needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
+    active_review_count = (
+        select(func.count(HumanReviewCaseRecord.id))
+        .where(
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+            HumanReviewCaseRecord.status.in_(["OPEN", "IN_REVIEW"]),
+        )
+        .scalar_subquery()
     )
     statement = (
         select(
@@ -284,6 +301,7 @@ def get_product_summary(session: Session) -> ProductSummary:
                 EmailMessageRecord.processing_status == "COMPLETED"
             ).label("completed"),
             func.count(EmailMessageRecord.id).filter(needs_review_value).label("needs_review"),
+            active_review_count.label("active_review_count"),
             func.count(EmailMessageRecord.id).filter(
                 classification.c.comparison_readiness == "READY_FOR_COMPARISON"
             ).label("ready"),
@@ -305,12 +323,7 @@ def get_product_summary(session: Session) -> ProductSummary:
         .group_by(EmailMessageRecord.processing_status)
     ).all()
     status_counts = {status: int(count) for status, count in status_rows}
-    active_open_count = int(session.scalar(
-        select(func.count(HumanReviewCaseRecord.id)).where(
-            HumanReviewCaseRecord.case_origin == "ACTIVE",
-            HumanReviewCaseRecord.status == "OPEN",
-        )
-    ) or 0)
+    active_open_count = int(row.active_review_count or 0)
     processing_count = sum(
         count for status, count in status_counts.items()
         if status not in {"COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"}
@@ -520,8 +533,12 @@ def _summary_from_record(
     mismatch_count = len(comparison.mismatched_fields or []) if comparison else 0
     unresolved_count = len(comparison.unresolved_fields or []) if comparison else 0
     needs_review = bool(
-        (review and review.status == "OPEN")
-        or record.processing_status in {"BLOCKED", "FAILED"}
+        (
+            review
+            and review.case_origin == "ACTIVE"
+            and review.status in {"OPEN", "IN_REVIEW"}
+        )
+        or record.processing_status == "BLOCKED"
         or (comparison and comparison.comparison_state == "BLOCKED")
     )
     return ProductEmailSummary(
@@ -572,7 +589,9 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
     classification_record = _latest(record.classification_results)
     comparison_record = _latest(record.comparison_results)
     review_records = sorted(record.human_review_cases, key=lambda item: (item.created_at, str(item.id)))
-    latest_review = _latest(review_records)
+    latest_review = _latest(
+        [item for item in review_records if item.case_origin == "ACTIVE"]
+    )
     resolutions = session.scalars(
         select(AIResolutionRecord)
         .where(AIResolutionRecord.case_id == str(record.id))
@@ -832,7 +851,8 @@ def list_human_reviews(
                 str(item.id),
             )
         )
-    elif sort == "oldest":
+    elif sort in {"age", "oldest"}:
+        # Age descending is equivalent to created_at ascending and avoids wall-clock rounding.
         items.sort(key=lambda item: (item.created_at, str(item.id)))
     else:
         # The default and explicit newest ordering are deterministic.
@@ -857,9 +877,4 @@ def get_human_review(session: Session, review_id: UUID) -> ProductReview | None:
     return None
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
-    from backend.app.api import analytics_helper
-    from backend.app.storage.models import HumanReviewCaseRecord, HumanReviewFieldOverrideRecord
-    cases = session.scalars(select(HumanReviewCaseRecord)).all()
-    overrides = session.scalars(select(HumanReviewFieldOverrideRecord)).all()
-
     return analytics_helper.get_human_review_analytics(session)
