@@ -55,7 +55,7 @@ cp .env.example .env
 npm run dev
 ```
 
-The task pane is served at: **http://localhost:3100/taskpane.html**
+The task pane is served at: **https://localhost:3200/taskpane.html**
 
 Open this URL in a browser to develop/inspect the UI without an Outlook runtime.  
 The Office.js context will be unavailable, so the "Not in HolyShip" state will render.
@@ -71,8 +71,8 @@ mingw32-make dev PYTHON=py
 
 ## Sideloading into Outlook (Local Dev)
 
-> **Note**: No HTTPS certificate is required for sideloading on Outlook on the Web in development.
-> For Outlook desktop, you may need to configure a self-signed certificate.
+> **Note**: The Vite development server uses its basic local HTTPS certificate so
+> the manifest and task pane use the same secure origin.
 
 ### Outlook on the Web (OWA / Microsoft 365)
 
@@ -93,7 +93,7 @@ mingw32-make dev PYTHON=py
 6. Restart Outlook if needed.
 7. Open any email → **HolyShip** button appears in the message ribbon.
 
-> **Important**: The manifest currently points to `http://localhost:3100`.
+> **Important**: The manifest currently points to `https://localhost:3200`.
 > The Vite dev server must be running for the task pane to load.
 
 ---
@@ -143,7 +143,7 @@ outlook-addin/
 
 | Command | Description |
 |---------|-------------|
-| `npm run dev` | Start Vite dev server (port 3100) |
+| `npm run dev` | Start the HTTPS Vite dev server (port 3200) |
 | `npm run build` | TypeScript check + production build |
 | `npm run typecheck` | TypeScript check only |
 | `npm run test` | Run unit tests |
@@ -202,7 +202,7 @@ When no match is found, the task pane shows:
 - Real Microsoft Graph OAuth
 - Live Outlook mailbox ingestion
 - Live Graph identity linkage (accurate message-id → case mapping)
-- Human Review write actions (Confirm, Correct, Reprocess, Resolve)
+- Add-in-native Human Review write actions (the Dashboard now provides the active review workflow)
 - Field correction backend
 - Replacement SI/BL upload
 - Production AppSource submission
@@ -227,7 +227,7 @@ Test files:
 
 ## Production Notes
 
-- Replace `http://localhost:3100` in `manifest.xml` with your HTTPS domain
+- Replace `https://localhost:3200` in `manifest.xml` with your production HTTPS domain
 - Update `VITE_API_BASE_URL` and `VITE_DASHBOARD_BASE_URL` for the target environment
 - Ensure backend CORS allows the Add-in origin
 - Do **not** commit real credentials or Graph tokens

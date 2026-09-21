@@ -39,7 +39,7 @@ py -m pytest -q
 Repository integration tests require a PostgreSQL test database:
 
 ```powershell
-$env:HOLYSHIP_TEST_DATABASE_URL="postgresql+psycopg://holyship:holyship@localhost:5432/holyship"
+$env:HOLYSHIP_TEST_DATABASE_URL="postgresql+psycopg://holyship:holyship@localhost:5432/holyship_test"
 py -m pytest backend\tests\test_repositories_postgres.py -q
 ```
 
@@ -55,6 +55,10 @@ GET  /api/v1/emails/{email_id}              unified email detail
 GET  /api/v1/emails/{email_id}/detail       explicit detail alias
 GET  /api/v1/human-review                   reviewer queue
 GET  /api/v1/human-review/{review_id}       reviewer detail
+POST /api/v1/human-review/{review_id}/claim claim an open case
+POST /api/v1/human-review/{review_id}/overrides persist a separate field correction
+POST /api/v1/human-review/{review_id}/resolve resolve and create a new comparison
+POST /api/v1/human-review/{review_id}/dismiss dismiss with an audited reason
 GET  /api/v1/events                         polling-compatible updates
 POST /api/v1/sync/initial                   initial backlog sync
 POST /api/v1/ingestion/email                simulated/generic inbound email
