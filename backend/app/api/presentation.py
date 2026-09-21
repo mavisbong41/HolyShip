@@ -42,7 +42,7 @@ REASON_PRESENTATION = {
     "MULTIPLE_CANDIDATES": ("More than one document may match", "More than one document may match the required shipping-document role.", "Documents", "Confirm the correct document", "attention", "Wrong Document Type", "Multiple role candidates", "Document Role Validation"),
     "READINESS_UNRESOLVED": ("Document readiness unclear", "HolyShip is unsure whether the documents are ready for comparison.", "Documents", "Review document readiness", "attention", "Missing Attachment", "Readiness check inconclusive", "Comparison Readiness"),
     "STAGE2_UNRESOLVED": ("Email type unclear (historical)", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "View history", "muted", "Historical Record", "Legacy evaluation", "Historical"),
-    "OCR_BACKEND_UNAVAILABLE": ("Document processing unavailable", "OCR service is not available in the current environment. Retry after OCR is available.", "Processing", "Retry / Reprocess", "bad", "Unreadable Document", "OCR engine unavailable", "Document Ingestion & OCR"),
+    "OCR_BACKEND_UNAVAILABLE": ("Document processing unavailable", "OCR service is not available in the current environment. Retry after OCR is available.", "Processing", "Retry / Reprocess", "bad", "Document Processing Unavailable", "OCR engine unavailable", "Document Ingestion & OCR"),
 }
 
 FIELD_LABELS = {

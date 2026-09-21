@@ -73,7 +73,7 @@ export const reasonLabels: Record<string, string> = {
   DOCUMENT_FIELD_EXTRACTION_FAILED: "Document Extraction Failed",
   NOT_ACTIONABLE: "Not Actionable",
   STAGE2_UNRESOLVED: "Historical Review Record",
-  OCR_BACKEND_UNAVAILABLE: "Unreadable Document",
+  OCR_BACKEND_UNAVAILABLE: "Document Processing Unavailable",
 };
 
 export const reviewActionLabels: Record<string, string> = {

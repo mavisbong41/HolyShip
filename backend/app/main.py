@@ -36,10 +36,11 @@ def create_app(settings: Settings | None = None) -> FastAPI:
         version="0.7.0",
         lifespan=lifespan,
     )
-    if configured.cors_origin_list:
+    if configured.cors_origin_list or configured.cors_origin_regex:
         application.add_middleware(
             CORSMiddleware,
             allow_origins=configured.cors_origin_list,
+            allow_origin_regex=configured.cors_origin_regex,
             allow_credentials=False,
             allow_methods=["*"],
             allow_headers=["*"],

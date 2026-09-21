@@ -177,3 +177,34 @@ def test_get_human_review_not_found(client):
     mock_session.get.return_value = None
     resp = tc.get(f"/api/human-review/{uuid.uuid4()}")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# CORS headers verification
+# ---------------------------------------------------------------------------
+
+def test_cors_allows_onrender_origins():
+    with TestClient(app) as c:
+        # Preflight OPTIONS request from Render frontend
+        resp = c.options(
+            "/api/v1/sync/initial",
+            headers={
+                "Origin": "https://holyship.onrender.com",
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "Content-Type",
+            },
+        )
+        assert resp.status_code == 200
+        assert resp.headers.get("access-control-allow-origin") == "https://holyship.onrender.com"
+
+        # Regex-matched Render staging/preview URL
+        resp2 = c.options(
+            "/api/v1/summary",
+            headers={
+                "Origin": "https://holyship-preview-123.onrender.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp2.status_code == 200
+        assert resp2.headers.get("access-control-allow-origin") == "https://holyship-preview-123.onrender.com"
+
