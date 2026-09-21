@@ -457,3 +457,29 @@ def test_human_review_schema_has_constraints_indexes_and_separate_audit_tables(d
             constraint["name"] for constraint in schema.get_check_constraints("human_review_cases")
         }
         assert session.scalar(select(func.count(HumanReviewFieldOverrideRecord.id))) == 0
+
+
+@pytest.mark.req("HR-06")
+def test_historical_review_records_are_read_only(db_factory):
+    with db_factory() as session:
+        _email, _comparison, case = _blocked_comparison(session, "review-historical-read-only")
+        case.case_origin = "LEGACY"
+        session.flush()
+        service = HumanReviewService(session)
+
+        with pytest.raises(ReviewConflictError, match="read-only"):
+            service.claim(case.id, reviewer_name="Reviewer")
+        with pytest.raises(ReviewConflictError, match="read-only"):
+            service.add_override(
+                case.id,
+                document_side="BL",
+                field_name="notify_party",
+                corrected_value="Gamma Notify Co",
+                corrected_canonical_value=None,
+                reviewer_name="Reviewer",
+                note=None,
+            )
+        with pytest.raises(ReviewConflictError, match="read-only"):
+            service.resolve_and_recompare(case.id, reviewer_name="Reviewer")
+        with pytest.raises(ReviewConflictError, match="read-only"):
+            service.dismiss(case.id, reviewer_name="Reviewer", reason="NOT_ACTIONABLE")
