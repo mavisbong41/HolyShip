@@ -14,7 +14,7 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { askAIAssistant, getEmailDetail, reprocessEmail } from "../api/client";
+import { askAIAssistant, reprocessEmail } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
@@ -466,30 +466,63 @@ export function TaskPane({
     }
   }, [contextProvider]);
 
-  // Refresh an already-resolved case
+  // Refresh / re-resolve current case
   const refresh = useCallback(async () => {
-    if (state.type !== "ready") {
-      await resolve();
-      return;
-    }
-    try {
-      const fresh = await getEmailDetail(state.detail.email.id);
-      setState({
-        ...state,
-        detail: fresh,
-      });
-    } catch (err) {
-      setState({
-        type: "error",
-        message: err instanceof Error ? err.message : "Refresh failed",
-      });
-    }
-  }, [state, resolve]);
+    await resolve();
+  }, [resolve]);
 
   useEffect(() => {
     void resolve();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+
+    // 1. Listen for Office.js ItemChanged events when user switches emails in Outlook
+    const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
+    let itemChangedRegistered = false;
+
+    const onItemChanged = () => {
+      void resolve();
+    };
+
+    if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+      try {
+        mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
+          if (asyncResult.status === Office.AsyncResultStatus.Succeeded) {
+            itemChangedRegistered = true;
+          }
+        });
+      } catch {
+        // Office context not fully available or unsupported host
+      }
+    }
+
+    // 2. Interval check as fallback for Outlook webview environments where ItemChanged may not fire
+    let lastItemId: string | null | undefined = undefined;
+    const interval = setInterval(() => {
+      try {
+        const item = Office.context?.mailbox?.item;
+        if (!item) return;
+        const currentKey = item.itemId || item.internetMessageId || item.subject;
+        if (lastItemId === undefined) {
+          lastItemId = currentKey;
+        } else if (currentKey && currentKey !== lastItemId) {
+          lastItemId = currentKey;
+          void resolve();
+        }
+      } catch {
+        // office context not available
+      }
+    }, 1200);
+
+    return () => {
+      clearInterval(interval);
+      if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+        try {
+          mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
+        } catch {
+          // ignore
+        }
+      }
+    };
+  }, [resolve]);
 
   const emailId = state.type === "ready" ? state.detail.email.id : null;
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
