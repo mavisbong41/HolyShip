@@ -24,14 +24,21 @@ import {
   ShipWheel,
   X,
 } from "lucide-react";
-import type React from "react";
+import React from "react";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   getEmailDetail,
   getEmailQueue,
   getEvents,
+  getHumanReviewDetail,
   getHumanReviewQueue,
   getSummary,
+  claimHumanReview,
+  dismissHumanReview,
+  reprocessEmail,
+  resolveHumanReview,
+  runInitialSync,
+  saveHumanReviewOverride,
 } from "./api/client";
 import type {
   EmailQueuePage,
@@ -40,17 +47,23 @@ import type {
   ProductCategory,
   ProductEmailDetail,
   ProductEmailSummary,
+  ProductReview,
   ProductSummary,
   QueueFilters,
 } from "./api/types";
 import { canonicalFields } from "./api/types";
 import {
   categoryLabels,
+  displayLabel,
   displayValue,
   fieldStatusLabels,
   formatDate,
   labelForField,
   readinessLabels,
+  reasonLabels,
+  reviewActionLabels,
+  reviewStatusLabels,
+  semanticTone,
   statusLabels,
 } from "./lib/labels";
 
@@ -97,27 +110,10 @@ function StatusBadge({
   tone,
 }: {
   value: string | null | undefined;
-  tone?: "neutral" | "good" | "warn" | "bad" | "attention";
+  tone?: "neutral" | "good" | "warn" | "bad" | "attention" | "info" | "muted";
 }) {
   if (!value) return <span className="badge badge-muted">Not set</span>;
-  const resolvedTone =
-    tone ??
-    (value === "FAILED"
-      ? "bad"
-      : value === "BLOCKED"
-        ? "attention"
-        : value === "AWAITING_DOCUMENTS" || value === "UNRESOLVED"
-          ? "warn"
-          : value === "COMPLETED" || value === "MATCH"
-            ? "good"
-            : "neutral");
-  const label =
-    value in statusLabels
-      ? statusLabels[value as ProcessingStatus]
-      : value in categoryLabels
-        ? categoryLabels[value as ProductCategory]
-        : value.replaceAll("_", " ");
-  return <span className={`badge badge-${resolvedTone}`}>{label}</span>;
+  return <span className={`badge badge-${tone ?? semanticTone(value)}`}>{displayLabel(value)}</span>;
 }
 
 function EmptyState({ title, body }: { title: string; body: string }) {
@@ -141,7 +137,7 @@ function LoadingRows() {
 }
 
 function formatRelativeTime(date: Date | null): string {
-  if (!date) return "Just now";
+  if (!date) return "No timestamp";
   const seconds = Math.max(0, Math.floor((Date.now() - date.getTime()) / 1000));
   if (seconds < 10) return "Just now";
   if (seconds < 60) return `${seconds}s ago`;
@@ -156,11 +152,15 @@ function AppHeader({
   state,
   lastSyncedAt,
   onRefresh,
+  onInitialSync,
+  syncState,
 }: {
   page: Page;
   state: LoadState;
   lastSyncedAt: Date | null;
   onRefresh?: () => void;
+  onInitialSync?: () => void;
+  syncState?: LoadState;
 }) {
   const [syncTimeText, setSyncTimeText] = useState(() => formatRelativeTime(lastSyncedAt));
 
@@ -186,6 +186,9 @@ function AppHeader({
         <h1 className="sr-only">Shipping document operations, at a glance.</h1>
       </div>
       <div className="overview-header-actions">
+        <button type="button" onClick={onInitialSync} disabled={syncState === "loading"}>
+          {syncState === "loading" ? "Syncing…" : "Initial Sync"}
+        </button>
         <span className={cx("connection", state === "error" ? "offline" : "online")}>
           <span
             style={{
@@ -243,8 +246,7 @@ function OverviewPage({
             icon={<MailCheck size={18} color="var(--color-black)" />}
             label="Total Emails"
             value={summary?.total_emails ?? 0}
-            trendText="+12% from yesterday"
-            trend="up"
+            trendText={`${summary?.processing_count ?? 0} processing`}
             tone="neutral"
           />
           <MetricCard
@@ -253,17 +255,15 @@ function OverviewPage({
             label="Completed"
             value={completed}
             trendText={`${completionRate}% of total`}
-            subTrendText="+8%"
             trend="up"
             tone="good"
           />
           <MetricCard
             cardIndex={2}
             icon={<ShieldAlert size={18} color="var(--color-warn)" />}
-            label="Needs Review"
-            value={summary?.needs_review_count ?? 0}
-            trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.needs_review_count ?? 0) / summary.total_emails) * 100) : 0}% of total`}
-            subTrendText="+5%"
+            label="Human Review Open"
+            value={summary?.human_review_open_count ?? summary?.needs_review_count ?? 0}
+            trendText="Actionable business cases"
             trend="up"
             tone="warn"
           />
@@ -273,9 +273,32 @@ function OverviewPage({
             label="Mismatch"
             value={summary?.mismatch_count ?? 0}
             trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total`}
-            subTrendText="-2%"
             trend="down"
             tone="bad"
+          />
+          <MetricCard
+            cardIndex={4}
+            icon={<Clock size={18} color="var(--color-warn)" />}
+            label="Awaiting Documents"
+            value={summary?.awaiting_documents_count ?? metricFromStatus(summary, "AWAITING_DOCUMENTS")}
+            trendText="Operational waiting state"
+            tone="warn"
+          />
+          <MetricCard
+            cardIndex={5}
+            icon={<AlertCircle size={18} color="var(--color-danger)" />}
+            label="Failed"
+            value={summary?.failed_count ?? metricFromStatus(summary, "FAILED")}
+            trendText="Retry / reprocess"
+            tone="bad"
+          />
+          <MetricCard
+            cardIndex={6}
+            icon={<RefreshCw size={18} color="var(--color-info)" />}
+            label="Currently Processing"
+            value={summary?.processing_count ?? 0}
+            trendText="Active pipeline work"
+            tone="neutral"
           />
         </div>
       </div>
@@ -334,7 +357,7 @@ function OverviewPage({
           </div>
           {queue?.items.length ? (
             <div className="activity-list-compact">
-              {queue.items.slice(0, 6).map((item, idx) => {
+              {queue.items.slice(0, 6).map((item) => {
                 const isCompleted = item.processing_status === "COMPLETED";
                 const isMismatch = item.mismatch_count > 0;
                 const isReview = item.needs_review;
@@ -361,7 +384,7 @@ function OverviewPage({
                         <p>{item.subject}</p>
                       </div>
                     </div>
-                    <span className="activity-row-time">{idx === 0 ? "2 min ago" : idx === 1 ? "8 min ago" : `${(idx + 1) * 7} min ago`}</span>
+                    <span className="activity-row-time">{formatDate(item.received_at || item.created_at)}</span>
                   </div>
                 );
               })}
@@ -397,7 +420,7 @@ function OverviewPage({
                 </div>
               </div>
               <div className="alert-row-right">
-                <span>{summary?.mismatch_count ?? 8}</span>
+                <span>{summary?.mismatch_count ?? 0}</span>
                 <ChevronRight size={14} color="var(--color-grey-500)" />
               </div>
             </div>
@@ -413,7 +436,7 @@ function OverviewPage({
                 </div>
               </div>
               <div className="alert-row-right">
-                <span>{metricFromStatus(summary, "AWAITING_DOCUMENTS") || 15}</span>
+                <span>{summary?.awaiting_documents_count ?? metricFromStatus(summary, "AWAITING_DOCUMENTS")}</span>
                 <ChevronRight size={14} color="var(--color-grey-500)" />
               </div>
             </div>
@@ -429,7 +452,7 @@ function OverviewPage({
                 </div>
               </div>
               <div className="alert-row-right">
-                <span>{metricFromStatus(summary, "BLOCKED") || 11}</span>
+                <span>{metricFromStatus(summary, "BLOCKED")}</span>
                 <ChevronRight size={14} color="var(--color-grey-500)" />
               </div>
             </div>
@@ -445,7 +468,7 @@ function OverviewPage({
                 </div>
               </div>
               <div className="alert-row-right">
-                <span>{summary?.unresolved_count ?? 12}</span>
+                <span>{summary?.unresolved_count ?? 0}</span>
                 <ChevronRight size={14} color="var(--color-grey-500)" />
               </div>
             </div>
@@ -461,7 +484,7 @@ function OverviewPage({
                 </div>
               </div>
               <div className="alert-row-right">
-                <span>{metricFromStatus(summary, "FAILED") || 6}</span>
+                <span>{summary?.failed_count ?? metricFromStatus(summary, "FAILED")}</span>
                 <ChevronRight size={14} color="var(--color-grey-500)" />
               </div>
             </div>
@@ -688,6 +711,8 @@ function QueuePage({
   filters,
   onFilters,
   onSelect,
+  onOpenReview,
+  onReprocess,
   onCloseDetail,
   onPage,
 }: {
@@ -699,6 +724,8 @@ function QueuePage({
   filters: QueueFilters;
   onFilters: (filters: QueueFilters) => void;
   onSelect: (email: ProductEmailSummary) => void;
+  onOpenReview: (reviewId: string) => void;
+  onReprocess: (emailId: string) => void;
   onCloseDetail?: () => void;
   onPage: (direction: "next" | "previous") => void;
 }) {
@@ -829,7 +856,12 @@ function QueuePage({
                 </thead>
                 <tbody>
                   {queue.items.map((item) => (
-                    <tr key={item.id} onClick={() => onSelect(item)}>
+                    <tr
+                      key={item.id}
+                      className={cx(detail?.email.id === item.id && "selected-row")}
+                      onClick={() => onSelect(item)}
+                      aria-selected={detail?.email.id === item.id}
+                    >
                       <td>
                         <strong>{item.sender?.split("@")[0]?.replace(/[._]/g, " ") || item.sender}</strong>
                         <span className="subtle">{item.external_message_id}</span>
@@ -859,9 +891,35 @@ function QueuePage({
                         </span>
                       </td>
                       <td>
-                        <span className={cx("badge", item.needs_review ? "badge-attention" : "badge-neutral")}>
-                          {item.needs_review ? "Needs review" : "Clear"}
-                        </span>
+                        {item.review_id ? (
+                          <button
+                            type="button"
+                            className="table-link"
+                            aria-label="Open Review"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onOpenReview(item.review_id!);
+                            }}
+                          >
+                            <StatusBadge value={item.review_status || "OPEN"} />
+                            <span className="sr-only">Open Review</span>
+                          </button>
+                        ) : item.processing_status === "AWAITING_DOCUMENTS" ? (
+                          <span className="badge badge-warn">Awaiting Documents</span>
+                        ) : item.processing_status === "FAILED" ? (
+                          <button
+                            type="button"
+                            className="table-link"
+                            onClick={(event) => {
+                              event.stopPropagation();
+                              onReprocess(item.id);
+                            }}
+                          >
+                            Retry/Reprocess
+                          </button>
+                        ) : (
+                          <span className="badge badge-muted">No active review</span>
+                        )}
                       </td>
                       <td>
                         <span className="subtle">{formatDate(item.received_at || item.created_at)}</span>
@@ -907,7 +965,7 @@ function QueuePage({
           <>
             <div className="floating-backdrop" onClick={onCloseDetail} />
             <div className="surface-panel detail-panel floating-modal">
-              <EmailDetailContent detail={detail} onClose={onCloseDetail} />
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
             </div>
           </>
         ) : null
@@ -916,7 +974,7 @@ function QueuePage({
           {detailState === "loading" ? (
             <LoadingRows />
           ) : detail ? (
-            <EmailDetailContent detail={detail} onClose={onCloseDetail} />
+            <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
           ) : (
             <EmptyState
               title="Select an email"
@@ -932,10 +990,15 @@ function QueuePage({
 function EmailDetailContent({
   detail,
   onClose,
+  onOpenReview,
+  onReprocess,
 }: {
   detail: ProductEmailDetail;
   onClose?: () => void;
+  onOpenReview: (reviewId: string) => void;
+  onReprocess: (emailId: string) => void;
 }) {
+  const latestFailure = [...detail.timeline].reverse().find((event) => event.new_status === "FAILED");
   return (
     <div>
       <div className="detail-title">
@@ -955,31 +1018,58 @@ function EmailDetailContent({
         </div>
         <h2>{detail.email.subject}</h2>
         <p>
-          From {detail.email.sender || "Unknown"} · Message ID: {detail.email.external_message_id}
+          {detail.email.sender || "Unknown sender"} · {formatDate(detail.email.received_at || detail.email.created_at)}
         </p>
+        <div className="detail-badge-row">
+          <StatusBadge value={detail.email.category} />
+          <StatusBadge value={detail.email.processing_status} />
+          {detail.email.review_status ? <StatusBadge value={detail.email.review_status} /> : null}
+        </div>
+        <div className="detail-actions">
+          {detail.email.review_id ? (
+            <button className="button-primary" type="button" onClick={() => onOpenReview(detail.email.review_id!)}>Open Human Review</button>
+          ) : null}
+          {detail.email.processing_status === "FAILED" ? (
+            <button className="button-primary" type="button" onClick={() => onReprocess(detail.email.id)}>Retry / Reprocess</button>
+          ) : null}
+        </div>
       </div>
 
       <div className="detail-section">
-        <h3>Classification & State</h3>
+        <h3>Email information</h3>
         <div className="info-grid">
           <div className="info-item">
             <span>Category</span>
             <strong>{categoryLabels[detail.email.category ?? "general_message"]}</strong>
           </div>
           <div className="info-item">
-            <span>Confidence</span>
-            <strong>{Math.round((detail.email.classification_confidence ?? 0) * 100)}%</strong>
+            <span>Recipients</span>
+            <strong>{detail.recipients.length ? detail.recipients.join(", ") : "Not supplied"}</strong>
           </div>
           <div className="info-item">
             <span>Status</span>
             <strong>{statusLabels[detail.email.processing_status]}</strong>
           </div>
           <div className="info-item">
-            <span>Readiness</span>
-            <strong>{detail.email.comparison_readiness ? readinessLabels[detail.email.comparison_readiness] : "—"}</strong>
+            <span>Attachments</span>
+            <strong>{detail.attachments.length}</strong>
           </div>
         </div>
+        <details className="body-preview">
+          <summary>Message preview</summary>
+          <p>{detail.body || "No message body available."}</p>
+        </details>
       </div>
+
+      {detail.email.processing_status === "FAILED" ? (
+        <div className="detail-section">
+          <div className="state-note failed" role="alert">
+            <strong>Processing failed</strong>
+            <span>{latestFailure ? displayLabel(latestFailure.reason_code) : "A technical processing error occurred."}</span>
+            <small>Retrying reprocesses this email from backend truth; it does not send the case to Human Review.</small>
+          </div>
+        </div>
+      ) : null}
 
       {detail.comparison ? (
         <div className="detail-section">
@@ -1004,8 +1094,8 @@ function EmailDetailContent({
                   const isMismatch = status === "MISMATCH";
                   const isUnresolved = status === "UNRESOLVED";
                   return (
+                    <React.Fragment key={fieldKey}>
                     <tr
-                      key={fieldKey}
                       className={cx(
                         isMismatch && "field-mismatch",
                         isUnresolved && "field-unresolved",
@@ -1021,6 +1111,25 @@ function EmailDetailContent({
                         />
                       </td>
                     </tr>
+                    {field?.evidence?.length ? (
+                      <tr className="evidence-row">
+                        <td colSpan={4}>
+                          <details>
+                            <summary>View evidence for {labelForField(fieldKey)}</summary>
+                            <div className="evidence-grid">
+                              {field.evidence.map((item, index) => (
+                                <div key={`${fieldKey}-${index}`}>
+                                  <strong>{item.filename || item.document_role || "Source evidence"}</strong>
+                                  <span>{item.text_span || item.reason || "Structured source evidence"}</span>
+                                  <small>{item.page ? `Page ${item.page}` : item.source_type || "Document"}</small>
+                                </div>
+                              ))}
+                            </div>
+                          </details>
+                        </td>
+                      </tr>
+                    ) : null}
+                    </React.Fragment>
                   );
                 })}
               </tbody>
@@ -1042,43 +1151,46 @@ function EmailDetailContent({
         <div className="detail-section">
           <h3>Comparison Status</h3>
           <div className="state-note awaiting">
-            Draft BL is not yet available for this SI. The case is awaiting follow-up documents.
+            <strong>Awaiting Documents</strong>
+            <span>The comparison request is valid, but a required document has not arrived yet.</span>
+            <small>{detail.documents.length ? `${detail.documents.length} document(s) are currently available.` : "No SI or Draft BL document is currently available."}</small>
           </div>
         </div>
       ) : null}
 
       <div className="detail-section">
-        <h3>Attachments ({detail.attachments.length})</h3>
-        {detail.attachments.length ? (
+        <h3>Documents ({detail.documents.length})</h3>
+        {detail.documents.length ? (
           <div className="attachment-list">
-            {detail.attachments.map((att) => (
-              <div className="attachment-row" key={att.id}>
+            {detail.documents.map((document) => (
+              <div className="attachment-row" key={document.id}>
                 <FileSearch size={16} />
                 <div>
-                  <strong>{att.filename}</strong>
-                  <p>{att.content_type || "Document"} · {att.retrieval_status || "Retrieved"}</p>
+                  <strong>{document.filename}</strong>
+                  <p>{displayLabel(document.role)} · {displayLabel(document.validation_outcome)} · {displayLabel(document.read_status || "NOT_READ")}</p>
                 </div>
               </div>
             ))}
           </div>
         ) : (
-          <p className="subtle">No attachments found on this email.</p>
+          <EmptyState title="No documents materialized" body="This email has no validated SI or Draft BL document to display." />
         )}
       </div>
 
       <div className="detail-section">
         <h3>Processing Timeline</h3>
-        <div className="timeline">
+        {detail.timeline.length ? <div className="timeline">
           {detail.timeline.map((event) => (
             <div className="timeline-row" key={event.id}>
               <span />
               <div>
                 <strong>{(statusLabels as Record<string, string>)[event.new_status] || event.new_status}</strong>
-                <p>{event.reason_code} · {formatDate(event.created_at)}</p>
+                <p>{displayLabel(event.reason_code)} · {formatDate(event.created_at)}</p>
+                <small className="technical-code">{event.reason_code}</small>
               </div>
             </div>
           ))}
-        </div>
+        </div> : <EmptyState title="No events yet" body="Processing and review events will appear here as the case advances." />}
       </div>
     </div>
   );
@@ -1087,57 +1199,135 @@ function EmailDetailContent({
 function HumanReviewPageView({
   reviews,
   state,
+  selected,
+  actionState,
   onSelect,
+  onClaim,
+  onOverride,
+  onResolve,
+  onDismiss,
 }: {
   reviews: HumanReviewPage | null;
   state: LoadState;
-  onSelect: (email: ProductEmailSummary) => void;
+  selected: ProductReview | null;
+  actionState: LoadState;
+  onSelect: (reviewId: string) => void;
+  onClaim: (reviewer: string) => Promise<void>;
+  onOverride: (payload: { document_side: "SI" | "BL"; field: string; corrected_value: string; reviewer_name: string; note?: string }) => Promise<void>;
+  onResolve: (reviewer: string, notes?: string) => Promise<void>;
+  onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
 }) {
+  const [statusFilter, setStatusFilter] = useState("ACTIVE");
+  const [reasonFilter, setReasonFilter] = useState("");
+  const [reviewerFilter, setReviewerFilter] = useState("");
+  const [searchFilter, setSearchFilter] = useState("");
+  const [reviewer, setReviewer] = useState("Demo Reviewer");
+  const [side, setSide] = useState<"SI" | "BL">("BL");
+  const [field, setField] = useState("notify_party");
+  const [correctedValue, setCorrectedValue] = useState("");
+  const [note, setNote] = useState("");
+  const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
+
+  const visibleReviews = (reviews?.items ?? []).filter((review) => {
+    const search = searchFilter.trim().toLowerCase();
+    return (statusFilter === "ACTIVE" ? ["OPEN", "IN_REVIEW"].includes(review.status) : !statusFilter || review.status === statusFilter)
+      && (!reasonFilter || review.reason_code === reasonFilter)
+      && (!reviewerFilter || (review.reviewer_name ?? "").toLowerCase().includes(reviewerFilter.toLowerCase()))
+      && (!search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search));
+  });
+  const reasons = [...new Set((reviews?.items ?? []).map((review) => review.reason_code))].sort();
+  const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
+  const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
+  const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
+  const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
+
   return (
-    <section className="surface-panel">
-      <div className="section-header">
-        <div>
-          <p className="eyebrow">Exception handling</p>
-          <h2>Human Review</h2>
+    <section className="queue-layout">
+      <div className="surface-panel queue-panel">
+        <div className="section-header">
+          <div>
+            <p className="eyebrow">Actionable exception handling</p>
+            <h2>Human Review Queue</h2>
+          </div>
+          <span className="total-pill">{visibleReviews.length} shown · {reviews?.total ?? 0} total</span>
         </div>
-        <span className="total-pill">{reviews?.total ?? 0} cases</span>
+        <div className="filters" aria-label="Human Review filters">
+          <label><Search size={16} /><input aria-label="Search reviews" placeholder="Search subject, sender, reason" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} /></label>
+          <select aria-label="Filter review status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
+            <option value="ACTIVE">Open and in review</option><option value="OPEN">Open</option><option value="IN_REVIEW">In Review</option><option value="RESOLVED">Resolved</option><option value="DISMISSED">Dismissed</option><option value="">All statuses</option>
+          </select>
+          <select aria-label="Filter review reason" value={reasonFilter} onChange={(event) => setReasonFilter(event.target.value)}>
+            <option value="">All reasons</option>{reasons.map((reason) => <option key={reason}>{reason}</option>)}
+          </select>
+          <input aria-label="Filter reviewer" placeholder="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} />
+          <select aria-label="Sort queue" value={sortFilter} onChange={(event) => setSortFilter(event.target.value)}>
+            <option value="newest">Newest first</option>
+            <option value="oldest">Oldest first</option>
+            <option value="priority">Priority</option>
+          </select>
+        </div>
+        {state === "loading" ? <LoadingRows /> : visibleReviews.length ? (
+          <div className="review-list">
+            {visibleReviews.map((review) => (
+              <article className={cx("review-card", selected?.id === review.id && "selected", review.case_origin === "LEGACY" && "legacy")} key={review.id}>
+                <div className="review-card-header">
+                  <div>
+                    <h2>{review.email?.subject ?? "Unknown subject"}</h2>
+                    <p>{review.email?.sender || "Unknown sender"}</p>
+                    <strong className="review-reason">{reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code)}</strong>
+                    <p className="human-explanation">{review.human_explanation}</p>
+                    <p className="affected-fields-summary">Affected: {review.affected_fields?.join(", ") || "None"}</p>
+                    <p className="age-summary">Age: {review.age_minutes} mins</p>
+                  </div>
+                  <button type="button" onClick={() => onSelect(review.id)}>Open Review</button>
+                </div>
+                <div className="review-meta">
+                  <StatusBadge value={review.priority} />
+                  <StatusBadge value={review.status} />
+                  <StatusBadge value={review.email?.processing_status} />
+                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
+                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>
+                  <span className="subtle">{review.comparison?.unresolved_fields.length ?? 0} affected field(s)</span>
+                  <span className="subtle">{formatDate(review.created_at)}</span>
+                </div>
+              </article>
+            ))}
+          </div>
+        ) : <EmptyState title="No active review cases" body="Awaiting-document and technical-failure states are intentionally handled outside Human Review." />}
       </div>
 
-      {state === "loading" ? (
-        <LoadingRows />
-      ) : reviews?.items.length ? (
-        <div className="review-list">
-          {reviews.items.map((review) => (
-            <div className="review-card" key={review.id}>
-              <div className="review-card-header">
-                <div>
-                  <h2>{review.email?.subject ?? "Unknown subject"}</h2>
-                  <p>From {review.email?.sender || "Unknown"} · Reason: {review.reason_text || review.reason_code}</p>
-                </div>
-                {review.email ? (
-                  <button
-                    type="button"
-                    onClick={() => onSelect(review.email!)}
-                  >
-                    View Case
-                  </button>
-                ) : null}
-              </div>
-              <div className="review-meta">
-                <StatusBadge value={review.status} />
-                <span className="subtle">{labelForField(review.field ?? "unknown")}</span>
-                <span className="subtle">Confidence: {Math.round((review.confidence ?? 0) * 100)}%</span>
-                <span className="subtle">{review.created_at ? formatDate(review.created_at) : ""}</span>
-              </div>
+      <div className="surface-panel detail-panel">
+        {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
+          <div className="review-detail">
+            <div className="detail-title">
+              <p className="eyebrow">Human Review</p>
+              <h2>{selected.email?.subject || "Review case"}</h2>
+              <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
+              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span></div>
             </div>
-          ))}
-        </div>
-      ) : (
-        <EmptyState
-          title="No review cases"
-          body="All current cases are either completed cleanly or do not require manual exception handling."
-        />
-      )}
+            <div className="review-callout">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div><strong>{reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code)}</strong><p>{selected.reason_text}</p><small className="technical-code">{selected.reason_code}</small></div>
+            </div>
+            <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
+            <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
+            <div className="detail-section">
+              <div className="section-heading-row"><div><h3>Seven reviewed fields</h3><p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p></div><span className="total-pill">{selectedUnresolved} unresolved</span></div>
+              <div className="comparison-table-wrap"><table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison"><thead><tr><th>Field</th><th>Shipping Instruction</th><th>Draft BL</th><th>System result</th></tr></thead><tbody>
+                {canonicalFields.map((name) => {
+                  const compared = selected.comparison?.fields.find((item) => item.field === name);
+                  const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
+                  const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                  return <tr key={name} className={cx(compared?.status === "MISMATCH" && "field-mismatch", compared?.status === "UNRESOLVED" && "field-unresolved")}><th>{labelForField(name)}</th><td><span className="value-label">Original SI</span>{displayValue(compared?.si.raw)}{siOverride ? <span className="reviewed-value"><span>Reviewed SI</span>{displayValue(siOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}</span></td><td><span className="value-label">Original BL</span>{displayValue(compared?.bl.raw)}{blOverride ? <span className="reviewed-value"><span>Reviewed BL</span>{displayValue(blOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}</span></td><td><StatusBadge value={compared?.status ?? "UNRESOLVED"} /></td></tr>;
+                })}
+              </tbody></table></div>
+            </div>
+            <div className="detail-section review-editor"><h3>Save a correction</h3><p>Corrections are stored separately from original extraction evidence.</p><div className="form-grid"><label>Document side<select aria-label="Override side" value={side} onChange={(event) => setSide(event.target.value as "SI" | "BL")}><option>SI</option><option>BL</option></select></label><label>Field<select aria-label="Override field" value={field} onChange={(event) => setField(event.target.value)}>{canonicalFields.map((name) => <option key={name} value={name}>{labelForField(name)}</option>)}</select></label><label className="form-span">Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}<input type={inputType} step={inputStep} min={inputType === "number" ? "0" : undefined} aria-label="Corrected value" aria-describedby="correction-help" value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"} /></label><label className="form-span">Reviewer note<textarea aria-label="Reviewer note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the evidence for this correction" /></label></div><p id="correction-help" className="form-help">The saved correction becomes the effective value only when Resolve & Recompare succeeds.</p><button className="button-primary" type="button" disabled={!correctedValue || actionState === "loading"} onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}>{actionState === "loading" ? "Saving…" : "Save Correction"}</button>{actionState === "ready" && activeOverrides.length ? <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span> : null}</div>
+            <div className="detail-section"><h3>Review actions</h3><div className="form-grid"><label className="form-span">Reviewer<input aria-label="Reviewer name" value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label></div><button className="button-secondary" type="button" disabled={actionState === "loading" || selected.status !== "OPEN"} onClick={() => void onClaim(reviewer)}>Start / Claim</button><div className="resolution-summary"><strong>Resolve & Recompare</strong><span>{activeOverrides.length} saved override(s) across {[...new Set(activeOverrides.map((item) => item.field))].length} field(s) · {selectedUnresolved} currently unresolved</span><p>HolyShip will apply reviewed values, create a new comparison version, and refresh this case from backend truth.</p></div><button className="button-primary" type="button" disabled={actionState === "loading" || selected.status === "DISMISSED"} onClick={() => void onResolve(reviewer, note)}>{actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}</button><div className="dismiss-zone"><strong>Dismiss without resolving</strong><p>Dismiss records an audited decision. It does not mark the comparison completed.</p><label>Dismiss reason<input aria-label="Dismiss reason" value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} /></label><button className="button-danger-secondary" type="button" disabled={actionState === "loading" || !dismissReason.trim()} onClick={() => void onDismiss(reviewer, dismissReason, note)}>Dismiss Review</button></div></div>
+            <div className="detail-section"><h3>Review audit trail</h3>{selected.actions?.length ? <div className="timeline">{selected.actions.map((action) => <div className="timeline-row" key={action.id}><span /><div><strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong><p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p><small className="technical-code">{action.action}</small></div></div>)}</div> : <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />}</div>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1148,14 +1338,18 @@ export default function App() {
   const [queue, setQueue] = useState<EmailQueuePage | null>(null);
   const [detail, setDetail] = useState<ProductEmailDetail | null>(null);
   const [reviews, setReviews] = useState<HumanReviewPage | null>(null);
+  const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [detailState, setDetailState] = useState<LoadState>("idle");
   const [reviewState, setReviewState] = useState<LoadState>("idle");
+  const [reviewActionState, setReviewActionState] = useState<LoadState>("idle");
+  const [syncState, setSyncState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [filters, setFilters] = useState<QueueFilters>({ limit: 25, skip: 0 });
   const [lastEventAt, setLastEventAt] = useState<string | undefined>(undefined);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
+  const deepLinkHandled = useRef(false);
 
   const loadDashboard = useCallback(async () => {
     setLoadState("loading");
@@ -1178,7 +1372,7 @@ export default function App() {
   const loadReviews = useCallback(async () => {
     setReviewState("loading");
     try {
-      setReviews(await getHumanReviewQueue());
+      setReviews(await getHumanReviewQueue({ active_only: false }));
       setReviewState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load review queue");
@@ -1186,9 +1380,45 @@ export default function App() {
     }
   }, []);
 
+  const selectEmailById = useCallback(async (emailId: string, updateUrl = true) => {
+    setPage("queue");
+    setDetailState("loading");
+    try {
+      setDetail(await getEmailDetail(emailId));
+      setDetailState("ready");
+      if (updateUrl) window.history.replaceState({}, "", `?email=${encodeURIComponent(emailId)}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load email detail");
+      setDetailState("error");
+    }
+  }, []);
+
+  const selectReviewById = useCallback(async (reviewId: string, updateUrl = true) => {
+    setPage("review");
+    setReviewActionState("loading");
+    try {
+      setSelectedReview(await getHumanReviewDetail(reviewId));
+      setReviewActionState("ready");
+      if (updateUrl) window.history.replaceState({}, "", `?review=${encodeURIComponent(reviewId)}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load review detail");
+      setReviewActionState("error");
+    }
+  }, []);
+
   useEffect(() => {
     void loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (deepLinkHandled.current) return;
+    deepLinkHandled.current = true;
+    const params = new URLSearchParams(window.location.search);
+    const reviewId = params.get("review");
+    const emailId = params.get("email");
+    if (reviewId) void selectReviewById(reviewId, false);
+    else if (emailId) void selectEmailById(emailId, false);
+  }, [selectEmailById, selectReviewById]);
 
   useEffect(() => {
     if (page === "review") {
@@ -1212,14 +1442,48 @@ export default function App() {
   }, [lastEventAt, loadDashboard]);
 
   const selectEmail = async (email: ProductEmailSummary) => {
-    setPage("queue");
-    setDetailState("loading");
+    await selectEmailById(email.id);
+  };
+
+  const refreshAfterReview = async (updated: ProductReview) => {
+    setSelectedReview(updated);
+    await Promise.all([loadReviews(), loadDashboard()]);
+    if (detail?.email.id === updated.email_id) setDetail(await getEmailDetail(updated.email_id));
+  };
+
+  const reviewMutation = async (operation: () => Promise<ProductReview>) => {
+    setReviewActionState("loading");
+    setError(null);
     try {
-      setDetail(await getEmailDetail(email.id));
-      setDetailState("ready");
+      await refreshAfterReview(await operation());
+      setReviewActionState("ready");
     } catch (caught) {
-      setError(caught instanceof Error ? caught.message : "Unable to load email detail");
-      setDetailState("error");
+      setError(caught instanceof Error ? caught.message : "Human Review action failed");
+      setReviewActionState("error");
+    }
+  };
+
+  const reprocess = async (emailId: string) => {
+    setError(null);
+    try {
+      await reprocessEmail(emailId);
+      await loadDashboard();
+      setDetail(await getEmailDetail(emailId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reprocess failed");
+    }
+  };
+
+  const initialSync = async () => {
+    setSyncState("loading");
+    setError(null);
+    try {
+      await runInitialSync();
+      await loadDashboard();
+      setSyncState("ready");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Initial sync failed");
+      setSyncState("error");
     }
   };
 
@@ -1235,6 +1499,11 @@ export default function App() {
     setFilters({ ...filters, skip: nextIndex * limit, limit });
   };
 
+  const navigate = (nextPage: Page) => {
+    setPage(nextPage);
+    window.history.replaceState({}, "", window.location.pathname);
+  };
+
   return (
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
@@ -1246,15 +1515,15 @@ export default function App() {
           </div>
         </div>
         <nav>
-          <button className={cx(page === "overview" && "active")} onClick={() => setPage("overview")} type="button">
+          <button className={cx(page === "overview" && "active")} onClick={() => navigate("overview")} type="button">
             <ShipWheel size={18} />
             Overview
           </button>
-          <button className={cx(page === "queue" && "active")} onClick={() => setPage("queue")} type="button">
+          <button className={cx(page === "queue" && "active")} onClick={() => navigate("queue")} type="button">
             <Inbox size={18} />
             Email Queue
           </button>
-          <button className={cx(page === "review" && "active")} onClick={() => setPage("review")} type="button">
+          <button className={cx(page === "review" && "active")} onClick={() => navigate("review")} type="button">
             <ClipboardList size={18} />
             Human Review
           </button>
@@ -1277,6 +1546,8 @@ export default function App() {
           state={loadState}
           lastSyncedAt={lastSyncedAt}
           onRefresh={() => void loadDashboard()}
+          onInitialSync={() => void initialSync()}
+          syncState={syncState}
         />
 
         {error ? <div className="error-banner" role="alert">{error}</div> : null}
@@ -1286,7 +1557,7 @@ export default function App() {
             summary={summary}
             queue={queue}
             state={loadState}
-            onOpenQueue={() => setPage("queue")}
+            onOpenQueue={() => navigate("queue")}
           />
         ) : null}
 
@@ -1300,6 +1571,8 @@ export default function App() {
             filters={filters}
             onFilters={updateFilters}
             onSelect={(item) => void selectEmail(item)}
+            onOpenReview={(reviewId) => void selectReviewById(reviewId)}
+            onReprocess={(emailId) => void reprocess(emailId)}
             onCloseDetail={() => setDetail(null)}
             onPage={movePage}
           />
@@ -1309,7 +1582,13 @@ export default function App() {
           <HumanReviewPageView
             reviews={reviews}
             state={reviewState}
-            onSelect={(item) => void selectEmail(item)}
+            selected={selectedReview}
+            actionState={reviewActionState}
+            onSelect={(reviewId) => void selectReviewById(reviewId)}
+            onClaim={(reviewer) => reviewMutation(() => claimHumanReview(selectedReview!.id, reviewer))}
+            onOverride={(payload) => reviewMutation(() => saveHumanReviewOverride(selectedReview!.id, payload))}
+            onResolve={(reviewer, notes) => reviewMutation(() => resolveHumanReview(selectedReview!.id, reviewer, notes))}
+            onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
           />
         ) : null}
       </main>
