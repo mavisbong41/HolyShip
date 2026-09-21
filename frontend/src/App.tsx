@@ -1539,6 +1539,7 @@ function HumanReviewPageView({
   onResolve,
   onDismiss,
   onReprocess,
+  onCaseUpdated,
 }: {
   reviews: HumanReviewPage | null;
   analytics: HumanReviewAnalytics | null;
@@ -1553,6 +1554,7 @@ function HumanReviewPageView({
   onResolve: (reviewer: string, notes?: string) => Promise<void>;
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
   onReprocess?: (emailId: string) => void | Promise<void>;
+  onCaseUpdated?: (updated: ProductReview) => void;
 }) {
   const [activeStatusFilter, setActiveStatusFilter] = useState("ACTIVE");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL_HISTORY");
@@ -1560,7 +1562,7 @@ function HumanReviewPageView({
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [sortFilter, setSortFilter] = useState("newest");
-  const [reviewer, setReviewer] = useState("John Doe");
+  const [reviewer, setReviewer] = useState("Demo Reviewer");
   const [side, setSide] = useState<"SI" | "BL">("BL");
   const [field, setField] = useState("notify_party");
   const [correctedValue, setCorrectedValue] = useState("");
@@ -1575,7 +1577,7 @@ function HumanReviewPageView({
     if (selected?.reviewer_name) {
       setReviewer(selected.reviewer_name);
     } else {
-      setReviewer("John Doe");
+      setReviewer("Demo Reviewer");
     }
 
     if (selected?.reason_code) {
@@ -3366,6 +3368,7 @@ export default function App() {
             onResolve={(reviewer, notes) => reviewMutation(() => resolveHumanReview(selectedReview!.id, reviewer, notes))}
             onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
             onReprocess={(emailId) => void reprocess(emailId)}
+            onCaseUpdated={(updated) => setSelectedReview(updated)}
           />
         ) : null}
       </main>
