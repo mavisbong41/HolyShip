@@ -19,7 +19,7 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   QUEUED: "Queued",
   CLASSIFYING: "Classifying",
   CLASSIFIED: "Classified",
-  AWAITING_DOCUMENTS: "Awaiting Documents",
+  AWAITING_DOCUMENTS: "Waiting for Documents",
   RETRIEVING_ATTACHMENTS: "Retrieving Attachments",
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
