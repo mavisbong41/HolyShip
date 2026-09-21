@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import select, func, case
+from sqlalchemy import select, func
 from sqlalchemy.orm import Session
 from backend.app.storage.models import (
     HumanReviewCaseRecord,
@@ -126,15 +126,12 @@ def get_human_review_reconciliation(session: Session) -> HumanReviewReconciliati
             latest_comparison.c.mismatch_found.is_(True),
         )
     ) or 0)
-    unresolved_count = int(session.scalar(
-        select(func.count()).select_from(latest_comparison).where(
-            latest_comparison.c.rank == 1,
-            case(
-                (latest_comparison.c.unresolved_fields.is_(None), 0),
-                else_=func.json_array_length(latest_comparison.c.unresolved_fields),
-            ) > 0,
-        )
-    ) or 0)
+    latest_unresolved_rows = session.execute(
+        select(latest_comparison.c.unresolved_fields).where(latest_comparison.c.rank == 1)
+    ).all()
+    # Count emails, not fields. Keeping JSON length evaluation in Python avoids
+    # PostgreSQL jsonb vs SQLite JSON function differences in diagnostics/tests.
+    unresolved_count = sum(1 for (fields,) in latest_unresolved_rows if fields)
     return HumanReviewReconciliation(
         total_emails=int(session.scalar(select(func.count(EmailMessageRecord.id))) or 0),
         processing_status_counts={str(status): int(count) for status, count in status_rows},
