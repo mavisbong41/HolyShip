@@ -7,3 +7,7 @@ export function dashboardBaseUrl(): string {
 export function dashboardEmailUrl(emailId: string): string {
   return `${dashboardBaseUrl()}/?email=${encodeURIComponent(emailId)}`;
 }
+
+export function dashboardReviewUrl(reviewId: string): string {
+  return `${dashboardBaseUrl()}/?review=${encodeURIComponent(reviewId)}`;
+}

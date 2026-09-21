@@ -110,6 +110,7 @@ export interface ProductEmailSummary {
   mismatch_count: number;
   unresolved_count: number;
   needs_review: boolean;
+  review_id?: string | null;
   review_status: string | null;
   review_reason: string | null;
 }
@@ -199,6 +200,10 @@ export interface ProductReview {
   reason_code: string;
   reason_text: string;
   status: string;
+  case_origin?: "LEGACY" | "ACTIVE";
+  reviewer_name?: string | null;
+  updated_at?: string | null;
+  resolved_at?: string | null;
   confidence: number | null;
   evidence: ProductEvidence[];
   comparison: ProductComparison | null;

@@ -63,6 +63,10 @@ export async function getEmailDetail(emailId: string): Promise<ProductEmailDetai
   return request<ProductEmailDetail>(`/emails/${emailId}`);
 }
 
+export async function reprocessEmail(emailId: string): Promise<{ email_id: string; status: string }> {
+  return request(`/emails/${emailId}/reprocess`, { method: "POST" });
+}
+
 /**
  * Search by subject / sender as fallback when no message-id match is possible.
  */
