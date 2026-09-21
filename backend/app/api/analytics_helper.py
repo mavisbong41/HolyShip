@@ -12,6 +12,8 @@ from backend.app.api.product_schemas import HumanReviewAnalytics, HumanReviewRec
 from backend.app.api.review_helper import compute_affected_fields, compute_priority, compute_age_minutes
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
+    from backend.app.api.product_queries import sync_blocked_cases_to_review
+    sync_blocked_cases_to_review(session)
     now = datetime.now(timezone.utc)
     # Fetch all active cases
     cases = session.scalars(

@@ -825,6 +825,52 @@ function MetricCard({
   );
 }
 
+function getPaginationItems(current: number, totalPages: number): Array<number | string> {
+  if (totalPages <= 7) {
+    return Array.from({ length: totalPages }, (_, i) => i);
+  }
+
+  const pages = new Set<number>();
+  pages.add(0);
+  pages.add(totalPages - 1);
+
+  for (let i = Math.max(0, current - 1); i <= Math.min(totalPages - 1, current + 1); i++) {
+    pages.add(i);
+  }
+
+  if (current === 0) {
+    pages.add(1);
+    pages.add(2);
+  } else if (current === 1) {
+    pages.add(2);
+    pages.add(3);
+  } else if (current === totalPages - 1) {
+    pages.add(totalPages - 2);
+    pages.add(totalPages - 3);
+  } else if (current === totalPages - 2) {
+    pages.add(totalPages - 3);
+    pages.add(totalPages - 4);
+  }
+
+  const sorted = Array.from(pages).sort((a, b) => a - b);
+  const result: Array<number | string> = [];
+
+  for (let i = 0; i < sorted.length; i++) {
+    const pageNum = sorted[i];
+    if (i > 0) {
+      const prev = sorted[i - 1];
+      if (pageNum - prev === 2) {
+        result.push(prev + 1);
+      } else if (pageNum - prev > 2) {
+        result.push(`ellipsis-${prev}`);
+      }
+    }
+    result.push(pageNum);
+  }
+
+  return result;
+}
+
 function QueuePage({
   page,
   queue,
@@ -838,6 +884,7 @@ function QueuePage({
   onReprocess,
   onCloseDetail,
   onPage,
+  onGoToPage,
 }: {
   page: number;
   queue: EmailQueuePage | null;
@@ -851,9 +898,34 @@ function QueuePage({
   onReprocess: (emailId: string) => void;
   onCloseDetail?: () => void;
   onPage: (direction: "next" | "previous") => void;
+  onGoToPage: (pageIndex: number) => void;
 }) {
   const [isFloating, setIsFloating] = useState(false);
+  const [panelWidth, setPanelWidth] = useState(520);
+  const [isResizing, setIsResizing] = useState(false);
   const tableWrapRef = useRef<HTMLDivElement>(null);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startW = panelWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const newWidth = Math.min(Math.max(startW + delta, 360), Math.round(window.innerWidth * 0.65));
+      setPanelWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }, [panelWidth]);
 
   const scrollTable = (direction: "left" | "right") => {
     if (tableWrapRef.current) {
@@ -862,12 +934,26 @@ function QueuePage({
     }
   };
 
-  const pageSize = filters.limit ?? 25;
+  const pageSize = filters.limit ?? 20;
+  const total = queue?.total ?? 0;
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const canPrevious = page > 0;
-  const canNext = queue ? queue.skip + pageSize < queue.total : false;
+  const canNext = queue ? queue.skip + pageSize < total : false;
+  const startItem = total === 0 ? 0 : page * pageSize + 1;
+  const endItem = Math.min(total, (page + 1) * pageSize);
+  const paginationItems = getPaginationItems(page, totalPages);
+
+  const layoutStyle = !isFloating && detail
+    ? ({
+        "--queue-detail-width": `${panelWidth}px`,
+      } as React.CSSProperties)
+    : undefined;
 
   return (
-    <section className={cx("queue-layout", isFloating && "floating-layout")}>
+    <section
+      className={cx("queue-layout", isFloating && "floating-layout", isResizing && "is-resizing")}
+      style={layoutStyle}
+    >
       <div className="surface-panel queue-panel">
         <div className="section-header queue-header">
           <div>
@@ -1054,25 +1140,43 @@ function QueuePage({
             </div>
 
             <div className="pagination">
-              <button
-                className="pagination-btn-prev"
-                disabled={!canPrevious}
-                onClick={() => onPage("previous")}
-                type="button"
-              >
-                <ChevronLeft size={16} /> Previous
-              </button>
-              <span>
-                Page {page + 1} of {Math.max(1, Math.ceil(queue.total / pageSize))} ({queue.total} total)
+              <span className="pagination-info">
+                Showing {startItem}–{endItem} of {total}
               </span>
-              <button
-                className="pagination-btn-next"
-                disabled={!canNext}
-                onClick={() => onPage("next")}
-                type="button"
-              >
-                Next <ChevronRight size={16} />
-              </button>
+              <div className="pagination-nav">
+                <button
+                  className="pagination-btn pagination-btn-nav"
+                  disabled={!canPrevious}
+                  onClick={() => onPage("previous")}
+                  type="button"
+                >
+                  ‹ Previous
+                </button>
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
+                    <button
+                      key={item}
+                      type="button"
+                      className={cx("pagination-btn pagination-btn-page", item === page && "active")}
+                      onClick={() => onGoToPage(item)}
+                    >
+                      {item + 1}
+                    </button>
+                  ) : (
+                    <span key={item} className="pagination-ellipsis">
+                      …
+                    </span>
+                  )
+                )}
+                <button
+                  className="pagination-btn pagination-btn-nav"
+                  disabled={!canNext}
+                  onClick={() => onPage("next")}
+                  type="button"
+                >
+                  Next ›
+                </button>
+              </div>
             </div>
           </>
         ) : (
@@ -1093,17 +1197,30 @@ function QueuePage({
           </>
         ) : null
       ) : (
-        <div className="surface-panel detail-panel">
-          {detailState === "loading" ? (
-            <LoadingRows />
-          ) : detail ? (
-            <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
-          ) : (
-            <EmptyState
-              title="Select an email"
-              body="Choose any message from the operational queue to view classification, attachments, timeline, and document comparison."
-            />
-          )}
+        <div className="detail-panel-wrapper">
+          {detail ? (
+            <div
+              className={cx("panel-resize-handle", isResizing && "dragging")}
+              onMouseDown={startResize}
+              title="Drag to resize inspector panel width"
+              role="separator"
+              aria-orientation="vertical"
+            >
+              <div className="resize-handle-bar" />
+            </div>
+          ) : null}
+          <div className="surface-panel detail-panel">
+            {detailState === "loading" ? (
+              <LoadingRows />
+            ) : detail ? (
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
+            ) : (
+              <EmptyState
+                title="Select an email"
+                body="Choose any message from the operational queue to view classification, attachments, timeline, and document comparison."
+              />
+            )}
+          </div>
         </div>
       )}
     </section>
@@ -1196,12 +1313,33 @@ function EmailDetailContent({
 
       {detail.comparison ? (
         <div className="detail-section">
-          <h3>Seven-Field Verification</h3>
+          <div className="section-heading-row">
+            <h3>Seven-Field Verification</h3>
+            {detail.comparison.mismatch_found ? (
+              <span className="comparison-pill mismatch">
+                Mismatch ({detail.comparison.mismatched_fields.length})
+              </span>
+            ) : detail.comparison.unresolved_fields.length ? (
+              <span className="comparison-pill unresolved">
+                {detail.comparison.unresolved_fields.length} field(s) require human review
+              </span>
+            ) : (
+              <span className="comparison-pill match">
+                No mismatch detected
+              </span>
+            )}
+          </div>
           <div className="comparison-table-wrap">
             <table
               className="comparison-table"
               aria-label="Seven-field SI and Draft BL comparison"
             >
+              <colgroup>
+                <col style={{ width: "23%", minWidth: "100px" }} />
+                <col style={{ width: "32%", minWidth: "120px" }} />
+                <col style={{ width: "26%", minWidth: "90px" }} />
+                <col style={{ width: "19%", minWidth: "85px" }} />
+              </colgroup>
               <thead>
                 <tr>
                   <th scope="col">Field</th>
@@ -1258,17 +1396,6 @@ function EmailDetailContent({
               </tbody>
             </table>
           </div>
-          {detail.comparison.mismatch_found ? (
-            <p className="comparison-message mismatch">
-              Mismatch detected across {detail.comparison.mismatched_fields.length} field(s).
-            </p>
-          ) : detail.comparison.unresolved_fields.length ? (
-            <p className="comparison-message unresolved">
-              {detail.comparison.unresolved_fields.length} field(s) require human review.
-            </p>
-          ) : (
-            <p className="comparison-message match">No mismatch detected across all 7 fields.</p>
-          )}
         </div>
       ) : detail.email.comparison_readiness === "AWAITING_DOCUMENTS" ? (
         <div className="detail-section">
@@ -1359,6 +1486,31 @@ function HumanReviewPageView({
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
 
+  const [panelWidth, setPanelWidth] = useState(540);
+  const [isResizing, setIsResizing] = useState(false);
+
+  const startResize = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startW = panelWidth;
+
+    const onMouseMove = (moveEvent: MouseEvent) => {
+      const delta = startX - moveEvent.clientX;
+      const newWidth = Math.min(Math.max(startW + delta, 380), Math.round(window.innerWidth * 0.7));
+      setPanelWidth(newWidth);
+    };
+
+    const onMouseUp = () => {
+      setIsResizing(false);
+      window.removeEventListener("mousemove", onMouseMove);
+      window.removeEventListener("mouseup", onMouseUp);
+    };
+
+    window.addEventListener("mousemove", onMouseMove);
+    window.addEventListener("mouseup", onMouseUp);
+  }, [panelWidth]);
+
   const visibleReviews = (reviews?.items ?? []).filter((review) => {
     const search = searchFilter.trim().toLowerCase();
     const matchesSearch = !search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search);
@@ -1412,6 +1564,7 @@ function HumanReviewPageView({
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
 
+<<<<<<< Updated upstream
   // Total count in current view mode population
   const totalInCurrentMode = (reviews?.items ?? []).filter((review) => {
     if (reviewViewMode === "ACTIVE") {
@@ -1428,6 +1581,13 @@ function HumanReviewPageView({
       : visibleReviews.length === totalInCurrentMode
       ? `${totalInCurrentMode} historical`
       : `${visibleReviews.length} shown · ${totalInCurrentMode} historical`;
+=======
+  const layoutStyle = selected
+    ? ({
+        "--queue-detail-width": `${panelWidth}px`,
+      } as React.CSSProperties)
+    : undefined;
+>>>>>>> Stashed changes
 
   return (
     <section className="page-grid">
@@ -1440,7 +1600,7 @@ function HumanReviewPageView({
           <MetricCard cardIndex={4} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
         </div>
       </section>
-      <section className="queue-layout">
+      <section className={cx("queue-layout", isResizing && "is-resizing")} style={layoutStyle}>
       <div className="surface-panel queue-panel">
         <div className="section-header">
           <div>
@@ -1527,6 +1687,7 @@ function HumanReviewPageView({
                 </div>
                 <div className="review-meta">
                   <StatusBadge value={review.priority} />
+<<<<<<< Updated upstream
                   {review.case_origin === "LEGACY" ? (
                     <span className="badge badge-neutral">COMPLETED</span>
                   ) : (
@@ -1534,6 +1695,13 @@ function HumanReviewPageView({
                   )}
                   <StatusBadge value={review.email?.processing_status} />
                   {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
+=======
+                  <StatusBadge value={review.status} />
+                  {review.email?.processing_status && statusLabels[review.email.processing_status] !== reviewStatusLabels[review.status] ? (
+                    <StatusBadge value={review.email.processing_status} />
+                  ) : null}
+                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
+>>>>>>> Stashed changes
                   <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
                   <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
@@ -1548,6 +1716,7 @@ function HumanReviewPageView({
         )}
       </div>
 
+<<<<<<< Updated upstream
       <div className="surface-panel detail-panel">
         {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
           <div className="review-detail">
@@ -1577,8 +1746,69 @@ function HumanReviewPageView({
             {selected.case_origin === "ACTIVE" ? <div className="detail-section review-editor"><h3>Save a correction</h3><p>Corrections are stored separately from original extraction evidence.</p><div className="form-grid"><label>Document side<select aria-label="Override side" value={side} onChange={(event) => setSide(event.target.value as "SI" | "BL")}><option>SI</option><option>BL</option></select></label><label>Field<select aria-label="Override field" value={field} onChange={(event) => setField(event.target.value)}>{canonicalFields.map((name) => <option key={name} value={name}>{labelForField(name)}</option>)}</select></label><label className="form-span">Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}<input type={inputType} step={inputStep} min={inputType === "number" ? "0" : undefined} aria-label="Corrected value" aria-describedby="correction-help" value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"} /></label><label className="form-span">Reviewer note<textarea aria-label="Reviewer note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the evidence for this correction" /></label></div><p id="correction-help" className="form-help">The saved correction becomes the effective value only when Resolve & Recompare succeeds.</p><button className="button-primary" type="button" disabled={!correctedValue || actionState === "loading"} onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}>{actionState === "loading" ? "Saving…" : "Save Correction"}</button>{actionState === "ready" && activeOverrides.length ? <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span> : null}</div> : <div className="detail-section"><div className="state-note"><strong>Historical review record</strong><span>This record is retained for audit history and is read-only.</span><small>No correction, claim, resolve, or dismiss action is available.</small></div></div>}
             {selected.case_origin === "ACTIVE" ? <div className="detail-section"><h3>Review actions</h3><div className="form-grid"><label className="form-span">Reviewer<input aria-label="Reviewer name" value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label></div><button className="button-secondary" type="button" disabled={actionState === "loading" || selected.status !== "OPEN"} onClick={() => void onClaim(reviewer)}>Start / Claim</button><div className="resolution-summary"><strong>Resolve & Recompare</strong><span>{activeOverrides.length} saved override(s) across {[...new Set(activeOverrides.map((item) => item.field))].length} field(s) · {selectedUnresolved} currently unresolved</span><p>HolyShip will apply reviewed values, create a new comparison version, and refresh this case from backend truth.</p></div><button className="button-primary" type="button" disabled={actionState === "loading" || selected.status === "DISMISSED"} onClick={() => void onResolve(reviewer, note)}>{actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}</button><div className="dismiss-zone"><strong>Dismiss without resolving</strong><p>Dismiss records an audited decision. It does not mark the comparison completed.</p><label>Dismiss reason<input aria-label="Dismiss reason" value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} /></label><button className="button-danger-secondary" type="button" disabled={actionState === "loading" || !dismissReason.trim()} onClick={() => void onDismiss(reviewer, dismissReason, note)}>Dismiss Review</button></div></div> : null}
             <div className="detail-section"><h3>Review audit trail</h3>{selected.actions?.length ? <div className="timeline">{selected.actions.map((action) => <div className="timeline-row" key={action.id}><span /><div><strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong><p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p><small className="technical-code">{action.action}</small></div></div>)}</div> : <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />}</div>
+=======
+      <div className="detail-panel-wrapper">
+        {selected ? (
+          <div
+            className={cx("panel-resize-handle", isResizing && "dragging")}
+            onMouseDown={startResize}
+            title="Drag to resize detail panel"
+          >
+            <div className="resize-handle-bar" />
+>>>>>>> Stashed changes
           </div>
-        )}
+        ) : null}
+        <div className="surface-panel detail-panel">
+          {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
+            <div className="review-detail">
+              <div className="detail-title">
+                <p className="eyebrow">Human Review</p>
+                <h2>{selected.email?.subject || "Review case"}</h2>
+                <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
+                <div className="detail-badge-row">
+                  <StatusBadge value={selected.priority} />
+                  <StatusBadge value={selected.status} />
+                  {selected.email?.processing_status && statusLabels[selected.email.processing_status] !== reviewStatusLabels[selected.status] ? (
+                    <StatusBadge value={selected.email.processing_status} />
+                  ) : null}
+                  <span className="assignee">{selected.reviewer_name || "Unassigned"}</span>
+                  {selected.claimed_at ? <span className="subtle">Claimed {formatDate(selected.claimed_at)}</span> : null}
+                </div>
+              </div>
+              <div className="review-callout">
+                <AlertTriangle size={18} aria-hidden="true" />
+                <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
+              </div>
+              <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
+              <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
+              <div className="detail-section">
+                <div className="section-heading-row"><div><h3>Seven reviewed fields</h3><p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p></div><span className="total-pill">{selectedUnresolved} unresolved</span></div>
+                <div className="comparison-table-wrap">
+                  <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
+                    <colgroup>
+                      <col style={{ width: "23%", minWidth: "100px" }} />
+                      <col style={{ width: "32%", minWidth: "120px" }} />
+                      <col style={{ width: "26%", minWidth: "90px" }} />
+                      <col style={{ width: "19%", minWidth: "85px" }} />
+                    </colgroup>
+                    <thead>
+                      <tr><th>Field</th><th>Shipping Instruction</th><th>Draft BL</th><th>System result</th></tr>
+                    </thead>
+                    <tbody>
+                  {canonicalFields.map((name) => {
+                    const compared = selected.comparison?.fields.find((item) => item.field === name);
+                    const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
+                    const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                    return <tr key={name} className={cx(compared?.status === "MISMATCH" && "field-mismatch", compared?.status === "UNRESOLVED" && "field-unresolved")}><th>{labelForField(name)}</th><td><span className="value-label">Original SI</span>{displayValue(compared?.si.raw)}{siOverride ? <span className="reviewed-value"><span>Reviewed SI</span>{displayValue(siOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}</span></td><td><span className="value-label">Original BL</span>{displayValue(compared?.bl.raw)}{blOverride ? <span className="reviewed-value"><span>Reviewed BL</span>{displayValue(blOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}</span></td><td><StatusBadge value={compared?.status ?? "UNRESOLVED"} /></td></tr>;
+                  })}
+                </tbody></table></div>
+              </div>
+              {selected.case_origin === "ACTIVE" ? <div className="detail-section review-editor"><h3>Save a correction</h3><p>Corrections are stored separately from original extraction evidence.</p><div className="form-grid"><label>Document side<select aria-label="Override side" value={side} onChange={(event) => setSide(event.target.value as "SI" | "BL")}><option>SI</option><option>BL</option></select></label><label>Field<select aria-label="Override field" value={field} onChange={(event) => setField(event.target.value)}>{canonicalFields.map((name) => <option key={name} value={name}>{labelForField(name)}</option>)}</select></label><label className="form-span">Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}<input type={inputType} step={inputStep} min={inputType === "number" ? "0" : undefined} aria-label="Corrected value" aria-describedby="correction-help" value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"} /></label><label className="form-span">Reviewer note<textarea aria-label="Reviewer note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the evidence for this correction" /></label></div><p id="correction-help" className="form-help">The saved correction becomes the effective value only when Resolve & Recompare succeeds.</p><button className="button-primary" type="button" disabled={!correctedValue || actionState === "loading"} onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}>{actionState === "loading" ? "Saving…" : "Save Correction"}</button>{actionState === "ready" && activeOverrides.length ? <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span> : null}</div> : <div className="detail-section"><div className="state-note"><strong>Historical review record</strong><span>This record is retained for audit history and is read-only.</span><small>No correction, claim, resolve, or dismiss action is available.</small></div></div>}
+              {selected.case_origin === "ACTIVE" ? <div className="detail-section"><h3>Review actions</h3><div className="form-grid"><label className="form-span">Reviewer<input aria-label="Reviewer name" value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label></div><button className="button-secondary" type="button" disabled={actionState === "loading" || selected.status !== "OPEN"} onClick={() => void onClaim(reviewer)}>Start / Claim</button><div className="resolution-summary"><strong>Resolve & Recompare</strong><span>{activeOverrides.length} saved override(s) across {[...new Set(activeOverrides.map((item) => item.field))].length} field(s) · {selectedUnresolved} currently unresolved</span><p>HolyShip will apply reviewed values, create a new comparison version, and refresh this case from backend truth.</p></div><button className="button-primary" type="button" disabled={actionState === "loading" || selected.status === "DISMISSED"} onClick={() => void onResolve(reviewer, note)}>{actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}</button><div className="dismiss-zone"><strong>Dismiss without resolving</strong><p>Dismiss records an audited decision. It does not mark the comparison completed.</p><label>Dismiss reason<input aria-label="Dismiss reason" value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} /></label><button className="button-danger-secondary" type="button" disabled={actionState === "loading" || !dismissReason.trim()} onClick={() => void onDismiss(reviewer, dismissReason, note)}>Dismiss Review</button></div></div> : null}
+              <div className="detail-section"><h3>Review audit trail</h3>{selected.actions?.length ? <div className="timeline">{selected.actions.map((action) => <div className="timeline-row" key={action.id}><span /><div><strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong><p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p><small className="technical-code">{action.action}</small></div></div>)}</div> : <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />}</div>
+            </div>
+          )}
+        </div>
       </div>
       </section>
     </section>
@@ -1600,8 +1830,12 @@ export default function App() {
   const [syncState, setSyncState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
+<<<<<<< Updated upstream
   const [filters, setFilters] = useState<QueueFilters>({ limit: 25, skip: 0 });
   const [reviewViewMode, setReviewViewMode] = useState<ReviewViewMode>("ACTIVE");
+=======
+  const [filters, setFilters] = useState<QueueFilters>({ limit: 20, skip: 0 });
+>>>>>>> Stashed changes
   const [lastEventAt, setLastEventAt] = useState<string | undefined>(undefined);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const deepLinkHandled = useRef(false);
@@ -1756,14 +1990,20 @@ export default function App() {
 
   const updateFilters = (nextFilters: QueueFilters) => {
     setPageIndex(0);
-    setFilters({ ...nextFilters, skip: 0, limit: nextFilters.limit ?? 25 });
+    setFilters({ ...nextFilters, skip: 0, limit: nextFilters.limit ?? 20 });
   };
 
   const movePage = (direction: "next" | "previous") => {
     const nextIndex = direction === "next" ? pageIndex + 1 : Math.max(0, pageIndex - 1);
-    const limit = filters.limit ?? 25;
+    const limit = filters.limit ?? 20;
     setPageIndex(nextIndex);
     setFilters({ ...filters, skip: nextIndex * limit, limit });
+  };
+
+  const goToPage = (targetPageIndex: number) => {
+    const limit = filters.limit ?? 20;
+    setPageIndex(targetPageIndex);
+    setFilters({ ...filters, skip: targetPageIndex * limit, limit });
   };
 
   const navigate = (nextPage: Page) => {
@@ -1838,6 +2078,7 @@ export default function App() {
             onReprocess={(emailId) => void reprocess(emailId)}
             onCloseDetail={() => setDetail(null)}
             onPage={movePage}
+            onGoToPage={goToPage}
           />
         ) : null}
 

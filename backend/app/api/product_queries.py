@@ -238,6 +238,45 @@ def _summary_from_row(row: Any) -> ProductEmailSummary:
     )
 
 
+def sync_blocked_cases_to_review(session: Session) -> None:
+    from backend.app.review.service import HumanReviewService
+    from backend.app.storage.repositories import ComparisonResultRepository
+
+    active_subq = (
+        select(HumanReviewCaseRecord.email_id)
+        .where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+        .scalar_subquery()
+    )
+    blocked_emails = session.scalars(
+        select(EmailMessageRecord)
+        .where(
+            EmailMessageRecord.processing_status == "BLOCKED",
+            ~EmailMessageRecord.id.in_(active_subq),
+        )
+    ).all()
+    if not blocked_emails:
+        return
+
+    review_service = HumanReviewService(session)
+    comp_repo = ComparisonResultRepository(session)
+    for email in blocked_emails:
+        source_comparison = comp_repo.get_latest_by_email_id(email.id)
+        reason = (
+            source_comparison.reason_code
+            if source_comparison and source_comparison.reason_code
+            else "COMPARISON_UNRESOLVED"
+        )
+        review_service.ensure_actionable_case(
+            email,
+            reason_code=reason,
+            source_comparison_id=source_comparison.id if source_comparison else None,
+            evidence={
+                "comparison_id": str(source_comparison.id) if source_comparison else None,
+            },
+        )
+    session.commit()
+
+
 def list_email_queue(
     session: Session,
     *,
@@ -255,6 +294,7 @@ def list_email_queue(
     received_to: datetime | None = None,
 ) -> EmailQueuePage:
     validate_page(skip=skip, limit=limit)
+    sync_blocked_cases_to_review(session)
     statement, count_statement = _queue_statement(
         status=status,
         category=category,
@@ -278,6 +318,7 @@ def list_email_queue(
 
 
 def get_product_summary(session: Session) -> ProductSummary:
+    sync_blocked_cases_to_review(session)
     classification, comparison, review = _queue_sources()
     needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
     active_review_count = (
@@ -736,6 +777,7 @@ def list_human_reviews(
     limit: int = 100,
 ) -> HumanReviewPage:
     validate_page(skip=skip, limit=limit)
+    sync_blocked_cases_to_review(session)
     statement = (
         select(HumanReviewCaseRecord)
         .options(

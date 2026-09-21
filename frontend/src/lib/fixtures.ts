@@ -22,7 +22,7 @@ export const demoSummary: ProductSummary = {
 export const demoQueue: EmailQueuePage = {
   total: 3,
   skip: 0,
-  limit: 25,
+  limit: 20,
   items: [
     {
       id: "11111111-1111-4111-8111-111111111111",

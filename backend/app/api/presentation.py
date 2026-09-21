@@ -23,7 +23,7 @@ REVIEW_STATUS_PRESENTATION = {
 PROCESSING_STATUS_PRESENTATION = {
     "AWAITING_DOCUMENTS": ("Waiting for required documents", "HolyShip is waiting for the required shipping document before comparison can begin.", "Documents", "Provide the required document", "info"),
     "FAILED": ("Processing failed", "HolyShip could not finish processing this email.", "Processing", "Retry / Reprocess", "bad"),
-    "BLOCKED": ("Needs attention", "Processing cannot continue until the business issue is reviewed.", "Processing", "Open Human Review", "attention"),
+    "BLOCKED": ("Needs review", "Processing cannot continue until the business issue is reviewed.", "Processing", "Open Human Review", "attention"),
     "COMPLETED": ("Completed", "HolyShip finished processing this email.", "Processing", "View result", "good"),
 }
 REASON_PRESENTATION = {
