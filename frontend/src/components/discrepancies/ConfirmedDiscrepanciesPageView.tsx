@@ -471,7 +471,7 @@ export function ConfirmedDiscrepanciesPageView({
             ) : (
               <div className="discrepancy-detail-inner">
                 {/* Mobile Back to List Button */}
-                <div className="mobile-detail-nav-row" style={{ display: "none" }}>
+                <div className="mobile-detail-nav-row">
                   <button
                     type="button"
                     className="mobile-back-to-list-btn"
@@ -675,7 +675,7 @@ export function ConfirmedDiscrepanciesPageView({
                             </div>
 
                             {/* Side by side comparison cards */}
-                            <div className="diff-side-by-side" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                            <div className="diff-side-by-side">
                               {/* SI Box */}
                               <div className="diff-box si-side">
                                 <div className="diff-box-label">
@@ -993,7 +993,7 @@ export function ConfirmedDiscrepanciesPageView({
                   </span>
                 </div>
 
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
+                <div className="modal-two-col">
                   <div>
                     <label style={{ display: "block", fontSize: "11.5px", fontWeight: 650, marginBottom: "4px" }}>
                       Document Side

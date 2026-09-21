@@ -468,6 +468,8 @@ button:disabled {
   top: calc(100% + 10px);
   right: 0;
   width: 290px;
+  max-width: calc(100vw - 24px);
+  box-sizing: border-box;
   background: rgba(255, 255, 255, 0.98);
   backdrop-filter: blur(20px);
   border: 1px solid rgba(18, 18, 18, 0.12);
@@ -2624,6 +2626,12 @@ button:disabled {
   margin-top: 12px;
   border-top: 1px solid var(--color-grey-200);
   padding-top: 4px;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.detail-nav-tabs::-webkit-scrollbar {
+  display: none;
 }
 
 .detail-tab-btn {
@@ -4331,6 +4339,12 @@ button:disabled {
   margin-top: 16px;
 }
 
+.modal-two-col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
 /* ==========================================================================
    Confirmed Discrepancies Page & Mobile Responsive System
    ========================================================================== */
@@ -4701,12 +4715,16 @@ button:disabled {
     width: 100%;
     overflow-x: auto;
     justify-content: flex-start;
+    -webkit-overflow-scrolling: touch;
   }
 
   .review-view-switch button {
     flex: 1;
-    min-width: 80px;
+    min-width: 0;
+    padding: 6px 8px;
+    font-size: 11.5px;
     text-align: center;
+    white-space: nowrap;
   }
 
   /* Metric Grids on Mobile */
@@ -4716,6 +4734,16 @@ button:disabled {
   .overview-metric-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
     gap: 10px;
+  }
+
+  /* Detail tabs row in Confirmed Discrepancies */
+  .detail-tabs-row {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .detail-tabs-row::-webkit-scrollbar {
+    display: none;
   }
 }
 
@@ -4740,6 +4768,21 @@ button:disabled {
     gap: 8px;
   }
 
+  .metric-card {
+    min-width: 0;
+  }
+
+  .metric-header-left {
+    min-width: 0;
+  }
+
+  .metric-header-left p {
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
   .surface-panel {
     padding: 12px;
     border-radius: var(--radius-md);
@@ -4747,7 +4790,13 @@ button:disabled {
 
   /* Side-by-side diff boxes stack on narrow phones */
   .diff-side-by-side {
-    grid-template-columns: 1fr;
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  /* Modal 2-column forms stack on narrow phones */
+  .modal-two-col {
+    grid-template-columns: 1fr !important;
     gap: 8px;
   }
 
@@ -4794,9 +4843,12 @@ button:disabled {
   }
 
   /* Table overflow handling */
-  .table-wrap {
+  .table-wrap,
+  .comparison-table-wrap {
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
+    width: 100%;
+    max-width: 100%;
   }
 
   .pagination {
@@ -4809,5 +4861,51 @@ button:disabled {
   .modal-dialog {
     margin: 8px;
     width: calc(100% - 16px);
+    max-width: calc(100vw - 16px);
+  }
+
+  .modal-footer {
+    flex-direction: column-reverse;
+  }
+
+  .modal-footer button {
+    width: 100%;
+  }
+
+  /* User dropdown menu containment */
+  .user-dropdown-menu {
+    max-width: calc(100vw - 20px);
+    right: -8px;
+  }
+
+  /* AI Review input */
+  .ai-chat-input-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .ai-input {
+    min-width: 0;
+    width: 100%;
+  }
+
+  .ai-chat-input-row button {
+    width: 100%;
+  }
+
+  /* Dismiss form grid */
+  .dismiss-form-grid {
+    grid-template-columns: 1fr !important;
+  }
+
+  .dismiss-form-grid button {
+    width: 100%;
+  }
+}
+
+/* Touch devices: avoid sticky hover tooltip bubbles */
+@media (hover: none), (max-width: 640px) {
+  .tooltip-bubble {
+    display: none !important;
   }
 }
