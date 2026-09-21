@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import uuid
 from dataclasses import asdict
 from uuid import UUID
 
@@ -350,6 +351,9 @@ class HumanReviewRepository:
         status: str = "OPEN",
         document_id: UUID | None = None,
         field_name: str | None = None,
+        workflow_identity: str | None = None,
+        case_origin: str = "ACTIVE",
+        source_comparison_id: UUID | None = None,
     ) -> HumanReviewCaseRecord:
         record = HumanReviewCaseRecord(
             email_id=email_id,
@@ -361,6 +365,9 @@ class HumanReviewRepository:
             evidence=evidence or {},
             confidence=confidence,
             status=status,
+            workflow_identity=workflow_identity or f"manual:{uuid.uuid4()}",
+            case_origin=case_origin,
+            source_comparison_id=source_comparison_id,
         )
         self.session.add(record)
         self.session.flush()

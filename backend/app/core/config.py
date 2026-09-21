@@ -43,7 +43,7 @@ class Settings(BaseSettings):
     polling_backoff_max_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
     polling_source_type: str = "STATIC_BUNDLE"
     polling_organizer_http_url: str | None = None
-    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173"
+    cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,https://localhost:3200,https://127.0.0.1:3200"
 
     @model_validator(mode="after")
     def validate_polling_backoff(self) -> "Settings":
