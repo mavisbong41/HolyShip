@@ -225,6 +225,7 @@ class ProductReview(BaseModel):
     workflow_identity: str | None = None
     source_comparison_id: uuid.UUID | None = None
     reviewer_name: str | None = None
+    claimed_at: datetime | None = None
     resolution: str | None = None
     notes: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
