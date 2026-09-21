@@ -627,7 +627,7 @@ button:disabled {
 .metric-grid {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
-  gap: 10px;
+  gap: 12px;
   position: relative;
   z-index: 1;
 }
@@ -710,7 +710,7 @@ button:disabled {
 }
 
 .metric-value-row {
-  margin: 4px 0 1px;
+  margin: 7px 0 3px;
 }
 
 .metric-value-row strong {
@@ -1273,7 +1273,7 @@ button:disabled {
 .queue-layout {
   display: grid;
   grid-template-columns: minmax(0, 1fr) var(--queue-detail-width, minmax(0, 0.75fr));
-  gap: 16px;
+  gap: 20px;
   align-items: start;
 }
 
@@ -1381,7 +1381,7 @@ button:disabled {
 .filters {
   display: grid;
   grid-template-columns: minmax(180px, 1.3fr) minmax(130px, 1fr) minmax(140px, 1fr) minmax(135px, 1fr);
-  gap: 8px;
+  gap: 12px;
   margin-bottom: var(--space-4);
   width: 100%;
 }
@@ -3839,7 +3839,7 @@ button:disabled {
 .review-filters {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: var(--space-4);
   width: 100%;
 }
@@ -3847,14 +3847,14 @@ button:disabled {
 .review-filters-row {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
 }
 
 .review-filters-row-1 {
   display: grid;
   grid-template-columns: 1fr auto;
-  gap: 8px;
+  gap: 12px;
   width: 100%;
   align-items: center;
 }
