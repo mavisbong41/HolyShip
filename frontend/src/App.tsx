@@ -1507,6 +1507,21 @@ function HumanReviewPageView({
     }
   }, [selected?.id, selected?.reviewer_name]);
 
+  const [reviewPage, setReviewPage] = useState(0);
+  const pageSize = 20;
+
+  useEffect(() => {
+    setReviewPage(0);
+  }, [
+    reviewViewMode,
+    activeStatusFilter,
+    historyStatusFilter,
+    reasonFilter,
+    reviewerFilter,
+    sortFilter,
+    searchFilter,
+  ]);
+
   const [panelWidth, setPanelWidth] = useState(540);
   const [isResizing, setIsResizing] = useState(false);
 
@@ -1615,6 +1630,16 @@ function HumanReviewPageView({
       ? `${totalInCurrentMode} historical`
       : `${visibleReviews.length} shown · ${totalInCurrentMode} historical`;
 
+  const totalReviews = visibleReviews.length;
+  const totalPages = Math.max(1, Math.ceil(totalReviews / pageSize));
+  const safePage = Math.min(reviewPage, totalPages - 1);
+  const canPrevious = safePage > 0;
+  const canNext = safePage + 1 < totalPages;
+  const startItem = totalReviews === 0 ? 0 : safePage * pageSize + 1;
+  const endItem = Math.min(totalReviews, (safePage + 1) * pageSize);
+  const paginatedReviews = visibleReviews.slice(safePage * pageSize, (safePage + 1) * pageSize);
+  const paginationItems = getPaginationItems(safePage, totalPages);
+
   const layoutStyle = selected
     ? ({
         "--queue-detail-width": `${panelWidth}px`,
@@ -1696,49 +1721,91 @@ function HumanReviewPageView({
           </div>
         </div>
         {state === "loading" ? <LoadingRows /> : visibleReviews.length ? (
-          <div className="review-list">
-            {visibleReviews.map((review) => (
-              <article className={cx("review-card", selected?.id === review.id && "selected", review.case_origin === "LEGACY" && "legacy")} key={review.id}>
-                <div className="review-card-header">
-                  <div>
-                    <h2>{review.email?.subject ?? "Unknown subject"}</h2>
-                    <p>{review.email?.sender || "Unknown sender"}</p>
-                    <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.canonical_reason || review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
-                    <p className="human-explanation">{review.human_explanation}</p>
-                    {review.affected_fields?.length ? (
-                      <p className="affected-fields-summary">Affected fields: {review.affected_fields.map((f) => labelForField(f)).join(", ")}</p>
-                    ) : (
-                      <p className="affected-fields-summary">Affected area: {review.affected_area || "Review case"}</p>
-                    )}
-                    <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
-                    <p className="age-summary">Age: {review.age_minutes} mins</p>
+          <>
+            <div className="review-list">
+              {paginatedReviews.map((review) => (
+                <article className={cx("review-card", selected?.id === review.id && "selected", review.case_origin === "LEGACY" && "legacy")} key={review.id}>
+                  <div className="review-card-header">
+                    <div>
+                      <h2>{review.email?.subject ?? "Unknown subject"}</h2>
+                      <p>{review.email?.sender || "Unknown sender"}</p>
+                      <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.canonical_reason || review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
+                      <p className="human-explanation">{review.human_explanation}</p>
+                      {review.affected_fields?.length ? (
+                        <p className="affected-fields-summary">Affected fields: {review.affected_fields.map((f) => labelForField(f)).join(", ")}</p>
+                      ) : (
+                        <p className="affected-fields-summary">Affected area: {review.affected_area || "Review case"}</p>
+                      )}
+                      <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
+                      <p className="age-summary">Age: {review.age_minutes} mins</p>
+                    </div>
+                    <button
+                      type="button"
+                      className={cx(review.case_origin === "LEGACY" && "button-view-history")}
+                      onClick={() => onSelect(review.id)}
+                    >
+                      {review.case_origin === "LEGACY" ? "View History" : "Open Review"}
+                    </button>
                   </div>
-                  <button
-                    type="button"
-                    className={cx(review.case_origin === "LEGACY" && "button-view-history")}
-                    onClick={() => onSelect(review.id)}
-                  >
-                    {review.case_origin === "LEGACY" ? "View History" : "Open Review"}
-                  </button>
-                </div>
-                <div className="review-meta">
-                  <StatusBadge value={review.priority} />
-                  {review.case_origin === "LEGACY" ? (
-                    <span className="badge badge-neutral">COMPLETED</span>
+                  <div className="review-meta">
+                    <StatusBadge value={review.priority} />
+                    {review.case_origin === "LEGACY" ? (
+                      <span className="badge badge-neutral">COMPLETED</span>
+                    ) : (
+                      <StatusBadge value={review.status} />
+                    )}
+                    {review.email?.processing_status && statusLabels[review.email.processing_status] !== reviewStatusLabels[review.status] ? (
+                      <StatusBadge value={review.email.processing_status} />
+                    ) : null}
+                    {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
+                    <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
+                    <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
+                    <span className="subtle">{formatDate(review.created_at)}</span>
+                  </div>
+                </article>
+              ))}
+            </div>
+
+            <div className="pagination">
+              <span className="pagination-info">
+                Showing {startItem}–{endItem} of {totalReviews}
+              </span>
+              <div className="pagination-nav">
+                <button
+                  className="pagination-btn pagination-btn-nav"
+                  disabled={!canPrevious}
+                  onClick={() => setReviewPage((p) => Math.max(0, p - 1))}
+                  type="button"
+                >
+                  ‹ Previous
+                </button>
+                {paginationItems.map((item) =>
+                  typeof item === "number" ? (
+                    <button
+                      key={item}
+                      type="button"
+                      className={cx("pagination-btn pagination-btn-page", item === safePage && "active")}
+                      onClick={() => setReviewPage(item)}
+                    >
+                      {item + 1}
+                    </button>
                   ) : (
-                    <StatusBadge value={review.status} />
-                  )}
-                  {review.email?.processing_status && statusLabels[review.email.processing_status] !== reviewStatusLabels[review.status] ? (
-                    <StatusBadge value={review.email.processing_status} />
-                  ) : null}
-                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
-                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
-                  <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
-                  <span className="subtle">{formatDate(review.created_at)}</span>
-                </div>
-              </article>
-            ))}
-          </div>
+                    <span key={item} className="pagination-ellipsis">
+                      …
+                    </span>
+                  )
+                )}
+                <button
+                  className="pagination-btn pagination-btn-nav"
+                  disabled={!canNext}
+                  onClick={() => setReviewPage((p) => Math.min(totalPages - 1, p + 1))}
+                  type="button"
+                >
+                  Next ›
+                </button>
+              </div>
+            </div>
+          </>
         ) : reviewViewMode === "ACTIVE" ? (
           <EmptyState title="No active review cases" body="Awaiting-document and technical-failure states are intentionally handled outside Human Review." />
         ) : (
