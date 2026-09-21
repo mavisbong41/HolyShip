@@ -4,17 +4,24 @@ import type { MailContextProvider, MailContextResult } from "../types/context";
  * OfficeCurrentMailContextProvider
  * Reads the current Outlook message context via Office.js.
  * Must be used only inside an Office.js initialised environment.
+ *
+ * Strategy:
+ * 1. Try getSelectedItemsAsync (Mailbox 1.13+) — reflects what is selected in the
+ *    list view, which is what we want when the user clicks a different email.
+ * 2. Fall back to mailbox.item — reflects the reading pane item.
+ *
+ * In New Outlook for Windows, mailbox.item can lag behind the list selection by
+ * several seconds.  getSelectedItemsAsync is updated immediately on click.
  */
 export class OfficeCurrentMailContextProvider implements MailContextProvider {
   async getContext(): Promise<MailContextResult> {
     try {
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
       if (!mailbox) {
-        return { state: "unavailable", item: null, error: "No mailbox item in context" };
+        return { state: "unavailable", item: null, error: "No mailbox context" };
       }
 
-      // Check if getSelectedItemsAsync is available (Mailbox 1.13+) for active item in list
-      let selectedItem: { itemId?: string; subject?: string } | null = null;
+      // ── Primary path: getSelectedItemsAsync (Mailbox 1.13+) ───────────────
       if (typeof (mailbox as any).getSelectedItemsAsync === "function") {
         try {
           const selected = await new Promise<any>((resolve) => {
@@ -31,45 +38,61 @@ export class OfficeCurrentMailContextProvider implements MailContextProvider {
               }
             });
           });
+
           if (selected) {
-            selectedItem = selected;
+            // getSelectedItemsAsync result fields (Mailbox 1.13):
+            // itemId, subject, hasAttachment, internetMessageId, conversationId, ...
+            const outlookItemId: string | null = selected.itemId ?? null;
+            const subject: string | null = selected.subject ?? null;
+            const internetMessageId: string | null = selected.internetMessageId ?? null;
+            // sender is NOT in getSelectedItemsAsync; fall through to mailbox.item for sender
+            let sender: string | null = null;
+            try {
+              sender = mailbox.item?.from?.emailAddress ?? null;
+            } catch {
+              // optional
+            }
+
+            return {
+              state: "ready",
+              item: {
+                holyshipCaseId: null,
+                outlookItemId,
+                internetMessageId,
+                sender,
+                subject,
+              },
+              error: null,
+            };
           }
         } catch {
-          // fallback to mailbox.item
+          // fall through to mailbox.item
         }
       }
 
+      // ── Fallback path: mailbox.item (classic Outlook / older clients) ──────
       const item = mailbox.item;
-      if (!item && !selectedItem) {
+      if (!item) {
         return { state: "unavailable", item: null, error: "No mailbox item in context" };
       }
 
-      // internetMessageId may not be synchronously available on all hosts
       let internetMessageId: string | null = null;
       try {
-        if (typeof item?.internetMessageId === "string") {
+        if (typeof item.internetMessageId === "string") {
           internetMessageId = item.internetMessageId;
         }
       } catch {
-        // not available in this host
+        // not available
       }
-
-      const sender = item?.from?.emailAddress ?? null;
-      const outlookItemId = (selectedItem?.itemId && selectedItem.itemId !== item?.itemId)
-        ? selectedItem.itemId
-        : (item?.itemId ?? selectedItem?.itemId ?? null);
-      const subject = (selectedItem?.itemId && item?.itemId && selectedItem.itemId !== item.itemId && selectedItem.subject)
-        ? selectedItem.subject
-        : (item?.subject ?? selectedItem?.subject ?? null);
 
       return {
         state: "ready",
         item: {
-          holyshipCaseId: null, // resolved by the identity adapter
-          outlookItemId,
+          holyshipCaseId: null,
+          outlookItemId: item.itemId ?? null,
           internetMessageId,
-          sender,
-          subject,
+          sender: item.from?.emailAddress ?? null,
+          subject: item.subject ?? null,
         },
         error: null,
       };
