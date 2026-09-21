@@ -90,8 +90,6 @@ def test_clear_general_mail():
     )
     result = classify_email(email)
     assert result.category == EmailCategory.GENERAL_MESSAGE.value
-
-
 # ---------------------------------------------------------------------------
 # Test 5 — Spam
 # ---------------------------------------------------------------------------
@@ -364,3 +362,68 @@ def test_case3b_vague_body_with_no_category_signal_escalates():
     assert result.resolved_at_stage != STAGE_1, (
         "Body with no signal words must not allow Stage 1 finalization"
     )
+
+
+# ---------------------------------------------------------------------------
+# Generalized Classification Tests — Behavior Classes
+# ---------------------------------------------------------------------------
+
+def test_document_comparison_with_invoice_mention():
+    """
+    Primary action is to check/confirm the BL, even if Commercial Invoice is mentioned.
+    """
+    email = make_email(
+        subject="RE: TO CONFIRM DOCS - Booking 12345",
+        body="Please find attached the SI and the Commercial Invoice. Kindly confirm the BL is in order.",
+        filenames=["SI.txt", "BL.txt"],
+    )
+    result = classify_email(email)
+    assert result.category == EmailCategory.DOCUMENT_COMPARISON.value
+
+
+def test_invoice_query_primary_action():
+    """
+    Primary action is billing, payment, or invoice discrepancy inquiry.
+    """
+    email = make_email(
+        subject="Invoice discrepancy for shipment 98765",
+        body="We noticed a billing question regarding the freight charges. Please clarify this invoice amount.",
+    )
+    result = classify_email(email)
+    assert result.category == EmailCategory.INVOICE_QUERY.value
+
+
+def test_prize_survey_scam_classified_as_spam():
+    """
+    Prize, winner, reward, or survey-with-payment phishing is spam.
+    """
+    email = make_email(
+        subject="Special Notification",
+        body="You have won a brand new phone! To claim simply complete this short survey and pay $1 shipping.",
+    )
+    result = classify_email(email)
+    assert result.category == EmailCategory.SPAM.value
+
+
+def test_account_suspension_threat_classified_as_spam():
+    """
+    Suspicious account suspension warning with urgent phishing CTA is spam.
+    """
+    email = make_email(
+        subject="Dear Valued Customer, update your account to avoid suspension",
+        body="Please verify your credentials immediately to avoid account suspension.",
+    )
+    result = classify_email(email)
+    assert result.category == EmailCategory.SPAM.value
+
+
+def test_legitimate_operational_mentioning_account_not_spam():
+    """
+    Legitimate shipping update mentioning account/reference must not be classified as spam.
+    """
+    email = make_email(
+        subject="Operational Update - Customer Account Shipment Summary",
+        body="Operational update: please find the update summary for our account this week. FYI.",
+    )
+    result = classify_email(email)
+    assert result.category == EmailCategory.GENERAL_MESSAGE.value
