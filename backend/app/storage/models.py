@@ -3,7 +3,7 @@ from __future__ import annotations
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Integer, String, Text, UniqueConstraint
+from sqlalchemy import Boolean, CheckConstraint, DateTime, Float, ForeignKey, Index, Integer, String, Text, UniqueConstraint, text
 from sqlalchemy.dialects.postgresql import JSONB, UUID
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 
@@ -354,6 +354,18 @@ class ComparisonResultRecord(TimestampMixin, Base):
         nullable=False,
         index=True,
     )
+    review_case_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_cases.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
+    supersedes_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("comparison_results.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     comparison_version: Mapped[str] = mapped_column(String(80), nullable=False)
     comparison_state: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
     mismatch_found: Mapped[bool] = mapped_column(Boolean, nullable=False)
@@ -464,12 +476,35 @@ class AIResolutionRecord(TimestampMixin, Base):
     provider_calls: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
 
 
-class HumanReviewCaseRecord(Base):
+class HumanReviewCaseRecord(TimestampMixin, Base):
     __tablename__ = "human_review_cases"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('OPEN','IN_REVIEW','RESOLVED','DISMISSED')",
+            name="ck_human_review_status",
+        ),
+        CheckConstraint(
+            "case_origin IN ('LEGACY','ACTIVE')",
+            name="ck_human_review_case_origin",
+        ),
+        Index(
+            "uq_human_review_active_identity",
+            "email_id",
+            "reason_code",
+            "workflow_identity",
+            unique=True,
+            postgresql_where=text("status IN ('OPEN','IN_REVIEW')"),
+        ),
+    )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
     email_id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), ForeignKey("email_messages.id", ondelete="CASCADE"), nullable=False, index=True)
     document_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), ForeignKey("documents.id", ondelete="SET NULL"), nullable=True, index=True)
+    source_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        nullable=True,
+        index=True,
+    )
     field_name: Mapped[str | None] = mapped_column(String(80), nullable=True)
     reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
     reason_text: Mapped[str] = mapped_column(Text, nullable=False)
@@ -477,7 +512,102 @@ class HumanReviewCaseRecord(Base):
     evidence: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     confidence: Mapped[float | None] = mapped_column(Float)
     status: Mapped[str] = mapped_column(String(50), nullable=False, default="OPEN")
-    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    case_origin: Mapped[str] = mapped_column(String(20), nullable=False, default="ACTIVE")
+    workflow_identity: Mapped[str] = mapped_column(
+        String(255),
+        nullable=False,
+        default=lambda: f"manual:{uuid.uuid4()}",
+    )
+    reviewer_name: Mapped[str | None] = mapped_column(String(255))
+    resolution: Mapped[str | None] = mapped_column(String(80))
+    notes: Mapped[str | None] = mapped_column(Text)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="human_review_cases")
+    overrides: Mapped[list[HumanReviewFieldOverrideRecord]] = relationship(
+        back_populates="review_case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="HumanReviewFieldOverrideRecord.review_case_id",
+    )
+    events: Mapped[list[HumanReviewEventRecord]] = relationship(
+        back_populates="review_case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+
+
+class HumanReviewFieldOverrideRecord(Base):
+    __tablename__ = "human_review_field_overrides"
+    __table_args__ = (
+        CheckConstraint("document_side IN ('SI','BL')", name="ck_review_override_side"),
+        CheckConstraint(
+            "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_review_override_field_name",
+        ),
+        Index(
+            "uq_review_override_active_field",
+            "review_case_id",
+            "document_side",
+            "field_name",
+            unique=True,
+            postgresql_where=text("active"),
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    review_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    document_side: Mapped[str] = mapped_column(String(10), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    original_field_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("extracted_fields.id", ondelete="RESTRICT"),
+        nullable=False,
+        index=True,
+    )
+    corrected_value: Mapped[object] = mapped_column(JSONB, nullable=False)
+    corrected_canonical_value: Mapped[object] = mapped_column(JSONB, nullable=False)
+    reviewer_name: Mapped[str | None] = mapped_column(String(255))
+    note: Mapped[str | None] = mapped_column(Text)
+    active: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    supersedes_override_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_field_overrides.id", ondelete="SET NULL"),
+        nullable=True,
+    )
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+
+    review_case: Mapped[HumanReviewCaseRecord] = relationship(
+        back_populates="overrides",
+        foreign_keys=[review_case_id],
+    )
+
+
+class HumanReviewEventRecord(Base):
+    __tablename__ = "human_review_events"
+    __table_args__ = (
+        CheckConstraint(
+            "action IN ('CASE_CREATED','CASE_OPENED','CASE_CLAIMED','FIELD_OVERRIDE_ADDED','FIELD_OVERRIDE_REPLACED','RESOLVE_REQUESTED','RECOMPARISON_COMPLETED','CASE_RESOLVED','CASE_DISMISSED')",
+            name="ck_human_review_event_action",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    review_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    action: Mapped[str] = mapped_column(String(50), nullable=False, index=True)
+    actor_name: Mapped[str | None] = mapped_column(String(255))
+    details: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="events")
 
