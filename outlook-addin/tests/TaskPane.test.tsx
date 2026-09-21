@@ -1,8 +1,9 @@
-import { render, screen, waitFor, within } from "@testing-library/react";
+import { act, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskPane } from "../src/components/TaskPane";
 import { FakeCurrentMailContextProvider } from "../src/office/FakeContextProvider";
+import type { MailContextItem, MailContextProvider, MailContextResult } from "../src/types/context";
 import type { ProductEmailDetail } from "../src/types/product";
 import * as clientModule from "../src/api/client";
 import { fixtures } from "./fixtures";
@@ -30,9 +31,23 @@ function setupAdapter(result: ResolveResult): void {
 
 const provider = new FakeCurrentMailContextProvider();
 
+class MutableMailContextProvider implements MailContextProvider {
+  constructor(private item: MailContextItem) {}
+
+  setItem(item: MailContextItem): void {
+    this.item = item;
+  }
+
+  async getContext(): Promise<MailContextResult> {
+    return { state: "ready", item: this.item, error: null };
+  }
+}
+
 describe("TaskPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    const testGlobal = globalThis as unknown as { Office?: unknown };
+    delete testGlobal.Office;
     setupAdapter({ detail: null, strategy: "not_resolved", confidence: "none", limitationNote: "Test: not found" });
   });
 
@@ -51,6 +66,92 @@ describe("TaskPane", () => {
     await waitFor(() => {
       expect(screen.getByText(/not in holyship/i)).toBeInTheDocument();
     });
+  });
+
+  it("does not repeat the HolyShip logo inside the Outlook app pane", async () => {
+    setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+    await waitFor(() => {
+      expect(screen.getByText(/no mismatch detected/i)).toBeInTheDocument();
+    });
+    expect(screen.queryByAltText("HolyShip")).not.toBeInTheDocument();
+  });
+
+  it("re-resolves when Outlook reports that the selected email changed", async () => {
+    const firstDetail = fixtures.cleanMatch;
+    const secondDetail: ProductEmailDetail = {
+      ...fixtures.newSiRequest,
+      email: {
+        ...fixtures.newSiRequest.email,
+        id: "email-002",
+        subject: "Please create SI for booking BKG-20240502",
+        sender: "ops@example.com",
+      },
+    };
+    const resolveMock = vi
+      .fn()
+      .mockResolvedValueOnce({
+        detail: firstDetail,
+        strategy: "internet_message_id",
+        confidence: "high",
+        limitationNote: null,
+      })
+      .mockResolvedValueOnce({
+        detail: secondDetail,
+        strategy: "internet_message_id",
+        confidence: "high",
+        limitationNote: null,
+      });
+    MockAdapter.mockImplementation(
+      () => ({ resolve: resolveMock }) as unknown as InstanceType<typeof IdentityAdapter>,
+    );
+
+    let itemChangedHandler: (() => void) | null = null;
+    const testGlobal = globalThis as unknown as { Office?: unknown };
+    testGlobal.Office = {
+      context: {
+        mailbox: {
+          addHandlerAsync: vi.fn((_event, handler, callback) => {
+            itemChangedHandler = handler;
+            callback({ status: "succeeded" });
+          }),
+          removeHandlerAsync: vi.fn(),
+        },
+      },
+      EventType: { ItemChanged: "ItemChanged" },
+      AsyncResultStatus: { Succeeded: "succeeded" },
+    };
+
+    const mutableProvider = new MutableMailContextProvider({
+      holyshipCaseId: null,
+      outlookItemId: "outlook-001",
+      internetMessageId: "<msg-001@example.com>",
+      sender: "shipper@acme.com",
+      subject: "Draft BL for BKG-20240501 for checking",
+    });
+
+    render(<TaskPane contextProvider={mutableProvider} />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: firstDetail.email.subject })).toBeInTheDocument();
+    });
+
+    mutableProvider.setItem({
+      holyshipCaseId: null,
+      outlookItemId: "outlook-002",
+      internetMessageId: "<msg-002@example.com>",
+      sender: "ops@example.com",
+      subject: "Please create SI for booking BKG-20240502",
+    });
+
+    expect(itemChangedHandler).not.toBeNull();
+    act(() => {
+      itemChangedHandler?.();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: "Please create SI for booking BKG-20240502" })).toBeInTheDocument();
+    });
+    expect(resolveMock).toHaveBeenCalledTimes(2);
   });
 
   it("shows limitation note in not-found state", async () => {

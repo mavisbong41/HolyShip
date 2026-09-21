@@ -44,9 +44,9 @@ superseded historical restriction are recorded in
 
 ## Last Updated
 
-**Date:** 2026-09-21
-**Updated by:** Render + Neon deployment preparation
-**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Backend Dockerfile now copies the public demo bundle into `/app/data/bundle`, uses Render's `$PORT`, and runs Alembic migrations at container startup. Added `docs/render_deploy.md` with Render Static Site + Render Web Service + Neon PostgreSQL instructions. Latest validation in this task: Docker backend image build PASS.
+**Date:** 2026-09-22
+**Updated by:** Outlook Add-in current-email binding refinement
+**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Outlook Add-in task pane no longer repeats the HolyShip logo inside Outlook's Apps shell, and it now re-resolves when the selected Outlook email changes via `ItemChanged` plus a provider-based fallback poll. Latest validation in this task: Outlook Add-in typecheck, Vitest suite, and production build PASS.
 
 ---
 
@@ -111,7 +111,7 @@ Stabilization is implemented on `codex/ui-human-review-stabilization`. The backe
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
 | Web Dashboard UI | IMPLEMENTED / VERIFIED | Unified operational design system, truthful overview, selected inbox state, hierarchical detail, evidence expansion, explicit waiting/failure states, and polished Human Review workflow; 12 component tests, typecheck, and production build pass |
-| Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, and refresh; 57 tests, typecheck, and production build pass |
+| Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, refresh, and selected-message re-resolution; 64 tests, typecheck, and production build pass |
 | Human Review product API | IMPLEMENTED / VERIFIED | Read queue/detail plus claim, separate override, resolve/recompare, and dismiss mutations are PostgreSQL/API-tested |
 | Human Review UI/workflow | IMPLEMENTED / VERIFIED | Actionable BLOCKED policy, idempotent active case, four-state lifecycle, immutable events, separate overrides, and comparison versioning are active |
 
@@ -225,6 +225,7 @@ Fast compare
 - Refined the inbox and email inspector with visible selection, separate processing/review status, recipients/body hierarchy, document validation context, expandable field evidence, explicit Awaiting Documents and technical-failure recovery states, and readable audit reason labels.
 - Rebuilt Human Review presentation around original/reviewed/effective values, field-appropriate correction inputs, separate resolve and dismiss explanations, action progress, historical legacy styling, and readable immutable event history.
 - Rebuilt the Add-in as a narrow current-email companion with compact field cards, real match/mismatch/unresolved totals, dedicated active-review card, `?review=` deep link, and real failed-email retry.
+- Refined the Add-in task pane so the Outlook shell owns the visible app branding, while the pane listens for selected-email changes and re-resolves the corresponding HolyShip case instead of appearing static.
 - Added `docs/ui_design_system.md`. No classification, readiness, document, extraction, comparison, submission, or Human Review lifecycle semantics changed; no backend application code changed in this task.
 - Made Make's Node executable configurable as `NPM` so the existing root UI gates run on Windows via `NPM=npm.cmd`.
 
@@ -789,6 +790,13 @@ When adding an environment variable:
 
 ## Tests & Validation
 
+### Outlook Add-in current-email binding (2026-09-22)
+
+- Outlook Add-in typecheck PASS: `npm run typecheck` from `outlook-addin/`.
+- Outlook Add-in Vitest PASS: `npm run test` from `outlook-addin/`; 64 tests passed.
+- Outlook Add-in production build PASS: `npm run build` from `outlook-addin/`.
+- An initial attempted command, `npm run test -- --runInBand`, failed because Vitest does not support the Jest `--runInBand` option; the normal Vitest command passed afterward.
+
 ### Dashboard overview visual refinement (2026-09-21)
 
 - Dashboard overview opened against the local backend at `http://localhost:5173/` with 520-email data visible.
@@ -1079,6 +1087,7 @@ Never fabricate test results.
 - Resolver/OCR single-flight, call budgets, and concurrency limits are process-local. Independent processes share durable cache identity only after commit and can duplicate external work during a race.
 - Live Tesseract was not verified on the six public scanned documents. Injected success, unavailable, garbage, timeout, cache, budget, and concurrency paths are tested.
 - Missing values, corrupt/wrong documents, and missing attachments intentionally remain blocked/Human Review outcomes.
+- Outlook Add-in current-email switching is now detected in the pane, but exact live Outlook-to-case identity still depends on the backend preserving a matching internet Message-ID or future Microsoft Graph linkage. Subject/sender fallback remains explicitly low-confidence.
 
 - Live PostgreSQL migrations, database concurrency, idempotency, cache versioning, failure isolation, clean evaluation, and database-backed worker equivalence are verified on isolated temporary databases. Restart/resume is verified at the persisted-state/service level; a true OS process kill/restart was not exercised.
 - Organizer HTTP has no true `since` cursor, so the worker may list the source again; persisted email identity/content state prevents completed reprocessing and attachment refetch. Live Microsoft Graph polling is not required by Phase 7 and remains NOT VERIFIED.
@@ -1113,6 +1122,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-22 — Outlook Add-in current-email binding
+
+- **Changed:** Removed the repeated in-pane HolyShip logo row, kept a compact refresh control, and made the task pane re-resolve case data when Outlook's selected item changes. Added provider-based fallback polling and request-generation protection so stale lookups cannot overwrite a newer selected email.
+- **Why:** The Outlook Apps shell already displays the app branding, and the pane needed to follow the user's selected email instead of behaving like a static card.
+- **Files:** `outlook-addin/src/components/TaskPane.tsx`, `outlook-addin/src/styles/pane.css`, `outlook-addin/tests/TaskPane.test.tsx`, `implement.md`.
+- **Validation:** `npm run typecheck`, `npm run test` (64 passed), and `npm run build` passed from `outlook-addin/`. `npm run test -- --runInBand` was attempted first and failed because Vitest has no `--runInBand` option.
+- **Next:** Verify inside a real Outlook host with backend data whose `external_message_id` matches the selected email's internet Message-ID; live Graph linkage remains a future integration path.
 
 ### 2026-09-21 — Render + Neon deployment preparation
 

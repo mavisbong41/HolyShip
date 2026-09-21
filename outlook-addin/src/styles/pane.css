@@ -52,25 +52,11 @@ button:disabled {
 .pane-header {
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  padding: 8px 14px;
-  background: #ffffff;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  justify-content: flex-end;
+  padding: 6px 14px 4px;
+  background: transparent;
+  border-bottom: 0;
   flex-shrink: 0;
-}
-
-.pane-brand {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.pane-brand-logo {
-  height: 24px;
-  width: auto;
-  max-width: 140px;
-  object-fit: contain;
-  display: block;
 }
 
 .pane-header-actions {

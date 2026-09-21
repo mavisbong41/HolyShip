@@ -13,11 +13,11 @@ import {
   Sparkles,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { askAIAssistant, reprocessEmail } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
-import type { MailContextProvider } from "../types/context";
+import type { MailContextProvider, MailContextResult } from "../types/context";
 import type {
   AIAssistantResponse,
   ProductComparison,
@@ -36,6 +36,23 @@ type PaneState =
   | { type: "not_found"; note: string | null }
   | { type: "error"; message: string }
   | { type: "ready"; detail: ProductEmailDetail; confidence: "high" | "low" | "none"; note: string | null };
+
+function contextIdentityKey(context: MailContextResult): string {
+  if (context.state !== "ready" || !context.item) {
+    return `unavailable:${context.error ?? "no-item"}`;
+  }
+
+  const { holyshipCaseId, internetMessageId, outlookItemId, sender, subject } = context.item;
+  return [
+    holyshipCaseId,
+    internetMessageId,
+    outlookItemId,
+    sender?.trim().toLowerCase(),
+    subject?.trim().toLowerCase(),
+  ]
+    .filter(Boolean)
+    .join("|");
+}
 
 // ─── Sub-components ────────────────────────────────────────────────
 
@@ -437,12 +454,16 @@ export function TaskPane({
   const [state, setState] = useState<PaneState>({ type: "loading" });
   const [showComparison, setShowComparison] = useState(true);
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
+  const resolveGeneration = useRef(0);
 
   const resolve = useCallback(async () => {
+    const generation = resolveGeneration.current + 1;
+    resolveGeneration.current = generation;
     setState({ type: "loading" });
     try {
       const adapter = new IdentityAdapter(contextProvider);
       const result = await adapter.resolve();
+      if (generation !== resolveGeneration.current) return;
 
       if (!result.detail) {
         setState({
@@ -459,6 +480,7 @@ export function TaskPane({
         note: result.limitationNote,
       });
     } catch (err) {
+      if (generation !== resolveGeneration.current) return;
       setState({
         type: "error",
         message: err instanceof Error ? err.message : "Unexpected error",
@@ -474,12 +496,37 @@ export function TaskPane({
   useEffect(() => {
     void resolve();
 
-    // 1. Listen for Office.js ItemChanged events when user switches emails in Outlook
+    let mounted = true;
+    let lastContextKey: string | null = null;
+
+    const checkForContextChange = async (force = false) => {
+      try {
+        const context = await contextProvider.getContext();
+        if (!mounted) return;
+
+        const currentKey = contextIdentityKey(context);
+        if (lastContextKey === null) {
+          lastContextKey = currentKey;
+          return;
+        }
+
+        if (force || (currentKey && currentKey !== lastContextKey)) {
+          lastContextKey = currentKey;
+          void resolve();
+        }
+      } catch {
+        if (force) void resolve();
+      }
+    };
+
+    void checkForContextChange();
+
+    // 1. Listen for Office.js ItemChanged events when user switches emails in Outlook.
     const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
     let itemChangedRegistered = false;
 
     const onItemChanged = () => {
-      void resolve();
+      void checkForContextChange(true);
     };
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
@@ -494,25 +541,13 @@ export function TaskPane({
       }
     }
 
-    // 2. Interval check as fallback for Outlook webview environments where ItemChanged may not fire
-    let lastItemId: string | null | undefined = undefined;
+    // 2. Provider-based interval fallback for Outlook hosts where ItemChanged may not fire.
     const interval = setInterval(() => {
-      try {
-        const item = Office.context?.mailbox?.item;
-        if (!item) return;
-        const currentKey = item.itemId || item.internetMessageId || item.subject;
-        if (lastItemId === undefined) {
-          lastItemId = currentKey;
-        } else if (currentKey && currentKey !== lastItemId) {
-          lastItemId = currentKey;
-          void resolve();
-        }
-      } catch {
-        // office context not available
-      }
-    }, 1200);
+      void checkForContextChange();
+    }, 1000);
 
     return () => {
+      mounted = false;
       clearInterval(interval);
       if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
         try {
@@ -554,9 +589,6 @@ export function TaskPane({
     <div className="pane-shell">
       {/* Header */}
       <header className="pane-header">
-        <div className="pane-brand" aria-label="HolyShip">
-          <img src="/holyship-logo.png" alt="HolyShip" className="pane-brand-logo" />
-        </div>
         <div className="pane-header-actions">
           <button
             className="pane-icon-btn"
