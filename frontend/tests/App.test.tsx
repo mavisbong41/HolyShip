@@ -197,7 +197,7 @@ describe("HolyShip dashboard", () => {
     ));
   });
 
-  it("presents Awaiting Documents without Human Review controls", async () => {
+  it("presents Waiting for Documents without Human Review controls", async () => {
     const awaiting: ProductEmailDetail = {
       ...demoDetail,
       email: { ...demoDetail.email, processing_status: "AWAITING_DOCUMENTS", comparison_readiness: "AWAITING_DOCUMENTS", review_id: null },
@@ -209,7 +209,7 @@ describe("HolyShip dashboard", () => {
 
     render(<App />);
 
-    expect((await screen.findAllByText("Awaiting Documents", { selector: "strong" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Waiting for Documents", { selector: "strong" })).length).toBeGreaterThan(0);
     expect(screen.getByText(/required document has not arrived/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /open human review/i })).not.toBeInTheDocument();
   });

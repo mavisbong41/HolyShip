@@ -24,14 +24,14 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
   COMPLETED: "Completed",
-  BLOCKED: "Needs Attention",
+  BLOCKED: "Needs Review",
   FAILED: "Processing Failed",
 };
 
 export const readinessLabels: Record<ComparisonReadiness, string> = {
   READY_FOR_COMPARISON: "Ready for Comparison",
-  AWAITING_DOCUMENTS: "Awaiting Documents",
-  UNRESOLVED: "Readiness Unresolved",
+  AWAITING_DOCUMENTS: "Waiting for Documents",
+  UNRESOLVED: "Document readiness unclear",
 };
 
 export const fieldLabels: Record<CanonicalField, string> = {
