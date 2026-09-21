@@ -37,20 +37,6 @@ type PaneState =
   | { type: "error"; message: string }
   | { type: "ready"; detail: ProductEmailDetail; confidence: "high" | "low" | "none"; note: string | null };
 
-function getDirectItemKey(): string {
-  try {
-    const item = typeof Office !== "undefined" ? Office.context?.mailbox?.item : undefined;
-    if (!item) return "";
-    return (
-      item.itemId ||
-      [item.subject, (item as any).from?.emailAddress].filter(Boolean).join("|") ||
-      ""
-    );
-  } catch {
-    return "";
-  }
-}
-
 // ─── Sub-components ────────────────────────────────────────────────
 
 function LoadingView(): React.ReactElement {
@@ -455,24 +441,20 @@ export function TaskPane({
   const lastItemIdRef = useRef<string | null>(null);
 
   const refreshCurrentEmail = useCallback(async (force = false) => {
-    let currentKey = getDirectItemKey();
-
-    // In tests or mock contexts where mailbox.item is not globally set, fall back to contextProvider
-    if (!currentKey) {
-      try {
-        const ctx = await contextProvider.getContext();
-        if (ctx.state === "ready" && ctx.item) {
-          currentKey = [
-            ctx.item.holyshipCaseId,
-            ctx.item.internetMessageId,
-            ctx.item.outlookItemId,
-            ctx.item.sender?.trim().toLowerCase(),
-            ctx.item.subject?.trim().toLowerCase(),
-          ].filter(Boolean).join("|");
-        }
-      } catch {
-        // ignore
+    let currentKey = "";
+    try {
+      const ctx = await contextProvider.getContext();
+      if (ctx.state === "ready" && ctx.item) {
+        currentKey = [
+          ctx.item.holyshipCaseId,
+          ctx.item.internetMessageId,
+          ctx.item.outlookItemId,
+          ctx.item.sender?.trim().toLowerCase(),
+          ctx.item.subject?.trim().toLowerCase(),
+        ].filter(Boolean).join("|");
       }
+    } catch {
+      // ignore
     }
 
     // Prevent redundant fetches when polling finds no change, unless force=true
@@ -521,42 +503,40 @@ export function TaskPane({
   useEffect(() => {
     let pollTimer: ReturnType<typeof setInterval> | undefined;
     let itemChangedRegistered = false;
+    let selectedItemsChangedRegistered = false;
 
-    // 1. ItemChanged handler: triggers immediately when Outlook fires ItemChanged event
+    // 1. Handler: triggers immediately when Outlook fires ItemChanged or SelectedItemsChanged
     const onItemChanged = () => {
       void refreshCurrentEmail(true);
     };
 
-    // 2. Polling fallback: checks direct mailbox.item (or contextProvider) every 700ms
+    // 2. Polling fallback: checks contextProvider (including getSelectedItemsAsync) every 700ms
     const checkPollingChange = async () => {
-      let currentKey = getDirectItemKey();
-      if (!currentKey) {
-        try {
-          const ctx = await contextProvider.getContext();
-          if (ctx.state === "ready" && ctx.item) {
-            currentKey = [
-              ctx.item.holyshipCaseId,
-              ctx.item.internetMessageId,
-              ctx.item.outlookItemId,
-              ctx.item.sender?.trim().toLowerCase(),
-              ctx.item.subject?.trim().toLowerCase(),
-            ].filter(Boolean).join("|");
+      try {
+        const ctx = await contextProvider.getContext();
+        if (ctx.state === "ready" && ctx.item) {
+          const currentKey = [
+            ctx.item.holyshipCaseId,
+            ctx.item.internetMessageId,
+            ctx.item.outlookItemId,
+            ctx.item.sender?.trim().toLowerCase(),
+            ctx.item.subject?.trim().toLowerCase(),
+          ].filter(Boolean).join("|");
+
+          if (!currentKey) return;
+
+          if (lastItemIdRef.current === null) {
+            lastItemIdRef.current = currentKey;
+            return;
           }
-        } catch {
-          return;
+
+          if (currentKey !== lastItemIdRef.current) {
+            lastItemIdRef.current = currentKey;
+            void refreshCurrentEmail(true);
+          }
         }
-      }
-
-      if (!currentKey) return;
-
-      if (lastItemIdRef.current === null) {
-        lastItemIdRef.current = currentKey;
-        return;
-      }
-
-      if (currentKey !== lastItemIdRef.current) {
-        lastItemIdRef.current = currentKey;
-        void refreshCurrentEmail(true);
+      } catch {
+        // ignore
       }
     };
 
@@ -565,15 +545,30 @@ export function TaskPane({
       void refreshCurrentEmail(true);
 
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
-      if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
-        try {
-          mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
-            if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
-              itemChangedRegistered = true;
-            }
-          });
-        } catch {
-          // host unsupported
+      if (typeof mailbox?.addHandlerAsync === "function" && typeof Office !== "undefined") {
+        if (Office.EventType?.ItemChanged) {
+          try {
+            mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
+              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
+                itemChangedRegistered = true;
+              }
+            });
+          } catch {
+            // host unsupported
+          }
+        }
+
+        const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
+        if (selectedEvent) {
+          try {
+            mailbox.addHandlerAsync(selectedEvent, onItemChanged, (asyncResult: any) => {
+              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
+                selectedItemsChangedRegistered = true;
+              }
+            });
+          } catch {
+            // host unsupported
+          }
         }
       }
 
@@ -594,11 +589,21 @@ export function TaskPane({
       if (pollTimer) {
         clearInterval(pollTimer);
       }
+      const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
       if (itemChangedRegistered) {
         try {
-          const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
           if (mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
             mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
+          }
+        } catch {
+          // ignore
+        }
+      }
+      if (selectedItemsChangedRegistered) {
+        try {
+          const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
+          if (mailbox?.removeHandlerAsync && selectedEvent) {
+            mailbox.removeHandlerAsync(selectedEvent);
           }
         } catch {
           // ignore

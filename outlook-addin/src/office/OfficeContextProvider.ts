@@ -4,10 +4,10 @@ import type { MailContextProvider, MailContextResult } from "../types/context";
  * OfficeCurrentMailContextProvider
  * Reads the current Outlook message context via Office.js.
  *
- * Deliberately avoids getSelectedItemsAsync: in New Outlook that API can return
- * the email the task pane was first opened for (not the currently selected one),
- * causing stale results.  mailbox.item is the reliable source for the item that
- * is currently displayed in the reading pane.
+ * In New Outlook for Windows, when a taskpane is open, user selection in the
+ * message list updates getSelectedItemsAsync (Mailbox 1.13+) immediately,
+ * whereas mailbox.item can remain fixed to the item opened first.
+ * We query getSelectedItemsAsync first, falling back to mailbox.item.
  */
 export class OfficeCurrentMailContextProvider implements MailContextProvider {
   async getContext(): Promise<MailContextResult> {
@@ -17,28 +17,59 @@ export class OfficeCurrentMailContextProvider implements MailContextProvider {
         return { state: "unavailable", item: null, error: "No mailbox context" };
       }
 
+      let selectedItem: { itemId?: string; subject?: string; internetMessageId?: string } | null = null;
+      if (typeof (mailbox as any).getSelectedItemsAsync === "function") {
+        try {
+          const selected = await new Promise<any>((resolve) => {
+            (mailbox as any).getSelectedItemsAsync((asyncResult: any) => {
+              if (
+                asyncResult &&
+                asyncResult.status === Office.AsyncResultStatus.Succeeded &&
+                Array.isArray(asyncResult.value) &&
+                asyncResult.value.length > 0
+              ) {
+                resolve(asyncResult.value[0]);
+              } else {
+                resolve(null);
+              }
+            });
+          });
+          if (selected) {
+            selectedItem = selected;
+          }
+        } catch {
+          // fallback to mailbox.item
+        }
+      }
+
       const item = mailbox.item;
-      if (!item) {
+      if (!item && !selectedItem) {
         return { state: "unavailable", item: null, error: "No mailbox item in context" };
       }
 
       let internetMessageId: string | null = null;
       try {
-        if (typeof item.internetMessageId === "string") {
+        if (typeof selectedItem?.internetMessageId === "string") {
+          internetMessageId = selectedItem.internetMessageId;
+        } else if (typeof item?.internetMessageId === "string") {
           internetMessageId = item.internetMessageId;
         }
       } catch {
         // not available on all hosts
       }
 
+      const outlookItemId = selectedItem?.itemId || item?.itemId || null;
+      const subject = selectedItem?.subject || item?.subject || null;
+      const sender = item?.from?.emailAddress || null;
+
       return {
         state: "ready",
         item: {
           holyshipCaseId: null,
-          outlookItemId: item.itemId ?? null,
+          outlookItemId,
           internetMessageId,
-          sender: item.from?.emailAddress ?? null,
-          subject: item.subject ?? null,
+          sender,
+          subject,
         },
         error: null,
       };
