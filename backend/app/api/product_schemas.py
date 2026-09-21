@@ -233,6 +233,9 @@ class ProductReview(BaseModel):
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "LOW"
     human_explanation: str | None = None
     affected_fields: list[str] = Field(default_factory=list)
+    affected_area: str | None = None
+    suggested_action: str | None = None
+    semantic_style: str | None = None
     age_minutes: int = 0
     body: str | None = None
     documents: list[ProductDocument] = Field(default_factory=list)
