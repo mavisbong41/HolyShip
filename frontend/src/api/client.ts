@@ -1,14 +1,18 @@
 import type {
+  DiscrepancyPage,
+  DiscrepancyQueueFilters,
   EmailQueuePage,
   HumanReviewAnalytics,
   HumanReviewPage,
+  InitialSyncResult,
+  ProductDiscrepancyDetail,
+  ProductDiscrepancySummary,
   ProductEmailDetail,
   ProductEvent,
   ProductReview,
   ProductSummary,
   QueueFilters,
   ReviewQueueFilters,
-  InitialSyncResult,
 } from "./types";
 
 const defaultBaseUrl = "/api/v1";
@@ -181,4 +185,74 @@ export async function getEvents(since?: string): Promise<ProductEvent[]> {
 
 export async function getHumanReviewAnalytics(): Promise<HumanReviewAnalytics> {
   return request<HumanReviewAnalytics>('/human-review-analytics');
+}
+
+export async function getDiscrepancies(filters: DiscrepancyQueueFilters = {}): Promise<DiscrepancyPage> {
+  const params = new URLSearchParams();
+  appendParam(params, "status", filters.status);
+  appendParam(params, "search", filters.search?.trim());
+  appendParam(params, "skip", filters.skip ?? 0);
+  appendParam(params, "limit", filters.limit ?? 20);
+  return request<DiscrepancyPage>(`/discrepancies?${params.toString()}`);
+}
+
+export async function getDiscrepancyDetail(discrepancyId: string): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}`);
+}
+
+export async function acknowledgeDiscrepancy(
+  discrepancyId: string,
+  operatorName?: string,
+): Promise<{ discrepancy: ProductDiscrepancySummary }> {
+  return request<{ discrepancy: ProductDiscrepancySummary }>(`/discrepancies/${discrepancyId}/acknowledge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operator_name: operatorName }),
+  });
+}
+
+export async function resolveDiscrepancy(
+  discrepancyId: string,
+  operatorName?: string,
+  notes?: string,
+): Promise<{ discrepancy: ProductDiscrepancySummary }> {
+  return request<{ discrepancy: ProductDiscrepancySummary }>(`/discrepancies/${discrepancyId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operator_name: operatorName, notes }),
+  });
+}
+
+export async function saveDiscrepancyOverride(
+  discrepancyId: string,
+  payload: {
+    document_side: "SI" | "BL";
+    field_name: string;
+    corrected_value: unknown;
+    reviewer_name?: string;
+    note?: string;
+  },
+): Promise<{ discrepancy: ProductDiscrepancySummary; overrides: unknown[] }> {
+  return request<{ discrepancy: ProductDiscrepancySummary; overrides: unknown[] }>(
+    `/discrepancies/${discrepancyId}/override`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    },
+  );
+}
+
+export async function recompareDiscrepancy(
+  discrepancyId: string,
+  reviewerName?: string,
+): Promise<{ discrepancy: ProductDiscrepancySummary; comparison: unknown }> {
+  return request<{ discrepancy: ProductDiscrepancySummary; comparison: unknown }>(
+    `/discrepancies/${discrepancyId}/recompare`,
+    {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ reviewer_name: reviewerName }),
+    },
+  );
 }

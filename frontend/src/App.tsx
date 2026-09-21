@@ -42,14 +42,25 @@ import {
   resolveHumanReview,
   runInitialSync,
   saveHumanReviewOverride,
+  getDiscrepancies,
+  getDiscrepancyDetail,
+  acknowledgeDiscrepancy,
+  resolveDiscrepancy,
+  saveDiscrepancyOverride,
+  recompareDiscrepancy,
 } from "./api/client";
 import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
+import { ConfirmedDiscrepanciesPageView } from "./components/discrepancies/ConfirmedDiscrepanciesPageView";
 import type {
+  DiscrepancyPage,
+  DiscrepancyQueueFilters,
   EmailQueuePage,
   HumanReviewAnalytics,
   HumanReviewPage,
   ProcessingStatus,
   ProductCategory,
+  ProductDiscrepancyDetail,
+  ProductDiscrepancySummary,
   ProductEmailDetail,
   ProductEmailSummary,
   ProductReview,
@@ -72,7 +83,7 @@ import {
   statusLabels,
 } from "./lib/labels";
 
-type Page = "overview" | "queue" | "review";
+type Page = "overview" | "queue" | "review" | "discrepancies";
 type LoadState = "idle" | "loading" | "ready" | "error";
 export type ReviewViewMode = "ACTIVE" | "HISTORY";
 
@@ -80,6 +91,7 @@ const pageTitles: Record<Page, string> = {
   overview: "Overview",
   queue: "Email Queue",
   review: "Human Review",
+  discrepancies: "Confirmed Discrepancies",
 };
 
 const statusOptions: ProcessingStatus[] = [
@@ -245,7 +257,9 @@ function AppHeader({
       ? "OPERATIONS WORKBENCH"
       : page === "queue"
         ? "OPERATIONAL QUEUE"
-        : "EXCEPTION HANDLING";
+        : page === "discrepancies"
+          ? "DISCREPANCY RESOLUTION"
+          : "EXCEPTION HANDLING";
 
   return (
     <div className="overview-header-bar">
@@ -3145,6 +3159,19 @@ export default function App() {
   const [reviews, setReviews] = useState<HumanReviewPage | null>(null);
   const [reviewAnalytics, setReviewAnalytics] = useState<HumanReviewAnalytics | null>(null);
   const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
+
+  // Discrepancy workspace state
+  const [discrepancies, setDiscrepancies] = useState<DiscrepancyPage | null>(null);
+  const [selectedDiscrepancy, setSelectedDiscrepancy] = useState<ProductDiscrepancyDetail | null>(null);
+  const [discrepancyState, setDiscrepancyState] = useState<LoadState>("idle");
+  const [discrepancyActionState, setDiscrepancyActionState] = useState<LoadState>("idle");
+  const [discrepancyFilters, setDiscrepancyFilters] = useState<DiscrepancyQueueFilters>({
+    status: "",
+    search: "",
+    skip: 0,
+    limit: 20,
+  });
+
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [detailState, setDetailState] = useState<LoadState>("idle");
   const [reviewState, setReviewState] = useState<LoadState>("idle");
@@ -3194,6 +3221,40 @@ export default function App() {
     }
   }, [reviewViewMode]);
 
+  const selectDiscrepancyById = useCallback(async (discrepancyId: string, updateUrl = true) => {
+    setPage("discrepancies");
+    setDiscrepancyActionState("loading");
+    try {
+      const detail = await getDiscrepancyDetail(discrepancyId);
+      setSelectedDiscrepancy(detail);
+      setDiscrepancyActionState("ready");
+      if (updateUrl) window.history.replaceState({}, "", `?discrepancy=${encodeURIComponent(discrepancyId)}`);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load discrepancy detail");
+      setDiscrepancyActionState("error");
+    }
+  }, []);
+
+  const loadDiscrepancies = useCallback(async () => {
+    setDiscrepancyState("loading");
+    try {
+      const pageData = await getDiscrepancies(discrepancyFilters);
+      setDiscrepancies(pageData);
+      setDiscrepancyState("ready");
+      if (pageData.items.length > 0) {
+        setSelectedDiscrepancy((current) => {
+          if (!current || !pageData.items.some((i) => i.id === current.discrepancy.id)) {
+            void selectDiscrepancyById(pageData.items[0].id, false);
+          }
+          return current;
+        });
+      }
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to load discrepancies");
+      setDiscrepancyState("error");
+    }
+  }, [discrepancyFilters, selectDiscrepancyById]);
+
   const selectEmailById = useCallback(async (emailId: string, updateUrl = true) => {
     setPage("queue");
     setDetailState("loading");
@@ -3235,16 +3296,24 @@ export default function App() {
     deepLinkHandled.current = true;
     const params = new URLSearchParams(window.location.search);
     const reviewId = params.get("review");
+    const discrepancyId = params.get("discrepancy");
     const emailId = params.get("email");
     if (reviewId) void selectReviewById(reviewId, false);
+    else if (discrepancyId) void selectDiscrepancyById(discrepancyId, false);
     else if (emailId) void selectEmailById(emailId, false);
-  }, [selectEmailById, selectReviewById]);
+  }, [selectEmailById, selectReviewById, selectDiscrepancyById]);
 
   useEffect(() => {
     if (page === "review") {
       void loadReviews();
     }
   }, [loadReviews, page]);
+
+  useEffect(() => {
+    if (page === "discrepancies") {
+      void loadDiscrepancies();
+    }
+  }, [loadDiscrepancies, page]);
 
   useEffect(() => {
     const timer = window.setInterval(async () => {
@@ -3280,6 +3349,66 @@ export default function App() {
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Human Review action failed");
       setReviewActionState("error");
+    }
+  };
+
+  const handleAcknowledgeDiscrepancy = async (discrepancyId: string, operatorName?: string) => {
+    setDiscrepancyActionState("loading");
+    setError(null);
+    try {
+      await acknowledgeDiscrepancy(discrepancyId, operatorName);
+      await Promise.all([loadDiscrepancies(), loadDashboard()]);
+      const updated = await getDiscrepancyDetail(discrepancyId);
+      setSelectedDiscrepancy(updated);
+      setDiscrepancyActionState("ready");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to acknowledge discrepancy");
+      setDiscrepancyActionState("error");
+    }
+  };
+
+  const handleResolveDiscrepancy = async (discrepancyId: string, operatorName?: string, notes?: string) => {
+    setDiscrepancyActionState("loading");
+    setError(null);
+    try {
+      await resolveDiscrepancy(discrepancyId, operatorName, notes);
+      await Promise.all([loadDiscrepancies(), loadDashboard()]);
+      const updated = await getDiscrepancyDetail(discrepancyId);
+      setSelectedDiscrepancy(updated);
+      setDiscrepancyActionState("ready");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to resolve discrepancy");
+      setDiscrepancyActionState("error");
+    }
+  };
+
+  const handleOverrideAndRecompareDiscrepancy = async (
+    discrepancyId: string,
+    payload: {
+      document_side: "SI" | "BL";
+      field_name: string;
+      corrected_value: unknown;
+      reviewer_name?: string;
+      note?: string;
+    },
+  ) => {
+    setDiscrepancyActionState("loading");
+    setError(null);
+    try {
+      await saveDiscrepancyOverride(discrepancyId, payload);
+      const recompared = await recompareDiscrepancy(discrepancyId, payload.reviewer_name);
+      await Promise.all([loadDiscrepancies(), loadDashboard()]);
+      if (recompared.comparison && (recompared.comparison as { mismatch_found?: boolean }).mismatch_found) {
+        const updated = await getDiscrepancyDetail(recompared.discrepancy.id);
+        setSelectedDiscrepancy(updated);
+      } else {
+        setSelectedDiscrepancy(null);
+        await loadDiscrepancies();
+      }
+      setDiscrepancyActionState("ready");
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Failed to save correction and recompare");
+      setDiscrepancyActionState("error");
     }
   };
 
@@ -3345,9 +3474,23 @@ export default function App() {
             <Inbox size={18} />
             Email Queue
           </button>
+          <button className={cx(page === "discrepancies" && "active")} onClick={() => navigate("discrepancies")} type="button">
+            <AlertTriangle size={18} />
+            Discrepancies
+            {typeof summary?.mismatch_count === "number" && summary.mismatch_count > 0 ? (
+              <span className="sidebar-badge" style={{ marginLeft: "auto", background: "var(--color-danger)", color: "#fff", fontSize: "10px", padding: "1px 6px", borderRadius: "10px", fontWeight: 700 }}>
+                {summary.confirmed_discrepancies_count ?? summary.mismatch_count}
+              </span>
+            ) : null}
+          </button>
           <button className={cx(page === "review" && "active")} onClick={() => navigate("review")} type="button">
             <ClipboardList size={18} />
             Human Review
+            {typeof summary?.human_review_open_count === "number" && summary.human_review_open_count > 0 ? (
+              <span className="sidebar-badge" style={{ marginLeft: "auto", background: "var(--color-warn)", color: "#fff", fontSize: "10px", padding: "1px 6px", borderRadius: "10px", fontWeight: 700 }}>
+                {summary.human_review_open_count}
+              </span>
+            ) : null}
           </button>
         </nav>
         <div className="sidebar-footer">
@@ -3398,6 +3541,23 @@ export default function App() {
             onCloseDetail={() => setDetail(null)}
             onPage={movePage}
             onGoToPage={goToPage}
+          />
+        ) : null}
+
+        {page === "discrepancies" ? (
+          <ConfirmedDiscrepanciesPageView
+            discrepancies={discrepancies}
+            state={discrepancyState}
+            selected={selectedDiscrepancy}
+            actionState={discrepancyActionState}
+            filters={discrepancyFilters}
+            onFilterChange={(newFilters) => setDiscrepancyFilters(newFilters)}
+            onSelect={(id) => void selectDiscrepancyById(id)}
+            onAcknowledge={handleAcknowledgeDiscrepancy}
+            onResolve={handleResolveDiscrepancy}
+            onOverrideAndRecompare={handleOverrideAndRecompareDiscrepancy}
+            onOpenEmailInQueue={(emailId) => void selectEmailById(emailId)}
+            onRefresh={() => void loadDiscrepancies()}
           />
         ) : null}
 

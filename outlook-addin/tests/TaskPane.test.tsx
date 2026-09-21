@@ -74,7 +74,7 @@ describe("TaskPane", () => {
     setupAdapter({ detail: fixtures.mismatchDetected, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      expect(screen.getByText(/mismatch detected/i)).toBeInTheDocument();
+      expect(screen.getByText(/confirmed discrepancy/i)).toBeInTheDocument();
     });
     expect(screen.getByText(/2 fields mismatched/i)).toBeInTheDocument();
   });

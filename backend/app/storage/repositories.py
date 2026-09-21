@@ -789,6 +789,10 @@ class ComparisonResultRepository:
         record.unresolved_fields = [name.value for name in batch.unresolved_fields]
         record.reason_code = batch.reason_code
         record.message = batch.message
+        if batch.mismatch_found and batch.comparison_state == "COMPLETED":
+            record.resolution_status = record.resolution_status or "OPEN"
+        else:
+            record.resolution_status = None
         self.session.flush()
 
         existing = {field.field_name: field for field in record.fields}

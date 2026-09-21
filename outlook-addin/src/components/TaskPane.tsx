@@ -141,7 +141,7 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
           <div className="state-card-icon icon-bad" aria-hidden="true">
             <AlertTriangle size={18} />
           </div>
-          <h2>Mismatch detected</h2>
+          <h2>Confirmed Discrepancy</h2>
           <p>
             {email.mismatch_count > 0 && `${email.mismatch_count} field${email.mismatch_count > 1 ? "s" : ""} mismatched. `}
             {email.unresolved_count > 0 && `${email.unresolved_count} field${email.unresolved_count > 1 ? "s" : ""} unresolved.`}

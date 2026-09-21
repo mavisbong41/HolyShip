@@ -13,11 +13,15 @@ from backend.app.api import review_helper, review_action_helper
 from backend.app.api import analytics_helper
 from backend.app.api.product_schemas import HumanReviewAnalytics
 from backend.app.api.product_schemas import (
+    DiscrepancyOverrideOut,
+    DiscrepancyPage,
     EmailQueuePage,
     HumanReviewPage,
     ProductAttachment,
     ProductClassification,
     ProductComparison,
+    ProductDiscrepancyDetail,
+    ProductDiscrepancySummary,
     ProductDocument,
     ProductEmailDetail,
     ProductEmailSummary,
@@ -336,6 +340,7 @@ def get_product_summary(session: Session) -> ProductSummary:
         needs_review_count=int(row.needs_review or 0),
         comparison_ready_count=int(row.ready or 0),
         mismatch_count=int(row.mismatch or 0),
+        confirmed_discrepancies_count=int(row.mismatch or 0),
         unresolved_count=int(row.unresolved or 0),
         completed_count=status_counts.get("COMPLETED", 0),
         awaiting_documents_count=status_counts.get("AWAITING_DOCUMENTS", 0),
@@ -910,3 +915,124 @@ def get_human_review(session: Session, review_id: UUID) -> ProductReview | None:
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
     return analytics_helper.get_human_review_analytics(session)
+
+
+def list_product_discrepancies(
+    session: Session,
+    *,
+    status: str | None = None,
+    search: str | None = None,
+    skip: int = 0,
+    limit: int = 20,
+) -> DiscrepancyPage:
+    validate_page(skip=skip, limit=limit)
+    from backend.app.discrepancy.service import DiscrepancyService
+
+    service = DiscrepancyService(session)
+    rows, total_filtered, counts = service.list_discrepancies(
+        status=status,  # type: ignore[arg-type]
+        search=search,
+        skip=skip,
+        limit=limit,
+    )
+    items = [
+        ProductDiscrepancySummary(
+            id=row.id,
+            email_id=row.email_id,
+            external_message_id=row.email.external_message_id if row.email else "",
+            subject=row.email.subject if row.email else "",
+            sender=row.email.sender if row.email else None,
+            received_at=row.email.received_at if row.email else None,
+            created_at=row.created_at,
+            mismatch_count=len(row.mismatched_fields or []),
+            mismatched_fields=list(row.mismatched_fields or []),
+            resolution_status=row.resolution_status or "OPEN",
+            acknowledged_at=row.acknowledged_at,
+            acknowledged_by=row.acknowledged_by,
+            resolved_at=row.resolved_at,
+            resolved_by=row.resolved_by,
+            resolution_notes=row.resolution_notes,
+            comparison_state=row.comparison_state,
+        )
+        for row in rows
+    ]
+    return DiscrepancyPage(
+        items=items,
+        total=total_filtered,
+        open_count=counts["open_count"],
+        acknowledged_count=counts["acknowledged_count"],
+        resolved_count=counts["resolved_count"],
+        skip=skip,
+        limit=limit,
+    )
+
+
+def get_product_discrepancy_detail(
+    session: Session,
+    comparison_id_or_email_id: UUID,
+) -> ProductDiscrepancyDetail | None:
+    from backend.app.discrepancy.service import DiscrepancyService
+
+    service = DiscrepancyService(session)
+    comp = service.get_discrepancy(comparison_id_or_email_id)
+    if comp is None:
+        return None
+
+    email_detail = get_email_detail(session, comp.email_id)
+    if email_detail is None:
+        return None
+
+    discrepancy_summary = ProductDiscrepancySummary(
+        id=comp.id,
+        email_id=comp.email_id,
+        external_message_id=email_detail.email.external_message_id,
+        subject=email_detail.email.subject,
+        sender=email_detail.email.sender,
+        received_at=email_detail.email.received_at,
+        created_at=comp.created_at,
+        mismatch_count=len(comp.mismatched_fields or []),
+        mismatched_fields=list(comp.mismatched_fields or []),
+        resolution_status=comp.resolution_status or "OPEN",
+        acknowledged_at=comp.acknowledged_at,
+        acknowledged_by=comp.acknowledged_by,
+        resolved_at=comp.resolved_at,
+        resolved_by=comp.resolved_by,
+        resolution_notes=comp.resolution_notes,
+        comparison_state=comp.comparison_state,
+    )
+
+    comparison_data = _comparison(comp)
+    mismatched_fields_detail = (
+        [f for f in comparison_data.fields if f.status == "MISMATCH"]
+        if comparison_data
+        else []
+    )
+
+    overrides = [
+        DiscrepancyOverrideOut(
+            id=o.id,
+            comparison_result_id=comp.id,
+            document_side=o.document_side,
+            field_name=o.field_name,
+            original_field_id=o.original_field_id,
+            corrected_value=o.corrected_value,
+            corrected_canonical_value=o.corrected_canonical_value,
+            reviewer_name=o.reviewer_name,
+            note=o.note,
+            active=o.active,
+            created_at=o.created_at,
+        )
+        for o in sorted(comp.overrides or [], key=lambda x: (x.created_at, str(x.id)))
+    ]
+
+    return ProductDiscrepancyDetail(
+        discrepancy=discrepancy_summary,
+        email=email_detail.email,
+        email_body=email_detail.body,
+        comparison=comparison_data or email_detail.comparison,
+        mismatched_fields_detail=mismatched_fields_detail,
+        attachments=email_detail.attachments,
+        documents=email_detail.documents,
+        overrides=overrides,
+        timeline=email_detail.timeline,
+    )

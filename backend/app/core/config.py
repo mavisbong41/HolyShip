@@ -55,13 +55,32 @@ class Settings(BaseSettings):
     polling_backoff_max_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
     polling_source_type: str = "STATIC_BUNDLE"
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,https://localhost:3200,https://127.0.0.1:3200,https://holyship.onrender.com,https://holyship-backend.onrender.com"
-    cors_allow_origin_regex: str | None = r"https://.*\.onrender\.com"
+    cors_allow_origin_regex: str | None = None
 
     @model_validator(mode="after")
     def validate_polling_backoff(self) -> "Settings":
         if self.polling_backoff_max_seconds < self.polling_backoff_initial_seconds:
             raise ValueError("polling_backoff_max_seconds must not be below polling_backoff_initial_seconds")
         return self
+
+    @property
+    def resolved_bundle_path(self) -> Path:
+        p = self.organizer_bundle_path
+        if (p / "inbox").exists():
+            return p
+        if p.exists() and (p / "inbox").exists():
+            return p
+        repo_root = Path(__file__).resolve().parents[3] if len(Path(__file__).resolve().parents) >= 4 else Path.cwd()
+        candidate = repo_root / p
+        if (candidate / "inbox").exists():
+            return candidate
+        app_bundle = Path("/app/data/bundle")
+        if (app_bundle / "inbox").exists():
+            return app_bundle
+        cwd_bundle = Path.cwd() / "data" / "bundle"
+        if (cwd_bundle / "inbox").exists():
+            return cwd_bundle
+        return p
 
     @property
     def retry_policy(self) -> RetryPolicy:

@@ -197,14 +197,24 @@ def test_cors_allows_onrender_origins():
         assert resp.status_code == 200
         assert resp.headers.get("access-control-allow-origin") == "https://holyship.onrender.com"
 
-        # Regex-matched Render staging/preview URL
-        resp2 = c.options(
+        # Local development origin
+        resp_dev = c.options(
             "/api/v1/summary",
             headers={
-                "Origin": "https://holyship-preview-123.onrender.com",
+                "Origin": "http://localhost:5173",
                 "Access-Control-Request-Method": "GET",
             },
         )
-        assert resp2.status_code == 200
-        assert resp2.headers.get("access-control-allow-origin") == "https://holyship-preview-123.onrender.com"
+        assert resp_dev.status_code == 200
+        assert resp_dev.headers.get("access-control-allow-origin") == "http://localhost:5173"
+
+        # Untrusted origin should not receive Access-Control-Allow-Origin header
+        resp_untrusted = c.options(
+            "/api/v1/summary",
+            headers={
+                "Origin": "https://evil-untrusted-site.example.com",
+                "Access-Control-Request-Method": "GET",
+            },
+        )
+        assert resp_untrusted.headers.get("access-control-allow-origin") is None
 

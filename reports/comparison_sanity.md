@@ -4,35 +4,35 @@ This diagnostic uses only the public participant bundle. It reports observed pip
 
 ## Aggregate outcomes
 
-- Comparison-ready emails: 112
-- Comparison-ready SI/BL pairs attempted: 98
-- Completed clean comparisons: 0
-- Completed comparisons with mismatch: 0
-- Blocked unresolved comparisons: 98
+- Comparison-ready emails: 129
+- Comparison-ready SI/BL pairs attempted: 114
+- Completed clean comparisons: 63
+- Completed comparisons with mismatch: 46
+- Blocked unresolved comparisons: 5
 - Failed comparisons: 0
 
 ## Field outcomes
 
 | Canonical field | Mismatch | Unresolved |
 |---|---:|---:|
-| shipper | 0 | 76 |
-| consignee | 0 | 66 |
-| notify_party | 0 | 51 |
-| port_of_loading | 0 | 47 |
-| port_of_discharge | 0 | 47 |
-| container_count | 3 | 75 |
-| gross_weight_kg | 4 | 50 |
+| shipper | 7 | 1 |
+| consignee | 7 | 1 |
+| notify_party | 8 | 0 |
+| port_of_loading | 6 | 1 |
+| port_of_discharge | 13 | 2 |
+| container_count | 19 | 1 |
+| gross_weight_kg | 12 | 2 |
 
 ## Layer and call diagnostics
 
-- L0 outcomes: 267
-- L1 outcomes: 7
-- L2 invocations/outcomes: 29
-- Default-L2 unresolved outcomes: 29
+- L0 outcomes: 690
+- L1 outcomes: 100
+- L2 invocations/outcomes: 0
+- Default-L2 unresolved outcomes: 0
 - Readers invoked during comparison itself: 0
 - Extractor invocations caused by comparison itself: 0
-- Materialization reader calls before comparison: 216
-- Materialization extractor calls before comparison: 196
+- Materialization reader calls before comparison: 250
+- Materialization extractor calls before comparison: 228
 - LLM provider calls: 0
 - OCR provider calls caused by comparison: 0
 - Vision provider calls caused by comparison: 0

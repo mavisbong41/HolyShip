@@ -57,6 +57,12 @@ export const reviewStatusLabels: Record<string, string> = {
   DISMISSED: "Review Dismissed",
 };
 
+export const discrepancyStatusLabels: Record<string, string> = {
+  OPEN: "Open Discrepancy",
+  ACKNOWLEDGED: "Acknowledged",
+  RESOLVED: "Resolved",
+};
+
 export const reasonLabels: Record<string, string> = {
   COMPARISON_UNRESOLVED: "Missing Required Value",
   COMPARISON_MISMATCH: "Field Mismatch",
@@ -74,6 +80,14 @@ export const reasonLabels: Record<string, string> = {
   NOT_ACTIONABLE: "Not Actionable",
   STAGE2_UNRESOLVED: "Historical Review Record",
   OCR_BACKEND_UNAVAILABLE: "Document Processing Unavailable",
+  L0_NORMALIZED_EXACT_MATCH: "Exact Match after Normalization",
+  L0_SAFE_NORMALIZED_DIFFER: "Field Value Difference",
+  L1_APPROVED_PORTS_DIFFER: "Different Recognized Ports",
+  L1_CONTAINER_COUNTS_DIFFER: "Different Container Counts",
+  L1_WEIGHTS_DIFFER: "Different Gross Weights",
+  L1_ENTITY_DIFFERENCE: "Different Entity / Party Name",
+  L1_STRING_DIFFERENCE: "Text Value Difference",
+  L2_SEMANTIC_MISMATCH: "Semantic Discrepancy",
 };
 
 export const reviewActionLabels: Record<string, string> = {
@@ -106,6 +120,7 @@ export function displayLabel(value?: string | null): string {
   if (value in fieldStatusLabels) return fieldStatusLabels[value as FieldStatus];
   if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];
   if (value in reviewStatusLabels) return reviewStatusLabels[value];
+  if (value in discrepancyStatusLabels) return discrepancyStatusLabels[value];
   if (value in reasonLabels) return reasonLabels[value];
   if (value in reviewActionLabels) return reviewActionLabels[value];
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());

@@ -196,6 +196,7 @@ class ProductSummary(BaseModel):
     needs_review_count: int = Field(description="Number of currently actionable ACTIVE review cases.")
     comparison_ready_count: int
     mismatch_count: int
+    confirmed_discrepancies_count: int = 0
     unresolved_count: int
     completed_count: int = 0
     awaiting_documents_count: int = 0
@@ -403,5 +404,85 @@ class HumanReviewAnalytics(BaseModel):
     correction_reasons: dict[str, int] = Field(default_factory=dict)
 
 
+DiscrepancyStatus = Literal["OPEN", "ACKNOWLEDGED", "RESOLVED"]
+
+
+class ProductDiscrepancySummary(BaseModel):
+    id: uuid.UUID
+    email_id: uuid.UUID
+    external_message_id: str
+    subject: str
+    sender: str | None = None
+    received_at: datetime | None = None
+    created_at: datetime
+    mismatch_count: int = 0
+    mismatched_fields: list[str] = Field(default_factory=list)
+    resolution_status: DiscrepancyStatus = "OPEN"
+    acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    resolution_notes: str | None = None
+    comparison_state: str = "COMPLETED"
+
+
+class DiscrepancyPage(BaseModel):
+    items: list[ProductDiscrepancySummary]
+    total: int
+    open_count: int = 0
+    acknowledged_count: int = 0
+    resolved_count: int = 0
+    skip: int
+    limit: int
+
+
+class DiscrepancyOverrideOut(BaseModel):
+    id: uuid.UUID
+    comparison_result_id: uuid.UUID
+    document_side: str
+    field_name: str
+    original_field_id: uuid.UUID
+    corrected_value: Any
+    corrected_canonical_value: Any
+    reviewer_name: str | None = None
+    note: str | None = None
+    active: bool = True
+    created_at: datetime
+
+
+class ProductDiscrepancyDetail(BaseModel):
+    discrepancy: ProductDiscrepancySummary
+    email: ProductEmailSummary
+    email_body: str = ""
+    comparison: ProductComparison
+    mismatched_fields_detail: list[ProductFieldComparison] = Field(default_factory=list)
+    attachments: list[ProductAttachment] = Field(default_factory=list)
+    documents: list[ProductDocument] = Field(default_factory=list)
+    overrides: list[DiscrepancyOverrideOut] = Field(default_factory=list)
+    timeline: list[ProductTimelineEvent] = Field(default_factory=list)
+
+
+class DiscrepancyAcknowledgeIn(BaseModel):
+    operator_name: str | None = Field(default=None, max_length=255)
+
+
+class DiscrepancyResolveIn(BaseModel):
+    operator_name: str | None = Field(default=None, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class DiscrepancyOverrideIn(BaseModel):
+    document_side: Literal["SI", "BL"]
+    field_name: str
+    corrected_value: Any
+    reviewer_name: str | None = Field(default=None, max_length=255)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class DiscrepancyRecompareIn(BaseModel):
+    reviewer_name: str | None = Field(default=None, max_length=255)
+
+
 ProductEmailDetail.model_rebuild()
 ProductReview.model_rebuild()
+ProductDiscrepancyDetail.model_rebuild()

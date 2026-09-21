@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 def build_polling_source(settings: Settings) -> EmailSource:
     source_type = settings.polling_source_type.upper()
     if source_type == "STATIC_BUNDLE":
-        return StaticBundleSource(settings.organizer_bundle_path)
+        return StaticBundleSource(settings.resolved_bundle_path)
     if source_type == "ORGANIZER_HTTP":
         if not settings.polling_organizer_http_url:
             raise ValueError("polling_organizer_http_url is required for ORGANIZER_HTTP")

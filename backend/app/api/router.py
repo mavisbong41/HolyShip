@@ -42,16 +42,19 @@ from backend.app.storage.models import (
     HumanReviewCaseRecord,
 )
 from backend.app.resolution.runtime import get_configured_resolution_executor_factory
+from backend.app.discrepancy.service import DiscrepancyConflictError, DiscrepancyService
 from backend.app.review.service import HumanReviewService, ReviewConflictError
 from backend.app.sync.service import SyncService
 from backend.app.api.analytics_helper import get_human_review_analytics, get_human_review_reconciliation
 from backend.app.api.product_queries import (
     get_email_detail,
     get_human_review as get_product_human_review,
+    get_product_discrepancy_detail,
     get_product_summary,
     list_email_queue,
     list_human_reviews as list_product_human_reviews,
     list_processing_events,
+    list_product_discrepancies,
 )
 from backend.app.ai_review.service import AIReviewService
 from backend.app.api.product_schemas import (
@@ -61,10 +64,16 @@ from backend.app.api.product_schemas import (
     AISuggestionApplyEditedIn,
     AISuggestionDismissIn,
     ComparisonReadiness,
+    DiscrepancyAcknowledgeIn,
+    DiscrepancyOverrideIn,
+    DiscrepancyPage,
+    DiscrepancyRecompareIn,
+    DiscrepancyResolveIn,
     EmailQueuePage,
     HumanReviewAnalytics,
     HumanReviewPage,
     HumanReviewReconciliation,
+    ProductDiscrepancyDetail,
     ProductEmailDetail,
     ProductEvent,
     ProductIncomingOut,
@@ -106,7 +115,7 @@ def _reprocess_source(
         content_hash=record.content_hash,
     )
     if record.source_type == "STATIC_BUNDLE":
-        return message, StaticBundleSource(settings.organizer_bundle_path)
+        return message, StaticBundleSource(settings.resolved_bundle_path)
     if record.source_type == "ORGANIZER_HTTP":
         base_url = (record.source_metadata or {}).get("base_url")
         if not base_url:
@@ -198,7 +207,7 @@ def sync(
             retry_policy=settings.retry_policy,
         )
     else:
-        email_source = StaticBundleSource(settings.organizer_bundle_path)
+        email_source = StaticBundleSource(settings.resolved_bundle_path)
 
     report = svc.sync(email_source)
     return SyncReportOut(
@@ -841,3 +850,165 @@ def product_reprocess_email(
         status=outcome.status,
         external_message_id=outcome.external_message_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# Confirmed Discrepancies API
+# ---------------------------------------------------------------------------
+
+
+@router.get(
+    "/v1/discrepancies",
+    response_model=DiscrepancyPage,
+    summary="List confirmed discrepancy cases (genuine MISMATCH results)",
+)
+def get_discrepancies(
+    status: str | None = Query(default=None, description="Filter by resolution status: ALL, OPEN, ACKNOWLEDGED, RESOLVED"),
+    search: str | None = Query(default=None, description="Search subject, sender, or external message ID"),
+    skip: int = Query(default=0, ge=0),
+    limit: int = Query(default=20, ge=1, le=100),
+    session: Session = Depends(get_session),
+):
+    try:
+        return list_product_discrepancies(
+            session,
+            status=status,
+            search=search,
+            skip=skip,
+            limit=limit,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/v1/discrepancies/{discrepancy_id}",
+    response_model=ProductDiscrepancyDetail,
+    summary="Get full details of a confirmed discrepancy case",
+)
+def get_discrepancy(
+    discrepancy_id: uuid.UUID,
+    session: Session = Depends(get_session),
+):
+    detail = get_product_discrepancy_detail(session, discrepancy_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Confirmed discrepancy case not found")
+    return detail
+
+
+def _discrepancy_mutation_response(
+    session: Session,
+    comparison_id: uuid.UUID,
+    not_found_msg: str = "Confirmed discrepancy case not found",
+) -> ProductDiscrepancyDetail:
+    session.commit()
+    session.expire_all()
+    detail = get_product_discrepancy_detail(session, comparison_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail=not_found_msg)
+    return detail
+
+
+@router.post(
+    "/v1/discrepancies/{discrepancy_id}/acknowledge",
+    response_model=ProductDiscrepancyDetail,
+    summary="Acknowledge a confirmed discrepancy without changing comparison truth",
+)
+def acknowledge_discrepancy(
+    discrepancy_id: uuid.UUID,
+    payload: DiscrepancyAcknowledgeIn = DiscrepancyAcknowledgeIn(),
+    session: Session = Depends(get_session),
+):
+    try:
+        DiscrepancyService(session).acknowledge(
+            discrepancy_id,
+            operator_name=payload.operator_name,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DiscrepancyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return _discrepancy_mutation_response(session, discrepancy_id, "Confirmed discrepancy case not found after update")
+
+
+@router.post(
+    "/v1/discrepancies/{discrepancy_id}/resolve",
+    response_model=ProductDiscrepancyDetail,
+    summary="Mark a confirmed discrepancy operationally resolved without altering comparison truth",
+)
+def resolve_discrepancy(
+    discrepancy_id: uuid.UUID,
+    payload: DiscrepancyResolveIn = DiscrepancyResolveIn(),
+    session: Session = Depends(get_session),
+):
+    try:
+        DiscrepancyService(session).resolve(
+            discrepancy_id,
+            operator_name=payload.operator_name,
+            notes=payload.notes,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DiscrepancyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return _discrepancy_mutation_response(session, discrepancy_id, "Confirmed discrepancy case not found after update")
+
+
+@router.post(
+    "/v1/discrepancies/{discrepancy_id}/override",
+    response_model=ProductDiscrepancyDetail,
+    summary="Add a field extraction correction for a discrepancy case",
+)
+def override_discrepancy_field(
+    discrepancy_id: uuid.UUID,
+    payload: DiscrepancyOverrideIn,
+    session: Session = Depends(get_session),
+):
+    try:
+        DiscrepancyService(session).add_override(
+            discrepancy_id,
+            document_side=payload.document_side,
+            field_name=payload.field_name,
+            corrected_value=payload.corrected_value,
+            reviewer_name=payload.reviewer_name,
+            note=payload.note,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DiscrepancyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return _discrepancy_mutation_response(session, discrepancy_id, "Confirmed discrepancy case not found after override")
+
+
+@router.post(
+    "/v1/discrepancies/{discrepancy_id}/recompare",
+    response_model=ProductDiscrepancyDetail,
+    summary="Re-run deterministic comparison using effective canonical values",
+)
+def recompare_discrepancy(
+    discrepancy_id: uuid.UUID,
+    payload: DiscrepancyRecompareIn = DiscrepancyRecompareIn(),
+    session: Session = Depends(get_session),
+):
+    try:
+        recompared = DiscrepancyService(session).recompare(
+            discrepancy_id,
+            reviewer_name=payload.reviewer_name,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except DiscrepancyConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+    return _discrepancy_mutation_response(session, recompared.id, "Comparison result not found after recomparison")

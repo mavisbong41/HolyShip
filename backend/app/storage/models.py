@@ -333,6 +333,10 @@ class ComparisonResultRecord(TimestampMixin, Base):
             "comparison_state IN ('COMPLETED','BLOCKED')",
             name="ck_comparison_result_state",
         ),
+        CheckConstraint(
+            "resolution_status IS NULL OR resolution_status IN ('OPEN','ACKNOWLEDGED','RESOLVED')",
+            name="ck_comparison_resolution_status",
+        ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -374,12 +378,24 @@ class ComparisonResultRecord(TimestampMixin, Base):
     unresolved_fields: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
     reason_code: Mapped[str] = mapped_column(String(80), nullable=False)
     message: Mapped[str] = mapped_column(Text, nullable=False)
+    resolution_status: Mapped[str | None] = mapped_column(String(50), nullable=True, index=True)
+    acknowledged_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    acknowledged_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolved_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    resolved_by: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    resolution_notes: Mapped[str | None] = mapped_column(Text, nullable=True)
 
     email: Mapped[EmailMessageRecord] = relationship(back_populates="comparison_results")
     fields: Mapped[list[FieldComparisonRecord]] = relationship(
         back_populates="comparison_result",
         cascade="all, delete-orphan",
         passive_deletes=True,
+    )
+    overrides: Mapped[list[HumanReviewFieldOverrideRecord]] = relationship(
+        back_populates="comparison_result",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+        foreign_keys="HumanReviewFieldOverrideRecord.comparison_result_id",
     )
 
 
@@ -545,6 +561,7 @@ class HumanReviewCaseRecord(TimestampMixin, Base):
 class HumanReviewFieldOverrideRecord(Base):
     __tablename__ = "human_review_field_overrides"
     __table_args__ = (
+        CheckConstraint("num_nonnulls(review_case_id, comparison_result_id) = 1", name="ck_field_override_single_owner"),
         CheckConstraint("document_side IN ('SI','BL')", name="ck_review_override_side"),
         CheckConstraint(
             "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
@@ -556,15 +573,29 @@ class HumanReviewFieldOverrideRecord(Base):
             "document_side",
             "field_name",
             unique=True,
-            postgresql_where=text("active"),
+            postgresql_where=text("active AND review_case_id IS NOT NULL"),
+        ),
+        Index(
+            "uq_comparison_override_active_field",
+            "comparison_result_id",
+            "document_side",
+            "field_name",
+            unique=True,
+            postgresql_where=text("active AND comparison_result_id IS NOT NULL"),
         ),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
-    review_case_id: Mapped[uuid.UUID] = mapped_column(
+    review_case_id: Mapped[uuid.UUID | None] = mapped_column(
         UUID(as_uuid=True),
         ForeignKey("human_review_cases.id", ondelete="CASCADE"),
-        nullable=False,
+        nullable=True,
+        index=True,
+    )
+    comparison_result_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("comparison_results.id", ondelete="CASCADE"),
+        nullable=True,
         index=True,
     )
     document_side: Mapped[str] = mapped_column(String(10), nullable=False)
@@ -593,9 +624,13 @@ class HumanReviewFieldOverrideRecord(Base):
     )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
-    review_case: Mapped[HumanReviewCaseRecord] = relationship(
+    review_case: Mapped[HumanReviewCaseRecord | None] = relationship(
         back_populates="overrides",
         foreign_keys=[review_case_id],
+    )
+    comparison_result: Mapped[ComparisonResultRecord | None] = relationship(
+        back_populates="overrides",
+        foreign_keys=[comparison_result_id],
     )
 
 
