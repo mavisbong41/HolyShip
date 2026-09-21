@@ -662,7 +662,7 @@ function MetricCard({
 }: {
   icon: React.ReactNode;
   label: string;
-  value: number;
+  value: number | string;
   trendText?: string;
   subTrendText?: string;
   trend?: "up" | "down";
@@ -684,7 +684,7 @@ function MetricCard({
         </div>
       </div>
       <div className="metric-value-row">
-        <strong>{value.toLocaleString()}</strong>
+        <strong>{typeof value === "number" ? value.toLocaleString() : value}</strong>
       </div>
       <div className="metric-footer">
         {trendText && (
