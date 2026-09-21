@@ -24,7 +24,7 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
   COMPLETED: "Completed",
-  BLOCKED: "Needs Attention",
+  BLOCKED: "Needs Review",
   FAILED: "Processing Failed",
 };
 
@@ -49,6 +49,56 @@ export const fieldStatusLabels: Record<FieldStatus, string> = {
   MISMATCH: "Mismatch",
   UNRESOLVED: "Unresolved",
 };
+
+export const reviewStatusLabels: Record<string, string> = {
+  OPEN: "Open",
+  IN_REVIEW: "In Review",
+  RESOLVED: "Resolved",
+  DISMISSED: "Dismissed",
+};
+
+export const reasonLabels: Record<string, string> = {
+  COMPARISON_UNRESOLVED: "Comparison needs review",
+  MISSING_REQUIRED_ATTACHMENT: "Required document is missing",
+  WRONG_DOCUMENT_TYPE: "Document type does not match",
+  DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
+  READINESS_UNRESOLVED: "Comparison readiness needs review",
+  NOT_ACTIONABLE: "Not actionable",
+};
+
+export const reviewActionLabels: Record<string, string> = {
+  CASE_CREATED: "Review case created",
+  CASE_CLAIMED: "Review claimed",
+  FIELD_OVERRIDE_ADDED: "Field correction added",
+  FIELD_OVERRIDE_REPLACED: "Field correction replaced",
+  RESOLVE_REQUESTED: "Resolve and recompare requested",
+  RECOMPARISON_COMPLETED: "Recomparison completed",
+  CASE_RESOLVED: "Review resolved",
+  CASE_DISMISSED: "Review dismissed",
+};
+
+export type SemanticTone = "neutral" | "good" | "warn" | "bad" | "attention" | "info" | "muted";
+
+export function semanticTone(value: string): SemanticTone {
+  if (value === "FAILED" || value === "MISMATCH") return "bad";
+  if (value === "AWAITING_DOCUMENTS") return "info";
+  if (value === "UNRESOLVED") return "warn";
+  if (value === "BLOCKED" || value === "OPEN" || value === "IN_REVIEW") return "attention";
+  if (value === "COMPLETED" || value === "MATCH" || value === "RESOLVED") return "good";
+  if (value === "DISMISSED") return "muted";
+  return "neutral";
+}
+
+export function displayLabel(value: string): string {
+  if (value in statusLabels) return statusLabels[value as ProcessingStatus];
+  if (value in categoryLabels) return categoryLabels[value as ProductCategory];
+  if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];
+  if (value in fieldStatusLabels) return fieldStatusLabels[value as FieldStatus];
+  if (value in reviewStatusLabels) return reviewStatusLabels[value];
+  if (value in reasonLabels) return reasonLabels[value];
+  if (value in reviewActionLabels) return reviewActionLabels[value];
+  return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
+}
 
 export function labelForField(field: string): string {
   return field in fieldLabels
