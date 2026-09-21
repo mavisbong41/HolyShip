@@ -186,3 +186,13 @@ def test_part1_ui_contract_keeps_historical_read_only_and_non_field_copy_human_f
     assert 'review.affected_fields.length ? review.affected_fields.length + " affected field(s)"' in app
     assert '(review.affected_area || "Email-level issue")' in app
     assert '"0 affected field(s)"' not in app
+
+
+def test_frontend_review_filtering_uses_complete_paginated_population():
+    from pathlib import Path
+
+    client = Path("frontend/src/api/client.ts").read_text(encoding="utf-8")
+    app = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    assert "export async function getAllHumanReviews" in client
+    assert "while (items.length < total)" in client
+    assert "getAllHumanReviews({ active_only: false })" in app
