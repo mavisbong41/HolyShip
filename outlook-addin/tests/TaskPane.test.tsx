@@ -117,22 +117,47 @@ describe("TaskPane", () => {
     setupAdapter({ detail: fixtures.awaitingDocuments, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      expect(screen.getByRole("heading", { name: /awaiting documents/i })).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /waiting for documents/i })).toBeInTheDocument();
     });
     expect(screen.queryByRole("list", { name: /SI vs BL/i })).not.toBeInTheDocument();
   });
 
-  it("renders blocked/needs attention state", async () => {
+  it("renders blocked/needs review state", async () => {
     setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
       const heading = screen.getByRole("heading", { name: /needs review/i });
       expect(heading).toBeInTheDocument();
     });
-    expect(screen.getAllByText(/comparison needs review/i).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/one or more document fields could not be verified/i).length).toBeGreaterThan(0);
     expect(screen.getByText(/Jordan Lee/i)).toBeInTheDocument();
+    expect(screen.getByText(/affected field/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/^notify party$/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/suggested action/i)).toBeInTheDocument();
+    expect(screen.getByText(/confirm notify party/i)).toBeInTheDocument();
+    expect(screen.queryByText(/0 affected field/i)).not.toBeInTheDocument();
     const reviewLink = screen.getByRole("link", { name: /open human review/i });
     expect(reviewLink.getAttribute("href")).toContain("review=review-001");
+  });
+
+  it("renders legacy review records as non-actionable context", async () => {
+    setupAdapter({ detail: fixtures.historicalReview, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+    await waitFor(() => {
+      expect(screen.getByText(/historical review record/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/no action required/i)).toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: /open human review/i })).not.toBeInTheDocument();
+  });
+
+  it("renders compact AI companion entry without applying suggestions", async () => {
+    setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+    await waitFor(() => {
+      expect(screen.getByText(/ai suggestion available/i)).toBeInTheDocument();
+    });
+    expect(screen.getByText(/gross weight may contain an ocr error/i)).toBeInTheDocument();
+    expect(screen.getByRole("link", { name: /open ai review/i })).toBeInTheDocument();
   });
 
   it("renders failed state", async () => {

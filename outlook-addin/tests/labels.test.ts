@@ -37,7 +37,7 @@ describe("statusLabels", () => {
     expect(statusLabels.BLOCKED).toBe("Needs Review");
   });
   it("maps AWAITING_DOCUMENTS correctly", () => {
-    expect(statusLabels.AWAITING_DOCUMENTS).toBe("Awaiting Documents");
+    expect(statusLabels.AWAITING_DOCUMENTS).toBe("Waiting for Documents");
   });
   it("maps FAILED correctly", () => {
     expect(statusLabels.FAILED).toBe("Processing Failed");
@@ -79,8 +79,8 @@ describe("fieldStatusLabels", () => {
 describe("readinessLabels", () => {
   it("maps all three readiness states", () => {
     expect(readinessLabels.READY_FOR_COMPARISON).toBe("Ready for Comparison");
-    expect(readinessLabels.AWAITING_DOCUMENTS).toBe("Awaiting Documents");
-    expect(readinessLabels.UNRESOLVED).toBe("Readiness Unresolved");
+    expect(readinessLabels.AWAITING_DOCUMENTS).toBe("Waiting for Documents");
+    expect(readinessLabels.UNRESOLVED).toBe("Document readiness unclear");
   });
 });
 

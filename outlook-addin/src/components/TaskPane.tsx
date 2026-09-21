@@ -12,9 +12,9 @@ import type React from "react";
 import { useCallback, useEffect, useState } from "react";
 import { getEmailDetail, reprocessEmail } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
-import { categoryLabels, displayLabel, formatDate, reasonLabels, statusLabels } from "../lib/labels";
+import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
-import type { ProductComparison, ProductEmailDetail, ProductEmailSummary } from "../types/product";
+import type { ProductComparison, ProductEmailDetail, ProductEmailSummary, ProductReview } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
@@ -156,7 +156,7 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-warn" aria-hidden="true">
           <Clock size={18} />
         </div>
-        <h2>Awaiting Documents</h2>
+        <h2>Waiting for Documents</h2>
         <p>
           This is a Document Comparison case. Required documents have not been
           received yet.
@@ -264,6 +264,33 @@ function ComparisonSummaryStrip({
   );
 }
 
+function reviewAffectedText(review: ProductReview, email: ProductEmailSummary): string {
+  if (review.field) {
+    return labelForField(review.field);
+  }
+  const unresolvedCount = review.comparison?.unresolved_fields.length ?? email.unresolved_count;
+  if (unresolvedCount > 0) {
+    return `${unresolvedCount} affected field${unresolvedCount > 1 ? "s" : ""}`;
+  }
+  if (review.document_id) {
+    return "Document-level issue";
+  }
+  return "Email-level issue";
+}
+
+function reviewSuggestedAction(review: ProductReview): string {
+  if (review.reason_code === "CLASSIFICATION_UNRESOLVED") {
+    return "Open Human Review and confirm the email type.";
+  }
+  if (review.field) {
+    return `Open Human Review and confirm ${labelForField(review.field)}.`;
+  }
+  if (review.document_id) {
+    return "Open Human Review and confirm the document issue.";
+  }
+  return "Open Human Review and confirm this email-level issue.";
+}
+
 // ─── Main TaskPane ─────────────────────────────────────────────────
 
 export function TaskPane({
@@ -332,6 +359,12 @@ export function TaskPane({
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
   const activeReview = state.type === "ready"
     ? state.detail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
+    : null;
+  const historicalReview = state.type === "ready"
+    ? state.detail.review.find((review) => review.case_origin === "LEGACY")
+    : null;
+  const aiSuggestion = state.type === "ready"
+    ? state.detail.resolutions.find((resolution) => resolution.attempted)
     : null;
   const reviewUrl = activeReview ? dashboardReviewUrl(activeReview.id) : null;
 
@@ -436,8 +469,48 @@ export function TaskPane({
                   <div className="review-card-heading"><StatusBadge value={activeReview.status} /><span>{activeReview.reviewer_name || "Unassigned"}</span></div>
                   <strong>{reasonLabels[activeReview.reason_code] || displayLabel(activeReview.reason_code)}</strong>
                   <p>{activeReview.reason_text}</p>
-                  <small>{activeReview.comparison?.unresolved_fields.length ?? state.detail.email.unresolved_count} affected field(s)</small>
+                  <dl className="review-card-facts">
+                    <div>
+                      <dt>{activeReview.field ? "Affected field" : "Affected area"}</dt>
+                      <dd>{reviewAffectedText(activeReview, state.detail.email)}</dd>
+                    </div>
+                    <div>
+                      <dt>Suggested action</dt>
+                      <dd>{reviewSuggestedAction(activeReview)}</dd>
+                    </div>
+                  </dl>
                   {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
+                </section>
+              </>
+            )}
+
+            {!activeReview && historicalReview && (
+              <>
+                <div className="pane-divider" />
+                <p className="pane-section-label">Human Review</p>
+                <section className="review-card-compact">
+                  <div className="review-card-heading"><StatusBadge value={historicalReview.status} /><span>No action required</span></div>
+                  <strong>Historical review record</strong>
+                  <p>This completed case has an older review record. It is shown for context only.</p>
+                  <dl className="review-card-facts">
+                    <div>
+                      <dt>Affected area</dt>
+                      <dd>{reviewAffectedText(historicalReview, state.detail.email)}</dd>
+                    </div>
+                  </dl>
+                </section>
+              </>
+            )}
+
+            {aiSuggestion && activeReview && reviewUrl && (
+              <>
+                <div className="pane-divider" />
+                <p className="pane-section-label">AI Companion</p>
+                <section className="review-card-compact">
+                  <div className="review-card-heading"><StatusBadge value="info" tone="info" /><span>AI explanation available</span></div>
+                  <strong>AI suggestion available</strong>
+                  <p>{aiSuggestion.reason || "HolyShip AI has context for this review case."}</p>
+                  <a className="btn-secondary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open AI Review</a>
                 </section>
               </>
             )}
