@@ -22,11 +22,11 @@
   <DefaultLocale>en-US</DefaultLocale>
   <DisplayName DefaultValue="HolyShip" />
   <Description DefaultValue="Shipping document verification — view HolyShip case status directly in Outlook." />
-  <IconUrl DefaultValue="https://localhost:3200/icon.png" />
-  <HighResolutionIconUrl DefaultValue="https://localhost:3200/icon@2x.png" />
-  <SupportUrl DefaultValue="https://localhost:3200" />
+  <IconUrl DefaultValue="https://holy-ship-five.vercel.app/icon.png" />
+  <HighResolutionIconUrl DefaultValue="https://holy-ship-five.vercel.app/icon@2x.png" />
+  <SupportUrl DefaultValue="https://holy-ship-five.vercel.app" />
   <AppDomains>
-    <AppDomain>https://localhost:3200</AppDomain>
+    <AppDomain>https://holy-ship-five.vercel.app</AppDomain>
   </AppDomains>
 
   <!-- === Hosts === -->
@@ -45,7 +45,7 @@
   <FormSettings>
     <Form xsi:type="ItemRead">
       <DesktopSettings>
-        <SourceLocation DefaultValue="https://localhost:3200/taskpane.html" />
+        <SourceLocation DefaultValue="https://holy-ship-five.vercel.app/taskpane.html" />
         <RequestedHeight>450</RequestedHeight>
       </DesktopSettings>
     </Form>
@@ -99,12 +99,12 @@
 
     <Resources>
       <bt:Images>
-        <bt:Image id="Icon.16x16" DefaultValue="https://localhost:3200/icon16.png" />
-        <bt:Image id="Icon.32x32" DefaultValue="https://localhost:3200/icon32.png" />
-        <bt:Image id="Icon.80x80" DefaultValue="https://localhost:3200/icon80.png" />
+        <bt:Image id="Icon.16x16" DefaultValue="https://holy-ship-five.vercel.app/icon16.png" />
+        <bt:Image id="Icon.32x32" DefaultValue="https://holy-ship-five.vercel.app/icon32.png" />
+        <bt:Image id="Icon.80x80" DefaultValue="https://holy-ship-five.vercel.app/icon80.png" />
       </bt:Images>
       <bt:Urls>
-        <bt:Url id="Taskpane.Url" DefaultValue="https://localhost:3200/taskpane.html" />
+        <bt:Url id="Taskpane.Url" DefaultValue="https://holy-ship-five.vercel.app/taskpane.html" />
       </bt:Urls>
       <bt:ShortStrings>
         <bt:String id="GroupLabel" DefaultValue="HolyShip" />
