@@ -836,4 +836,4 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
     cases = session.scalars(select(HumanReviewCaseRecord)).all()
     overrides = session.scalars(select(HumanReviewFieldOverrideRecord)).all()
 
-    return analytics_helper.compute_analytics(cases, overrides)
+    return analytics_helper.get_human_review_analytics(session)
