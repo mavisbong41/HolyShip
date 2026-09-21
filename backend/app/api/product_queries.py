@@ -305,6 +305,12 @@ def get_product_summary(session: Session) -> ProductSummary:
         .group_by(EmailMessageRecord.processing_status)
     ).all()
     status_counts = {status: int(count) for status, count in status_rows}
+    active_open_count = int(session.scalar(
+        select(func.count(HumanReviewCaseRecord.id)).where(
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+            HumanReviewCaseRecord.status == "OPEN",
+        )
+    ) or 0)
     processing_count = sum(
         count for status, count in status_counts.items()
         if status not in {"COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"}
@@ -318,7 +324,7 @@ def get_product_summary(session: Session) -> ProductSummary:
         unresolved_count=int(row.unresolved or 0),
         completed_count=status_counts.get("COMPLETED", 0),
         awaiting_documents_count=status_counts.get("AWAITING_DOCUMENTS", 0),
-        human_review_open_count=status_counts.get("OPEN", 0),
+        human_review_open_count=active_open_count,
         failed_count=status_counts.get("FAILED", 0),
         processing_count=processing_count,
     )
