@@ -6,7 +6,11 @@
 
 **Scope:** Backend only, from email ingestion up to comparison result.
 
-**Explicitly out of scope for this version:** Human Review UI/workflow, reviewer actions, final presentation/report UI.
+**Original v4 scope:** Human Review UI/workflow, reviewer actions, and final
+presentation/report UI were excluded. The project owner explicitly superseded
+that milestone restriction on 2026-09-21; the additive product scope and retained
+backend boundaries are recorded in
+`docs/scope_decisions/2026-09-21-ui-human-review.md`.
 
 ---
 

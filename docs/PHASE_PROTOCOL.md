@@ -28,7 +28,7 @@ Rules:
 `docs/requirements_matrix.md` is the master list of requirements (ID, source section, owner phase, how to verify).
 
 - Never delete or reword a seed row. You may ADD rows. You may only edit the Status, Evidence and Notes columns (and Phase only by splitting a row, e.g. `DOC-07` -> `DOC-07a`, `DOC-07b`, with a note).
-- Status values: `TODO`, `PASS`, `FAIL`. `WAIVED` may be set ONLY by the human. Never set it yourself.
+- Status values: `TODO`, `PASS`, `FAIL`. `WAIVED` may be set ONLY by the human. A direct, explicit project-owner instruction to supersede a requirement is human authorization to mark that row `WAIVED`; preserve its wording and cite a dated scope-decision record so the history remains visible.
 - `PASS` requires executable evidence: a test node id (`tests/...::test_name`) that carries `@pytest.mark.req("<ID>")` and passed in the latest run, or, for audit-type rows, an existing report path. Prose such as "implemented" is not evidence.
 - `make trace PHASE=<N>` must fail if any row whose owner phase <= N is not PASS/WAIVED, if a cited test does not exist / does not carry the marker / did not pass, or if a seed ID is missing (compare with `docs/requirements_seed_ids.txt`).
 - If a row cannot be made PASS within the phase: set `FAIL`, write the blocker in Notes, STOP and report it. Do not weaken the row.

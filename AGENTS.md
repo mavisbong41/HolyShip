@@ -4,7 +4,9 @@
 
 This file defines the repository-level working rules for Codex and any other coding agent working on the **Shipping Document Verification** project.
 
-The current milestone is **backend implementation from email ingestion through comparison**.
+The current milestone covers the shared backend from ingestion through comparison,
+the official React Dashboard and Outlook Add-in clients, and the active Human
+Review workflow described in `docs/scope_decisions/2026-09-21-ui-human-review.md`.
 
 Current scope:
 
@@ -30,9 +32,13 @@ Normalization + Comparison
 Persist Processing Result
     ↓
 Dashboard / Extension Backend API
+    ↓
+Dashboard / Outlook Add-in / Auditable Human Review
 ```
 
-**Do not implement Human Review UI/workflows in this milestone unless the user explicitly expands the scope.**
+The project owner expanded this scope on 2026-09-21. Backend deterministic
+semantics remain authoritative; clients must consume APIs rather than duplicate
+classification, extraction, or comparison rules.
 
 ---
 
