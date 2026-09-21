@@ -8,7 +8,7 @@ from backend.app.storage.models import (
     ComparisonResultRecord,
     EmailMessageRecord
 )
-from backend.app.api.product_schemas import HumanReviewAnalytics
+from backend.app.api.product_schemas import HumanReviewAnalytics, HumanReviewReconciliation
 from backend.app.api.review_helper import compute_affected_fields, compute_priority, compute_age_minutes
 import json
 
@@ -83,3 +83,51 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
         analytics.correction_reasons[reason] = analytics.correction_reasons.get(reason, 0) + 1
         
     return analytics
+
+
+def get_human_review_reconciliation(session: Session) -> HumanReviewReconciliation:
+    status_rows = session.execute(
+        select(EmailMessageRecord.processing_status, func.count(EmailMessageRecord.id))
+        .group_by(EmailMessageRecord.processing_status)
+    ).all()
+    active_rows = session.execute(
+        select(HumanReviewCaseRecord.status, func.count(HumanReviewCaseRecord.id))
+        .where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+        .group_by(HumanReviewCaseRecord.status)
+    ).all()
+    historical_rows = session.execute(
+        select(HumanReviewCaseRecord.status, func.count(HumanReviewCaseRecord.id))
+        .where(HumanReviewCaseRecord.case_origin == "LEGACY")
+        .group_by(HumanReviewCaseRecord.status)
+    ).all()
+    latest_comparison = (
+        select(
+            ComparisonResultRecord.email_id,
+            ComparisonResultRecord.mismatch_found,
+            ComparisonResultRecord.unresolved_fields,
+            func.row_number().over(
+                partition_by=ComparisonResultRecord.email_id,
+                order_by=[ComparisonResultRecord.created_at.desc(), ComparisonResultRecord.id.desc()],
+            ).label("rank"),
+        ).subquery()
+    )
+    mismatch_count = int(session.scalar(
+        select(func.count()).select_from(latest_comparison).where(
+            latest_comparison.c.rank == 1,
+            latest_comparison.c.mismatch_found.is_(True),
+        )
+    ) or 0)
+    unresolved_count = int(session.scalar(
+        select(func.count()).select_from(latest_comparison).where(
+            latest_comparison.c.rank == 1,
+            func.coalesce(func.jsonb_array_length(latest_comparison.c.unresolved_fields), 0) > 0,
+        )
+    ) or 0)
+    return HumanReviewReconciliation(
+        total_emails=int(session.scalar(select(func.count(EmailMessageRecord.id))) or 0),
+        processing_status_counts={str(status): int(count) for status, count in status_rows},
+        active_review_status_counts={str(status): int(count) for status, count in active_rows},
+        historical_review_status_counts={str(status): int(count) for status, count in historical_rows},
+        emails_with_mismatch=mismatch_count,
+        emails_with_unresolved_fields=unresolved_count,
+    )
