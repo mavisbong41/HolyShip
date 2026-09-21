@@ -154,6 +154,33 @@ describe("TaskPane", () => {
     expect(resolveMock).toHaveBeenCalledTimes(2);
   });
 
+  it("re-resolves when user clicks Refresh button", async () => {
+    const detail = fixtures.cleanMatch;
+    const resolveMock = vi.fn().mockResolvedValue({
+      detail,
+      strategy: "internet_message_id",
+      confidence: "high",
+      limitationNote: null,
+    });
+    MockAdapter.mockImplementation(
+      () => ({ resolve: resolveMock }) as unknown as InstanceType<typeof IdentityAdapter>,
+    );
+
+    render(<TaskPane contextProvider={provider} />);
+    await waitFor(() => {
+      expect(screen.getByRole("heading", { name: detail.email.subject })).toBeInTheDocument();
+    });
+    expect(resolveMock).toHaveBeenCalledTimes(1);
+
+    const refreshBtn = screen.getByRole("button", { name: "Refresh case data" });
+    const user = userEvent.setup();
+    await user.click(refreshBtn);
+
+    await waitFor(() => {
+      expect(resolveMock).toHaveBeenCalledTimes(2);
+    });
+  });
+
   it("shows limitation note in not-found state", async () => {
     setupAdapter({ detail: null, strategy: "not_resolved", confidence: "none", limitationNote: "Graph identity required for accurate matching." });
     render(<TaskPane contextProvider={provider} />);

@@ -17,7 +17,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { askAIAssistant, reprocessEmail } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
-import type { MailContextProvider, MailContextResult } from "../types/context";
+import type { MailContextProvider } from "../types/context";
 import type {
   AIAssistantResponse,
   ProductComparison,
@@ -37,21 +37,18 @@ type PaneState =
   | { type: "error"; message: string }
   | { type: "ready"; detail: ProductEmailDetail; confidence: "high" | "low" | "none"; note: string | null };
 
-function contextIdentityKey(context: MailContextResult): string {
-  if (context.state !== "ready" || !context.item) {
+function getDirectItemKey(): string {
+  try {
+    const item = typeof Office !== "undefined" ? Office.context?.mailbox?.item : undefined;
+    if (!item) return "";
+    return (
+      item.itemId ||
+      [item.subject, (item as any).from?.emailAddress].filter(Boolean).join("|") ||
+      ""
+    );
+  } catch {
     return "";
   }
-
-  const { holyshipCaseId, internetMessageId, outlookItemId, sender, subject } = context.item;
-  return [
-    holyshipCaseId,
-    internetMessageId,
-    outlookItemId,
-    sender?.trim().toLowerCase(),
-    subject?.trim().toLowerCase(),
-  ]
-    .filter(Boolean)
-    .join("|");
 }
 
 // ─── Sub-components ────────────────────────────────────────────────
@@ -455,11 +452,44 @@ export function TaskPane({
   const [showComparison, setShowComparison] = useState(true);
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
   const resolveGeneration = useRef(0);
+  const lastItemIdRef = useRef<string | null>(null);
 
-  const resolve = useCallback(async () => {
+  const refreshCurrentEmail = useCallback(async (force = false) => {
+    let currentKey = getDirectItemKey();
+
+    // In tests or mock contexts where mailbox.item is not globally set, fall back to contextProvider
+    if (!currentKey) {
+      try {
+        const ctx = await contextProvider.getContext();
+        if (ctx.state === "ready" && ctx.item) {
+          currentKey = [
+            ctx.item.holyshipCaseId,
+            ctx.item.internetMessageId,
+            ctx.item.outlookItemId,
+            ctx.item.sender?.trim().toLowerCase(),
+            ctx.item.subject?.trim().toLowerCase(),
+          ].filter(Boolean).join("|");
+        }
+      } catch {
+        // ignore
+      }
+    }
+
+    // Prevent redundant fetches when polling finds no change, unless force=true
+    if (!force && currentKey && currentKey === lastItemIdRef.current) {
+      return;
+    }
+
+    if (currentKey) {
+      lastItemIdRef.current = currentKey;
+    }
+
     const generation = resolveGeneration.current + 1;
     resolveGeneration.current = generation;
+
+    // 1. Immediately wipe previous email state and show loading
     setState({ type: "loading" });
+
     try {
       const adapter = new IdentityAdapter(contextProvider);
       const result = await adapter.resolve();
@@ -488,96 +518,94 @@ export function TaskPane({
     }
   }, [contextProvider]);
 
-
-  // Refresh = re-resolve with whatever mailbox.item is now.
-  const refresh = useCallback(() => {
-    void resolve();
-  }, [resolve]);
-
   useEffect(() => {
-    // Run initial resolve
-    void resolve();
+    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    let itemChangedRegistered = false;
 
-    // --- Email change detection ---
-    // Key insight: mailbox.item.itemId updates synchronously when the user
-    // selects a different email in the reading pane.  Read it directly here
-    // rather than going through the async getContext() wrapper, which previously
-    // used getSelectedItemsAsync and returned stale data.
-    let lastItemId: string | null = null;
-
-    const getDirectItemId = (): string | null => {
-      try {
-        const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
-        const item = mailbox?.item;
-        if (!item) return null;
-        // itemId is the primary stable identifier; fall back to subject+sender
-        return (
-          item.itemId ||
-          [item.subject, (item as any).from?.emailAddress].filter(Boolean).join("|") ||
-          null
-        );
-      } catch {
-        return null;
-      }
+    // 1. ItemChanged handler: triggers immediately when Outlook fires ItemChanged event
+    const onItemChanged = () => {
+      void refreshCurrentEmail(true);
     };
 
-    const checkItemChanged = () => {
-      const currentId = getDirectItemId();
-      if (!currentId) return;
+    // 2. Polling fallback: checks direct mailbox.item (or contextProvider) every 700ms
+    const checkPollingChange = async () => {
+      let currentKey = getDirectItemKey();
+      if (!currentKey) {
+        try {
+          const ctx = await contextProvider.getContext();
+          if (ctx.state === "ready" && ctx.item) {
+            currentKey = [
+              ctx.item.holyshipCaseId,
+              ctx.item.internetMessageId,
+              ctx.item.outlookItemId,
+              ctx.item.sender?.trim().toLowerCase(),
+              ctx.item.subject?.trim().toLowerCase(),
+            ].filter(Boolean).join("|");
+          }
+        } catch {
+          return;
+        }
+      }
 
-      if (lastItemId === null) {
-        lastItemId = currentId;
+      if (!currentKey) return;
+
+      if (lastItemIdRef.current === null) {
+        lastItemIdRef.current = currentKey;
         return;
       }
 
-      if (currentId !== lastItemId) {
-        lastItemId = currentId;
-        // Clear existing state so the UI shows "loading" for the new email
-        setState({ type: "loading" });
-        void resolve();
+      if (currentKey !== lastItemIdRef.current) {
+        lastItemIdRef.current = currentKey;
+        void refreshCurrentEmail(true);
       }
     };
 
-    // Seed lastItemId without triggering a resolve
-    lastItemId = getDirectItemId();
+    const register = () => {
+      // First open / initial email
+      void refreshCurrentEmail(true);
 
-    // 1. ItemChanged event (fires when add-in is pinned or supported by host)
-    const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
-    let itemChangedRegistered = false;
+      const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
+      if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+        try {
+          mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
+            if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
+              itemChangedRegistered = true;
+            }
+          });
+        } catch {
+          // host unsupported
+        }
+      }
 
-    const onItemChanged = () => {
-      // Give Office.js a moment to hydrate mailbox.item
-      setTimeout(checkItemChanged, 100);
-      setTimeout(checkItemChanged, 400);
+      pollTimer = setInterval(() => {
+        void checkPollingChange();
+      }, 700);
     };
 
-    if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
-      try {
-        mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
-          if (asyncResult.status === Office.AsyncResultStatus.Succeeded) {
-            itemChangedRegistered = true;
-          }
-        });
-      } catch {
-        // Office context not fully available or unsupported host
-      }
+    if (typeof Office !== "undefined" && typeof Office.onReady === "function") {
+      Office.onReady(() => {
+        register();
+      });
+    } else {
+      register();
     }
 
-    // 2. Polling fallback — 700ms direct synchronous itemId check.
-    //    Works even when ItemChanged doesn't fire (no pinning / old account).
-    const interval = setInterval(checkItemChanged, 700);
-
     return () => {
-      clearInterval(interval);
-      if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+      if (pollTimer) {
+        clearInterval(pollTimer);
+      }
+      if (itemChangedRegistered) {
         try {
-          mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
+          const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
+          if (mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+            mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
+          }
         } catch {
           // ignore
         }
       }
     };
-  }, [resolve]);
+  }, [contextProvider, refreshCurrentEmail]);
 
   const emailId = state.type === "ready" ? state.detail.email.id : null;
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
@@ -597,7 +625,7 @@ export function TaskPane({
     setActionState("loading");
     try {
       await reprocessEmail(emailId);
-      await refresh();
+      await refreshCurrentEmail(true);
       setActionState("idle");
     } catch (err) {
       setActionState("error");
@@ -613,7 +641,7 @@ export function TaskPane({
           <button
             className="pane-icon-btn"
             type="button"
-            onClick={() => void refresh()}
+            onClick={() => void refreshCurrentEmail(true)}
             aria-label="Refresh"
             title="Refresh"
           >
@@ -626,7 +654,7 @@ export function TaskPane({
       <main className="pane-body">
         {state.type === "loading" && <LoadingView />}
 
-        {state.type === "error" && <ErrorView message={state.message} onRetry={() => void resolve()} />}
+        {state.type === "error" && <ErrorView message={state.message} onRetry={() => void refreshCurrentEmail(true)} />}
 
         {state.type === "not_found" && <NotFoundView note={state.note} />}
 
@@ -761,7 +789,7 @@ export function TaskPane({
               <button
                 type="button"
                 className="btn-secondary"
-                onClick={() => void refresh()}
+                onClick={() => void refreshCurrentEmail(true)}
                 aria-label="Refresh case data"
               >
                 <RefreshCw size={12} aria-hidden="true" />

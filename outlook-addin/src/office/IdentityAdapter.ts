@@ -67,32 +67,40 @@ export class IdentityAdapter {
     }
 
     // Strategy 2: subject & sender search
-    if (subject && subject.trim().length > 4) {
+    if ((subject && subject.trim().length > 0) || (sender && sender.trim().length > 0)) {
       try {
         // Strip common email prefixes like "RE: ", "FW: ", "Re: " etc.
         const cleanSubject = subject
-          .replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "")
-          .trim();
+          ? subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim()
+          : "";
 
-        // Try searching with clean subject first, then fallback to full subject
-        let page = await searchEmailQueue(cleanSubject || subject.trim());
-        if (page.items.length === 0 && cleanSubject !== subject.trim()) {
+        // Try searching with clean subject first, then fallback to full subject, then sender
+        let page = await searchEmailQueue(cleanSubject || subject?.trim() || sender?.trim() || "");
+        if (page.items.length === 0 && cleanSubject && subject && cleanSubject !== subject.trim()) {
           page = await searchEmailQueue(subject.trim());
         }
+        if (page.items.length === 0 && sender && sender.trim()) {
+          page = await searchEmailQueue(sender.trim());
+        }
 
-        // Prioritize match on both subject AND sender, fallback to exact subject match
+        // Prioritize match on both subject AND sender, fallback to exact subject match, then sender match
         const exactMatch =
           page.items.find((item) => {
             const subjectMatches =
-              item.subject.trim().toLowerCase() === subject.trim().toLowerCase() ||
-              item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase();
+              Boolean(subject && item.subject.trim().toLowerCase() === subject.trim().toLowerCase()) ||
+              Boolean(cleanSubject && item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase());
             const senderMatches =
               Boolean(sender && item.sender && item.sender.trim().toLowerCase() === sender.trim().toLowerCase());
             return subjectMatches && senderMatches;
           }) ||
           page.items.find((item) =>
-            item.subject.trim().toLowerCase() === subject.trim().toLowerCase() ||
-            item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase()
+            Boolean(subject && (
+              item.subject.trim().toLowerCase() === subject.trim().toLowerCase() ||
+              item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase()
+            ))
+          ) ||
+          page.items.find((item) =>
+            Boolean(sender && item.sender && item.sender.trim().toLowerCase() === sender.trim().toLowerCase())
           );
 
         const target = exactMatch || (page.items.length === 1 ? page.items[0] : null);
@@ -114,7 +122,7 @@ export class IdentityAdapter {
             strategy: "not_resolved",
             confidence: "none",
             limitationNote:
-              "Multiple emails matched the subject. Cannot determine which case corresponds to this message without a Message-ID match.",
+              "Multiple emails matched the search query. Cannot determine which case corresponds to this message without a Message-ID match.",
           };
         }
       } catch {
