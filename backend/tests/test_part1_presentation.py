@@ -31,3 +31,26 @@ def test_historical_status_is_non_actionable_language():
     historical = present_reason("RESOLVED")
     assert historical.title == "Review completed"
     assert historical.suggested_action == "View comparison result"
+
+
+def test_required_part1_reason_mappings_are_exact():
+    expected = {
+        "CLASSIFICATION_UNRESOLVED": "Email type unclear",
+        "COMPARISON_UNRESOLVED": "One or more document fields could not be verified",
+        "COMPARISON_MISMATCH": "The SI and BL contain different values",
+        "DOCUMENT_ROLE_UNRESOLVED": "Document role unclear",
+        "WRONG_DOCUMENT_TYPE": "Wrong document type",
+        "MISSING_REQUIRED_ATTACHMENT": "Required shipping document is missing",
+        "UNREADABLE_ATTACHMENT": "Document could not be read reliably",
+        "MULTIPLE_CANDIDATES": "More than one document may match",
+        "READINESS_UNRESOLVED": "Document readiness unclear",
+    }
+    for reason_code, title in expected.items():
+        assert present_reason(reason_code).title == title
+
+
+def test_processing_failure_is_not_review_copy():
+    presentation = present_processing_status("FAILED")
+    assert presentation.title == "Processing failed"
+    assert presentation.suggested_action == "Retry / Reprocess"
+    assert presentation.affected_area == "Processing"
