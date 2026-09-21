@@ -42,7 +42,9 @@ from backend.app.storage.models import (
     HumanReviewCaseRecord,
 )
 from backend.app.resolution.runtime import get_configured_resolution_executor_factory
+from backend.app.review.service import HumanReviewService, ReviewConflictError
 from backend.app.sync.service import SyncService
+from backend.app.api.analytics_helper import get_human_review_analytics
 from backend.app.api.product_queries import (
     get_email_detail,
     get_human_review as get_product_human_review,
@@ -61,6 +63,11 @@ from backend.app.api.product_schemas import (
     ProductReprocessOut,
     ProductReview,
     ProductSummary,
+    ReviewClaimIn,
+    ReviewDismissIn,
+    ReviewOverrideIn,
+    ReviewResolveIn,
+    HumanReviewAnalytics,
 )
 
 router = APIRouter()
@@ -477,17 +484,40 @@ def product_email_detail_alias(
 
 
 @router.get(
+    "/v1/human-review-analytics",
+    response_model=HumanReviewAnalytics,
+    summary="Get human review analytics",
+)
+def product_human_review_analytics(session: Session = Depends(get_session)):
+    return get_human_review_analytics(session)
+
+@router.get(
     "/v1/human-review",
     response_model=HumanReviewPage,
     summary="List reviewer-ready cases",
 )
 def product_human_review_queue(
-    status: Literal["OPEN", "RESOLVED"] | None = Query(None),
+    status: Literal["OPEN", "IN_REVIEW", "RESOLVED", "DISMISSED"] | None = Query(None),
+    reason: str | None = Query(None, max_length=80),
+    reviewer: str | None = Query(None, max_length=255),
+    search: str | None = Query(None, min_length=1, max_length=200),
+    active_only: bool = Query(True),
+    sort: Literal["priority", "oldest", "newest"] | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     session: Session = Depends(get_session),
 ):
-    return list_product_human_reviews(session, status=status, skip=skip, limit=limit)
+    return list_product_human_reviews(
+        session,
+        status=status,
+        reason=reason,
+        reviewer=reviewer,
+        search=search,
+        active_only=active_only,
+        sort=sort,
+        skip=skip,
+        limit=limit,
+    )
 
 
 @router.get(
@@ -502,7 +532,116 @@ def product_human_review_detail(
     review = get_product_human_review(session, review_id)
     if review is None:
         raise HTTPException(status_code=404, detail="Human review case not found")
+
     return review
+
+
+def _review_mutation_response(session: Session, review_id: uuid.UUID) -> ProductReview:
+    session.commit()
+    # Mutation endpoints return the database truth, including newly appended
+    # overrides/actions, even when the request-scoped identity map previously
+    # loaded the review graph.
+    session.expire_all()
+    review = get_product_human_review(session, review_id)
+    if review is None:
+        raise HTTPException(status_code=404, detail="Human review case not found")
+
+    return review
+
+
+def _run_review_mutation(operation):
+    try:
+        return operation()
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/v1/human-review/{review_id}/claim",
+    response_model=ProductReview,
+    summary="Claim an open Human Review case",
+)
+def product_human_review_claim(
+    review_id: uuid.UUID,
+    payload: ReviewClaimIn,
+    session: Session = Depends(get_session),
+):
+    _run_review_mutation(
+        lambda: HumanReviewService(session).claim(
+            review_id,
+            reviewer_name=payload.reviewer_name,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/overrides",
+    response_model=ProductReview,
+    summary="Add or replace an immutable Human Review field override",
+)
+def product_human_review_override(
+    review_id: uuid.UUID,
+    payload: ReviewOverrideIn,
+    session: Session = Depends(get_session),
+):
+    _run_review_mutation(
+        lambda: HumanReviewService(session).add_override(
+            review_id,
+            document_side=payload.document_side,
+            field_name=payload.field,
+            corrected_value=payload.corrected_value,
+            corrected_canonical_value=payload.corrected_canonical_value,
+            reviewer_name=payload.reviewer_name,
+            note=payload.note,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/resolve",
+    response_model=ProductReview,
+    summary="Resolve a Human Review case by creating a new comparison version",
+)
+def product_human_review_resolve(
+    review_id: uuid.UUID,
+    payload: ReviewResolveIn,
+    session: Session = Depends(get_session),
+):
+    _run_review_mutation(
+        lambda: HumanReviewService(session).resolve_and_recompare(
+            review_id,
+            reviewer_name=payload.reviewer_name,
+            notes=payload.notes,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/dismiss",
+    response_model=ProductReview,
+    summary="Dismiss a Human Review case without fabricating completion",
+)
+def product_human_review_dismiss(
+    review_id: uuid.UUID,
+    payload: ReviewDismissIn,
+    session: Session = Depends(get_session),
+):
+    _run_review_mutation(
+        lambda: HumanReviewService(session).dismiss(
+            review_id,
+            reviewer_name=payload.reviewer_name,
+            reason=payload.reason,
+            notes=payload.notes,
+        )
+    )
+    return _review_mutation_response(session, review_id)
 
 
 @router.get(
