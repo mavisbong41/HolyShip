@@ -122,3 +122,20 @@ def test_correction_analytics_query_is_scoped_to_active_cases():
     assert 'HumanReviewCaseRecord.case_origin == "ACTIVE"' in correction_section
     assert "HumanReviewFieldOverrideRecord.active.is_(True)" in correction_section
     assert "extracted.raw_value_json" in correction_section
+
+
+def test_product_router_exposes_complete_part1_review_filters():
+    from pathlib import Path
+
+    source = Path("backend/app/api/router.py").read_text(encoding="utf-8")
+    assert 'review_status: Literal["OPEN", "IN_REVIEW", "RESOLVED", "DISMISSED"]' in source
+    assert 'sort: Literal["priority", "age", "oldest", "newest"]' in source
+
+
+def test_frontend_forwards_part1_review_filters_and_sort():
+    from pathlib import Path
+
+    client = Path("frontend/src/api/client.ts").read_text(encoding="utf-8")
+    assert 'appendParam(params, "review_status", filters.review_status)' in client
+    assert 'appendParam(params, "comparison_state", filters.comparison_state)' in client
+    assert 'appendParam(params, "sort", filters.sort)' in client
