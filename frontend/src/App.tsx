@@ -30,6 +30,7 @@ import {
   getEmailDetail,
   getEmailQueue,
   getEvents,
+  getHumanReviewAnalytics,
   getHumanReviewDetail,
   getHumanReviewQueue,
   getSummary,
@@ -42,6 +43,7 @@ import {
 } from "./api/client";
 import type {
   EmailQueuePage,
+  HumanReviewAnalytics,
   HumanReviewPage,
   ProcessingStatus,
   ProductCategory,
@@ -1198,6 +1200,7 @@ function EmailDetailContent({
 
 function HumanReviewPageView({
   reviews,
+  analytics,
   state,
   selected,
   actionState,
@@ -1208,6 +1211,7 @@ function HumanReviewPageView({
   onDismiss,
 }: {
   reviews: HumanReviewPage | null;
+  analytics: HumanReviewAnalytics | null;
   state: LoadState;
   selected: ProductReview | null;
   actionState: LoadState;
@@ -1250,7 +1254,17 @@ function HumanReviewPageView({
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
 
   return (
-    <section className="queue-layout">
+    <section className="page-grid">
+      <section className="metric-grid-wrap">
+        <div className="metric-grid" aria-label="Human Review analytics">
+          <MetricCard cardIndex={0} icon={<ShieldAlert size={18} color="var(--color-warn)" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="warn" />
+          <MetricCard cardIndex={1} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
+          <MetricCard cardIndex={2} icon={<CircleCheck size={18} color="var(--color-success)" />} label="Resolved Today" value={analytics?.resolved_today_count ?? 0} trendText={analytics?.resolved_count ? String(analytics.resolved_count) + " resolved total" : "No resolved cases"} tone="good" />
+          <MetricCard cardIndex={3} icon={<Archive size={18} color="var(--color-grey-700)" />} label="Dismissed" value={analytics?.dismissed_count ?? 0} trendText="Review decisions" tone="neutral" />
+          <MetricCard cardIndex={4} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
+        </div>
+      </section>
+      <section className="queue-layout">
       <div className="surface-panel queue-panel">
         <div className="section-header">
           <div>
@@ -1337,6 +1351,7 @@ function HumanReviewPageView({
           </div>
         )}
       </div>
+      </section>
     </section>
   );
 }
@@ -1347,6 +1362,7 @@ export default function App() {
   const [queue, setQueue] = useState<EmailQueuePage | null>(null);
   const [detail, setDetail] = useState<ProductEmailDetail | null>(null);
   const [reviews, setReviews] = useState<HumanReviewPage | null>(null);
+  const [reviewAnalytics, setReviewAnalytics] = useState<HumanReviewAnalytics | null>(null);
   const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [detailState, setDetailState] = useState<LoadState>("idle");
@@ -1381,7 +1397,12 @@ export default function App() {
   const loadReviews = useCallback(async () => {
     setReviewState("loading");
     try {
-      setReviews(await getHumanReviewQueue({ active_only: false }));
+      const [reviewPage, analytics] = await Promise.all([
+        getHumanReviewQueue({ active_only: false }),
+        getHumanReviewAnalytics(),
+      ]);
+      setReviews(reviewPage);
+      setReviewAnalytics(analytics);
       setReviewState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load review queue");
@@ -1590,6 +1611,7 @@ export default function App() {
         {page === "review" ? (
           <HumanReviewPageView
             reviews={reviews}
+            analytics={reviewAnalytics}
             state={reviewState}
             selected={selectedReview}
             actionState={reviewActionState}
