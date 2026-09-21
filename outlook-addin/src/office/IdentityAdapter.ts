@@ -47,7 +47,7 @@ export class IdentityAdapter {
       };
     }
 
-    const { internetMessageId, subject } = ctx.item;
+    const { internetMessageId, subject, sender } = ctx.item;
 
     // Strategy 1: internet_message_id
     if (internetMessageId) {
@@ -66,7 +66,7 @@ export class IdentityAdapter {
       }
     }
 
-    // Strategy 2: subject search (low confidence fallback)
+    // Strategy 2: subject & sender search
     if (subject && subject.trim().length > 4) {
       try {
         // Strip common email prefixes like "RE: ", "FW: ", "Re: " etc.
@@ -80,13 +80,20 @@ export class IdentityAdapter {
           page = await searchEmailQueue(subject.trim());
         }
 
-        // Find exact or closest subject match
-        const exactMatch = page.items.find(
-          (item) =>
+        // Prioritize match on both subject AND sender, fallback to exact subject match
+        const exactMatch =
+          page.items.find((item) => {
+            const subjectMatches =
+              item.subject.trim().toLowerCase() === subject.trim().toLowerCase() ||
+              item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase();
+            const senderMatches =
+              Boolean(sender && item.sender && item.sender.trim().toLowerCase() === sender.trim().toLowerCase());
+            return subjectMatches && senderMatches;
+          }) ||
+          page.items.find((item) =>
             item.subject.trim().toLowerCase() === subject.trim().toLowerCase() ||
-            item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() ===
-              cleanSubject.toLowerCase(),
-        );
+            item.subject.replace(/^(re|fw|fwd|答复|转发)[:：_\s]+/i, "").trim().toLowerCase() === cleanSubject.toLowerCase()
+          );
 
         const target = exactMatch || (page.items.length === 1 ? page.items[0] : null);
 
@@ -97,7 +104,7 @@ export class IdentityAdapter {
             strategy: "subject_search",
             confidence: "low",
             limitationNote:
-              "Matched by subject text only. Identity linkage is approximate until live Graph integration is complete.",
+              "Matched by subject text and sender. Identity linkage is approximate until live Graph integration is complete.",
           };
         }
 
