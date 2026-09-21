@@ -231,6 +231,7 @@ class ProductReview(BaseModel):
     evidence: list[ProductEvidence] = Field(default_factory=list)
     comparison: ProductComparison | None = None
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "LOW"
+    presentation_title: str | None = None
     human_explanation: str | None = None
     affected_fields: list[str] = Field(default_factory=list)
     affected_area: str | None = None
