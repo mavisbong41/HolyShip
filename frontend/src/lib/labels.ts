@@ -101,8 +101,8 @@ export function displayLabel(value?: string | null): string {
   if (!value) return "—";
   if (value in statusLabels) return statusLabels[value as ProcessingStatus];
   if (value in categoryLabels) return categoryLabels[value as ProductCategory];
-  if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];
   if (value in fieldStatusLabels) return fieldStatusLabels[value as FieldStatus];
+  if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];
   if (value in reviewStatusLabels) return reviewStatusLabels[value];
   if (value in reasonLabels) return reasonLabels[value];
   if (value in reviewActionLabels) return reviewActionLabels[value];

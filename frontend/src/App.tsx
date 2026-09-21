@@ -1479,12 +1479,21 @@ function HumanReviewPageView({
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [sortFilter, setSortFilter] = useState("newest");
-  const [reviewer, setReviewer] = useState("Demo Reviewer");
+  const [reviewer, setReviewer] = useState("John Doe");
   const [side, setSide] = useState<"SI" | "BL">("BL");
   const [field, setField] = useState("notify_party");
   const [correctedValue, setCorrectedValue] = useState("");
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
+  const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
+
+  useEffect(() => {
+    if (selected?.reviewer_name) {
+      setReviewer(selected.reviewer_name);
+    } else {
+      setReviewer("John Doe");
+    }
+  }, [selected?.id, selected?.reviewer_name]);
 
   const [panelWidth, setPanelWidth] = useState(540);
   const [isResizing, setIsResizing] = useState(false);
@@ -1574,6 +1583,8 @@ function HumanReviewPageView({
   const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
+  const rawExplanation = selected?.human_explanation || selected?.reason_text || "";
+  const cleanExplanation = rawExplanation.replace(/\s*Affected fields:.*$/i, "").trim() || rawExplanation;
 
   // Total count in current view mode population
   const totalInCurrentMode = (reviews?.items ?? []).filter((review) => {
@@ -1736,65 +1747,473 @@ function HumanReviewPageView({
         <div className="surface-panel detail-panel">
           {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
             <div className="review-detail">
-              <div className="detail-title">
-                <p className="eyebrow">Human Review</p>
-                <h2>{selected.email?.subject || "Review case"}</h2>
-                <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
-                <div className="detail-badge-row">
-                  <StatusBadge value={selected.priority} />
-                  <StatusBadge value={selected.status} />
-                  {selected.email?.processing_status && statusLabels[selected.email.processing_status] !== reviewStatusLabels[selected.status] ? (
-                    <StatusBadge value={selected.email.processing_status} />
-                  ) : null}
-                  <span className="assignee">{selected.reviewer_name || "Unassigned"}</span>
-                  {selected.claimed_at ? <span className="subtle">Claimed {formatDate(selected.claimed_at)}</span> : null}
+              <header className="detail-sticky-header">
+                <div className="detail-header-meta">
+                  <div className="detail-header-info">
+                    <div className="detail-eyebrow-row">
+                      <span className="eyebrow">Human Review</span>
+                      <span className="case-id-badge">#{selected.id.slice(0, 8)}</span>
+                    </div>
+                    <h2 className="detail-title-text" title={selected.email?.subject || "Review case"}>
+                      {selected.email?.subject || "Review case"}
+                    </h2>
+                    <p className="detail-sender-text">
+                      {selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}
+                    </p>
+                  </div>
+                  <div className="detail-header-badges">
+                    <StatusBadge value={selected.priority} />
+                    <StatusBadge value={selected.status} />
+                    {selected.email?.processing_status && statusLabels[selected.email.processing_status] !== reviewStatusLabels[selected.status] ? (
+                      <StatusBadge value={selected.email.processing_status} />
+                    ) : null}
+                  </div>
                 </div>
-              </div>
+
+                {selected.case_origin === "ACTIVE" ? (
+                  <div className="detail-top-action-bar">
+                    <div className="reviewer-identity-group">
+                      <span className="reviewer-avatar-badge" title="Active operator session">JD</span>
+                      <div className="reviewer-input-wrap">
+                        <label htmlFor="top-reviewer-input">Reviewer</label>
+                        <input
+                          id="top-reviewer-input"
+                          aria-label="Reviewer name"
+                          value={reviewer}
+                          onChange={(event) => setReviewer(event.target.value)}
+                          placeholder="Reviewer name"
+                        />
+                      </div>
+                    </div>
+                    <div className="top-action-buttons">
+                      {selected.status === "OPEN" ? (
+                        <button
+                          className="button-secondary btn-compact"
+                          type="button"
+                          disabled={actionState === "loading"}
+                          onClick={() => void onClaim(reviewer)}
+                        >
+                          Start / Claim
+                        </button>
+                      ) : null}
+                      <button
+                        className="button-primary btn-compact"
+                        type="button"
+                        disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                        onClick={() => void onResolve(reviewer, note)}
+                      >
+                        {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="state-note-inline">
+                    <span>Historical review record (read-only)</span>
+                  </div>
+                )}
+
+                <nav className="detail-nav-tabs" role="tablist" aria-label="Review case workspace">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={detailTab === "fields"}
+                    className={cx("detail-tab-btn", detailTab === "fields" && "active")}
+                    onClick={() => setDetailTab("fields")}
+                  >
+                    <CheckCircle2 size={13} />
+                    <span>Comparison & Overrides</span>
+                    {selectedUnresolved > 0 ? (
+                      <span className="tab-pill-badge unresolved">{selectedUnresolved}</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={detailTab === "context"}
+                    className={cx("detail-tab-btn", detailTab === "context" && "active")}
+                    onClick={() => setDetailTab("context")}
+                  >
+                    <Mail size={13} />
+                    <span>Email & Documents</span>
+                    {selected.documents?.length ? (
+                      <span className="tab-pill-badge neutral">{selected.documents.length}</span>
+                    ) : null}
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={detailTab === "audit"}
+                    className={cx("detail-tab-btn", detailTab === "audit" && "active")}
+                    onClick={() => setDetailTab("audit")}
+                  >
+                    <Clock size={13} />
+                    <span>Audit Trail</span>
+                    {selected.actions?.length ? (
+                      <span className="tab-pill-badge neutral">{selected.actions.length}</span>
+                    ) : null}
+                  </button>
+                </nav>
+              </header>
+
               <div className="review-callout">
                 <AlertTriangle size={18} aria-hidden="true" />
-                <div>
-                  <strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong>
-                  <p>{selected.human_explanation || selected.reason_text}</p>
+                <div className="callout-body">
+                  <strong className="callout-title">
+                    {selected.case_origin === "LEGACY" ? "Historical review record" : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
+                  </strong>
+                  <p className="callout-desc">{cleanExplanation}</p>
                   {selected.affected_fields?.length ? (
-                    <p className="affected-fields-summary">Affected fields: {selected.affected_fields.map((f) => labelForField(f)).join(", ")}</p>
+                    <div className="callout-chips-row">
+                      <span className="chips-title">Affected fields (click to edit):</span>
+                      <div className="chips-container">
+                        {selected.affected_fields.map((f) => (
+                          <button
+                            key={f}
+                            type="button"
+                            className="affected-field-chip"
+                            onClick={() => {
+                              setField(f);
+                              setDetailTab("fields");
+                              const el = document.getElementById("review-editor-box");
+                              if (el) {
+                                el.scrollIntoView({ behavior: "smooth" });
+                                const valInput = el.querySelector("input[aria-label='Corrected value']") as HTMLInputElement | null;
+                                if (valInput) valInput.focus();
+                              }
+                            }}
+                            title={`Click to edit ${labelForField(f)}`}
+                          >
+                            <span className="chip-bullet">•</span>
+                            {labelForField(f)}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
                   ) : (
                     <p className="affected-fields-summary">Affected area: {selected.affected_area || "Review case"}</p>
                   )}
-                  <p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p>
+                  <p className="suggested-action-summary">
+                    <strong>Suggested action:</strong> {selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}
+                  </p>
                   <div className="callout-pipeline-meta">
-                    {selected.trigger ? <span><strong>Trigger:</strong> {selected.trigger}</span> : null}
-                    {selected.stage ? <span> · <strong>Stage:</strong> {selected.stage}</span> : null}
-                    {selected.reason_code ? <span> · <strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span> : null}
+                    <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
+                    <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
+                    {selected.reason_code ? (
+                      <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
+                    ) : null}
                   </div>
                 </div>
               </div>
-              <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
-              <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
-              <div className="detail-section">
-                <div className="section-heading-row"><div><h3>Seven reviewed fields</h3><p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p></div><span className="total-pill">{selectedUnresolved} unresolved</span></div>
-                <div className="comparison-table-wrap">
-                  <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
-                    <colgroup>
-                      <col style={{ width: "23%", minWidth: "100px" }} />
-                      <col style={{ width: "32%", minWidth: "120px" }} />
-                      <col style={{ width: "26%", minWidth: "90px" }} />
-                      <col style={{ width: "19%", minWidth: "85px" }} />
-                    </colgroup>
-                    <thead>
-                      <tr><th>Field</th><th>Shipping Instruction</th><th>Draft BL</th><th>System result</th></tr>
-                    </thead>
-                    <tbody>
-                  {canonicalFields.map((name) => {
-                    const compared = selected.comparison?.fields.find((item) => item.field === name);
-                    const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
-                    const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
-                    return <tr key={name} className={cx(compared?.status === "MISMATCH" && "field-mismatch", compared?.status === "UNRESOLVED" && "field-unresolved")}><th>{labelForField(name)}</th><td><span className="value-label">Original SI</span>{displayValue(compared?.si.raw)}{siOverride ? <span className="reviewed-value"><span>Reviewed SI</span>{displayValue(siOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}</span></td><td><span className="value-label">Original BL</span>{displayValue(compared?.bl.raw)}{blOverride ? <span className="reviewed-value"><span>Reviewed BL</span>{displayValue(blOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}</span></td><td><StatusBadge value={compared?.status ?? "UNRESOLVED"} /></td></tr>;
-                  })}
-                </tbody></table></div>
-              </div>
-              {selected.case_origin === "ACTIVE" ? <div className="detail-section review-editor"><h3>Save a correction</h3><p>Corrections are stored separately from original extraction evidence.</p><div className="form-grid"><label>Document side<select aria-label="Override side" value={side} onChange={(event) => setSide(event.target.value as "SI" | "BL")}><option>SI</option><option>BL</option></select></label><label>Field<select aria-label="Override field" value={field} onChange={(event) => setField(event.target.value)}>{canonicalFields.map((name) => <option key={name} value={name}>{labelForField(name)}</option>)}</select></label><label className="form-span">Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}<input type={inputType} step={inputStep} min={inputType === "number" ? "0" : undefined} aria-label="Corrected value" aria-describedby="correction-help" value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"} /></label><label className="form-span">Reviewer note<textarea aria-label="Reviewer note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the evidence for this correction" /></label></div><p id="correction-help" className="form-help">The saved correction becomes the effective value only when Resolve & Recompare succeeds.</p><button className="button-primary" type="button" disabled={!correctedValue || actionState === "loading"} onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}>{actionState === "loading" ? "Saving…" : "Save Correction"}</button>{actionState === "ready" && activeOverrides.length ? <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span> : null}</div> : <div className="detail-section"><div className="state-note"><strong>Historical review record</strong><span>This record is retained for audit history and is read-only.</span><small>No correction, claim, resolve, or dismiss action is available.</small></div></div>}
-              {selected.case_origin === "ACTIVE" ? <div className="detail-section"><h3>Review actions</h3><div className="form-grid"><label className="form-span">Reviewer<input aria-label="Reviewer name" value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label></div><button className="button-secondary" type="button" disabled={actionState === "loading" || selected.status !== "OPEN"} onClick={() => void onClaim(reviewer)}>Start / Claim</button><div className="resolution-summary"><strong>Resolve & Recompare</strong><span>{activeOverrides.length} saved override(s) across {[...new Set(activeOverrides.map((item) => item.field))].length} field(s) · {selectedUnresolved} currently unresolved</span><p>HolyShip will apply reviewed values, create a new comparison version, and refresh this case from backend truth.</p></div><button className="button-primary" type="button" disabled={actionState === "loading" || selected.status === "DISMISSED"} onClick={() => void onResolve(reviewer, note)}>{actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}</button><div className="dismiss-zone"><strong>Dismiss without resolving</strong><p>Dismiss records an audited decision. It does not mark the comparison completed.</p><label>Dismiss reason<input aria-label="Dismiss reason" value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} /></label><button className="button-danger-secondary" type="button" disabled={actionState === "loading" || !dismissReason.trim()} onClick={() => void onDismiss(reviewer, dismissReason, note)}>Dismiss Review</button></div></div> : null}
-              <div className="detail-section"><h3>Review audit trail</h3>{selected.actions?.length ? <div className="timeline">{selected.actions.map((action) => <div className="timeline-row" key={action.id}><span /><div><strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong><p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p><small className="technical-code">{action.action}</small></div></div>)}</div> : <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />}</div>
+
+              {detailTab === "fields" && (
+                <div className="tab-pane">
+                  <div className="detail-section">
+                    <div className="section-heading-row">
+                      <div>
+                        <h3>Seven reviewed fields</h3>
+                        <p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p>
+                      </div>
+                      <span className="total-pill">{selectedUnresolved} unresolved</span>
+                    </div>
+                    <div className="comparison-table-wrap">
+                      <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
+                        <colgroup>
+                          <col style={{ width: "22%", minWidth: "95px" }} />
+                          <col style={{ width: "31%", minWidth: "115px" }} />
+                          <col style={{ width: "26%", minWidth: "90px" }} />
+                          <col style={{ width: "13%", minWidth: "75px" }} />
+                          <col style={{ width: "8%", minWidth: "45px" }} />
+                        </colgroup>
+                        <thead>
+                          <tr>
+                            <th>Field</th>
+                            <th>Shipping Instruction</th>
+                            <th>Draft BL</th>
+                            <th>System result</th>
+                            <th>Action</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {canonicalFields.map((name) => {
+                            const compared = selected.comparison?.fields.find((item) => item.field === name);
+                            const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
+                            const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                            return (
+                              <tr
+                                key={name}
+                                className={cx(
+                                  compared?.status === "MISMATCH" && "field-mismatch",
+                                  compared?.status === "UNRESOLVED" && "field-unresolved"
+                                )}
+                              >
+                                <th>{labelForField(name)}</th>
+                                <td>
+                                  <span className="value-label">Original SI</span>
+                                  {displayValue(compared?.si.raw)}
+                                  {siOverride ? (
+                                    <span className="reviewed-value">
+                                      <span>Reviewed SI</span>
+                                      {displayValue(siOverride.corrected_value)}
+                                    </span>
+                                  ) : null}
+                                  <span className="effective-value">
+                                    Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}
+                                  </span>
+                                </td>
+                                <td>
+                                  <span className="value-label">Original BL</span>
+                                  {displayValue(compared?.bl.raw)}
+                                  {blOverride ? (
+                                    <span className="reviewed-value">
+                                      <span>Reviewed BL</span>
+                                      {displayValue(blOverride.corrected_value)}
+                                    </span>
+                                  ) : null}
+                                  <span className="effective-value">
+                                    Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}
+                                  </span>
+                                </td>
+                                <td>
+                                  <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
+                                </td>
+                                <td style={{ textAlign: "center" }}>
+                                  {selected.case_origin === "ACTIVE" ? (
+                                    <button
+                                      type="button"
+                                      className="row-edit-action-btn"
+                                      title={`Quick edit ${labelForField(name)}`}
+                                      onClick={() => {
+                                        setField(name);
+                                        if (compared?.bl.raw == null && compared?.si.raw != null) {
+                                          setSide("BL");
+                                        } else if (compared?.si.raw == null && compared?.bl.raw != null) {
+                                          setSide("SI");
+                                        } else {
+                                          setSide("BL");
+                                        }
+                                        const el = document.getElementById("review-editor-box");
+                                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                                      }}
+                                    >
+                                      Edit
+                                    </button>
+                                  ) : (
+                                    <span className="subtle">—</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+
+                  {activeOverrides.length > 0 && (
+                    <div className="staged-overrides-card">
+                      <div className="staged-overrides-header">
+                        <strong>Staged Overrides ({activeOverrides.length})</strong>
+                        <span>Applied on Recomparison</span>
+                      </div>
+                      <div className="staged-overrides-list">
+                        {activeOverrides.map((ov) => (
+                          <div key={ov.id || `${ov.document_side}-${ov.field}`} className="staged-override-chip">
+                            <span className="override-side-tag">{ov.document_side}</span>
+                            <span className="override-field-name">{labelForField(ov.field)}:</span>
+                            <strong className="override-val">{displayValue(ov.corrected_value)}</strong>
+                            {ov.reviewer_name && <small className="override-by">({ov.reviewer_name})</small>}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {selected.case_origin === "ACTIVE" ? (
+                    <div id="review-editor-box" className="detail-section review-editor">
+                      <h3>Save a correction</h3>
+                      <p>Corrections are stored separately from original extraction evidence.</p>
+                      <div className="form-grid">
+                        <label>
+                          Document side
+                          <select
+                            aria-label="Override side"
+                            value={side}
+                            onChange={(event) => setSide(event.target.value as "SI" | "BL")}
+                          >
+                            <option>SI</option>
+                            <option>BL</option>
+                          </select>
+                        </label>
+                        <label>
+                          Field
+                          <select
+                            aria-label="Override field"
+                            value={field}
+                            onChange={(event) => setField(event.target.value)}
+                          >
+                            {canonicalFields.map((name) => (
+                              <option key={name} value={name}>{labelForField(name)}</option>
+                            ))}
+                          </select>
+                        </label>
+                        <label className="form-span">
+                          Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
+                          <input
+                            type={inputType}
+                            step={inputStep}
+                            min={inputType === "number" ? "0" : undefined}
+                            aria-label="Corrected value"
+                            aria-describedby="correction-help"
+                            value={correctedValue}
+                            onChange={(event) => setCorrectedValue(event.target.value)}
+                            placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
+                          />
+                        </label>
+                        <label className="form-span">
+                          Reviewer note
+                          <textarea
+                            aria-label="Reviewer note"
+                            value={note}
+                            onChange={(event) => setNote(event.target.value)}
+                            placeholder="Explain the evidence for this correction"
+                          />
+                        </label>
+                      </div>
+                      <p id="correction-help" className="form-help">
+                        The saved correction becomes the effective value only when Resolve & Recompare succeeds.
+                      </p>
+                      <div className="editor-button-row">
+                        <button
+                          className="button-primary"
+                          type="button"
+                          disabled={!correctedValue || actionState === "loading"}
+                          onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
+                        >
+                          {actionState === "loading" ? "Saving…" : "Save Correction"}
+                        </button>
+                        {actionState === "ready" && activeOverrides.length ? (
+                          <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
+                        ) : null}
+                      </div>
+                    </div>
+                  ) : (
+                    <div className="detail-section">
+                      <div className="state-note">
+                        <strong>Historical review record</strong>
+                        <span>This record is retained for audit history and is read-only.</span>
+                        <small>No correction, claim, resolve, or dismiss action is available.</small>
+                      </div>
+                    </div>
+                  )}
+
+                  {selected.case_origin === "ACTIVE" ? (
+                    <div className="detail-section dismiss-section">
+                      <div id="dismiss-zone-box" className="dismiss-zone">
+                        <div className="dismiss-zone-header">
+                          <strong className="dismiss-title">Dismiss without resolving</strong>
+                          <p className="dismiss-subtitle">
+                            Dismiss records an audited decision. It does not mark the comparison completed.
+                          </p>
+                        </div>
+                        <div className="dismiss-form-grid">
+                          <label>
+                            Dismiss reason
+                            <input
+                              aria-label="Dismiss reason"
+                              value={dismissReason}
+                              onChange={(event) => setDismissReason(event.target.value)}
+                              placeholder="e.g. NOT_ACTIONABLE"
+                            />
+                          </label>
+                          <button
+                            className="button-danger-secondary"
+                            type="button"
+                            disabled={actionState === "loading" || !dismissReason.trim()}
+                            onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                          >
+                            {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                          </button>
+                        </div>
+                        <div className="dismiss-presets">
+                          <span className="dismiss-presets-label">Quick presets:</span>
+                          {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
+                            <button
+                              key={preset}
+                              type="button"
+                              className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                              onClick={() => setDismissReason(preset)}
+                            >
+                              {preset}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </div>
+                  ) : null}
+                </div>
+              )}
+
+              {detailTab === "context" && (
+                <div className="tab-pane">
+                  <div className="detail-section">
+                    <h3>Source documents</h3>
+                    {selected.documents?.length ? (
+                      <div className="documents-card-list">
+                        {selected.documents.map((doc) => (
+                          <div className="attachment-row document-card" key={doc.id}>
+                            <FileText size={18} className="doc-icon" />
+                            <div className="doc-info">
+                              <strong>{doc.filename}</strong>
+                              <div className="doc-badges">
+                                <span className="badge badge-info">{displayLabel(doc.role)}</span>
+                                <span className="badge badge-neutral">{displayLabel(doc.validation_outcome)}</span>
+                                <span className="badge badge-muted">{displayLabel(doc.routing_outcome)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />
+                    )}
+                  </div>
+                  <div className="detail-section">
+                    <h3>Email context</h3>
+                    <div className="email-card-container">
+                      <div className="email-meta-header">
+                        <div><strong>Subject:</strong> {selected.email?.subject || "No subject"}</div>
+                        <div><strong>From:</strong> {selected.email?.sender || "Unknown sender"}</div>
+                        <div><strong>Date:</strong> {formatDate(selected.created_at)}</div>
+                      </div>
+                      <p className="body-copy email-body-box">{selected.body || "No body text available."}</p>
+                    </div>
+                  </div>
+                </div>
+              )}
+
+              {detailTab === "audit" && (
+                <div className="tab-pane">
+                  <div className="detail-section">
+                    <h3>Review audit trail</h3>
+                    {selected.actions?.length ? (
+                      <div className="timeline">
+                        {selected.actions.map((action) => (
+                          <div className="timeline-row" key={action.id}>
+                            <span />
+                            <div>
+                              <strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong>
+                              <p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p>
+                              <small className="technical-code">{action.action}</small>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    ) : (
+                      <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />
+                    )}
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
