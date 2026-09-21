@@ -302,6 +302,7 @@ export interface ReviewQueueFilters {
   reviewer?: string;
   search?: string;
   active_only?: boolean;
+  sort?: "priority" | "age" | "oldest" | "newest";
   skip?: number;
   limit?: number;
 }
