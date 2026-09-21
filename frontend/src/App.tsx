@@ -1242,10 +1242,12 @@ function HumanReviewPageView({
   }).sort((left, right) => {
     if (sortFilter === "priority") {
       const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
-      return (rank[left.priority] ?? 3) - (rank[right.priority] ?? 3);
+      const priorityDelta = (rank[left.priority] ?? 3) - (rank[right.priority] ?? 3);
+      if (priorityDelta !== 0) return priorityDelta;
+      return new Date(right.created_at).getTime() - new Date(left.created_at).getTime();
     }
     const delta = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
-    return sortFilter === "oldest" ? delta : -delta;
+    return sortFilter === "oldest" || sortFilter === "age" ? delta : -delta;
   });
   const reasons = [...new Set((reviews?.items ?? []).map((review) => review.reason_code))].sort();
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
@@ -1285,6 +1287,7 @@ function HumanReviewPageView({
           <select aria-label="Sort queue" value={sortFilter} onChange={(event) => setSortFilter(event.target.value)}>
             <option value="newest">Newest first</option>
             <option value="oldest">Oldest first</option>
+            <option value="age">Review age</option>
             <option value="priority">Priority</option>
           </select>
         </div>
@@ -1310,7 +1313,7 @@ function HumanReviewPageView({
                   <StatusBadge value={review.email?.processing_status} />
                   {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
                   <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
-                  <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : review.affected_fields.length + " affected field(s)"}</span>
+                  <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
                 </div>
               </article>
