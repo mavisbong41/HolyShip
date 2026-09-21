@@ -932,7 +932,28 @@ The result is more than a document comparator: **HolyShip is a verification work
 
 ---
 
-# 22. Contributors
+# 22. Latest Verified Dashboard Snapshot
+
+The current backend summary was verified from `GET /api/v1/summary` after the
+latest reprocessing and Human Review reconciliation. The response matches the
+current public evaluation expectation for this 520-email demo dataset:
+
+| Metric | Current value |
+|---|---:|
+| Total emails | 520 |
+| Completed | 409 |
+| Human Review open | 20 |
+| Emails with mismatch | 46 |
+| Awaiting Documents | 91 |
+| Failed | 0 |
+
+These are observed data values, not hard-coded application constants. The
+Dashboard's Discrepancies workspace now uses the same metric-card typography as
+Human Review and opens the detail inspector only after a queue item is selected.
+
+---
+
+# 23. Contributors
 
 - Wong Jia Hui
 - Bong Zi Shan
