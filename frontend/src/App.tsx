@@ -1564,7 +1564,6 @@ function HumanReviewPageView({
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
 
-<<<<<<< Updated upstream
   // Total count in current view mode population
   const totalInCurrentMode = (reviews?.items ?? []).filter((review) => {
     if (reviewViewMode === "ACTIVE") {
@@ -1581,13 +1580,12 @@ function HumanReviewPageView({
       : visibleReviews.length === totalInCurrentMode
       ? `${totalInCurrentMode} historical`
       : `${visibleReviews.length} shown · ${totalInCurrentMode} historical`;
-=======
+
   const layoutStyle = selected
     ? ({
         "--queue-detail-width": `${panelWidth}px`,
       } as React.CSSProperties)
     : undefined;
->>>>>>> Stashed changes
 
   return (
     <section className="page-grid">
@@ -1687,21 +1685,15 @@ function HumanReviewPageView({
                 </div>
                 <div className="review-meta">
                   <StatusBadge value={review.priority} />
-<<<<<<< Updated upstream
                   {review.case_origin === "LEGACY" ? (
                     <span className="badge badge-neutral">COMPLETED</span>
                   ) : (
                     <StatusBadge value={review.status} />
                   )}
-                  <StatusBadge value={review.email?.processing_status} />
-                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
-=======
-                  <StatusBadge value={review.status} />
                   {review.email?.processing_status && statusLabels[review.email.processing_status] !== reviewStatusLabels[review.status] ? (
                     <StatusBadge value={review.email.processing_status} />
                   ) : null}
-                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
->>>>>>> Stashed changes
+                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
                   <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
                   <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
@@ -1716,37 +1708,6 @@ function HumanReviewPageView({
         )}
       </div>
 
-<<<<<<< Updated upstream
-      <div className="surface-panel detail-panel">
-        {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
-          <div className="review-detail">
-            <div className="detail-title">
-              <p className="eyebrow">Human Review</p>
-              <h2>{selected.email?.subject || "Review case"}</h2>
-              <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
-              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span>{selected.claimed_at ? <span className="subtle">Claimed {formatDate(selected.claimed_at)}</span> : null}</div>
-            </div>
-            <div className="review-callout">
-              <AlertTriangle size={18} aria-hidden="true" />
-              <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields?.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
-            </div>
-            <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
-            <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
-            <div className="detail-section">
-              <div className="section-heading-row"><div><h3>Seven reviewed fields</h3><p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p></div><span className="total-pill">{selectedUnresolved} unresolved</span></div>
-              <div className="comparison-table-wrap"><table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison"><thead><tr><th>Field</th><th>Shipping Instruction</th><th>Draft BL</th><th>System result</th></tr></thead><tbody>
-                {canonicalFields.map((name) => {
-                  const compared = selected.comparison?.fields.find((item) => item.field === name);
-                  const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
-                  const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
-                  return <tr key={name} className={cx(compared?.status === "MISMATCH" && "field-mismatch", compared?.status === "UNRESOLVED" && "field-unresolved")}><th>{labelForField(name)}</th><td><span className="value-label">Original SI</span>{displayValue(compared?.si.raw)}{siOverride ? <span className="reviewed-value"><span>Reviewed SI</span>{displayValue(siOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}</span></td><td><span className="value-label">Original BL</span>{displayValue(compared?.bl.raw)}{blOverride ? <span className="reviewed-value"><span>Reviewed BL</span>{displayValue(blOverride.corrected_value)}</span> : null}<span className="effective-value">Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}</span></td><td><StatusBadge value={compared?.status ?? "UNRESOLVED"} /></td></tr>;
-                })}
-              </tbody></table></div>
-            </div>
-            {selected.case_origin === "ACTIVE" ? <div className="detail-section review-editor"><h3>Save a correction</h3><p>Corrections are stored separately from original extraction evidence.</p><div className="form-grid"><label>Document side<select aria-label="Override side" value={side} onChange={(event) => setSide(event.target.value as "SI" | "BL")}><option>SI</option><option>BL</option></select></label><label>Field<select aria-label="Override field" value={field} onChange={(event) => setField(event.target.value)}>{canonicalFields.map((name) => <option key={name} value={name}>{labelForField(name)}</option>)}</select></label><label className="form-span">Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}<input type={inputType} step={inputStep} min={inputType === "number" ? "0" : undefined} aria-label="Corrected value" aria-describedby="correction-help" value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"} /></label><label className="form-span">Reviewer note<textarea aria-label="Reviewer note" value={note} onChange={(event) => setNote(event.target.value)} placeholder="Explain the evidence for this correction" /></label></div><p id="correction-help" className="form-help">The saved correction becomes the effective value only when Resolve & Recompare succeeds.</p><button className="button-primary" type="button" disabled={!correctedValue || actionState === "loading"} onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}>{actionState === "loading" ? "Saving…" : "Save Correction"}</button>{actionState === "ready" && activeOverrides.length ? <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span> : null}</div> : <div className="detail-section"><div className="state-note"><strong>Historical review record</strong><span>This record is retained for audit history and is read-only.</span><small>No correction, claim, resolve, or dismiss action is available.</small></div></div>}
-            {selected.case_origin === "ACTIVE" ? <div className="detail-section"><h3>Review actions</h3><div className="form-grid"><label className="form-span">Reviewer<input aria-label="Reviewer name" value={reviewer} onChange={(event) => setReviewer(event.target.value)} /></label></div><button className="button-secondary" type="button" disabled={actionState === "loading" || selected.status !== "OPEN"} onClick={() => void onClaim(reviewer)}>Start / Claim</button><div className="resolution-summary"><strong>Resolve & Recompare</strong><span>{activeOverrides.length} saved override(s) across {[...new Set(activeOverrides.map((item) => item.field))].length} field(s) · {selectedUnresolved} currently unresolved</span><p>HolyShip will apply reviewed values, create a new comparison version, and refresh this case from backend truth.</p></div><button className="button-primary" type="button" disabled={actionState === "loading" || selected.status === "DISMISSED"} onClick={() => void onResolve(reviewer, note)}>{actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}</button><div className="dismiss-zone"><strong>Dismiss without resolving</strong><p>Dismiss records an audited decision. It does not mark the comparison completed.</p><label>Dismiss reason<input aria-label="Dismiss reason" value={dismissReason} onChange={(event) => setDismissReason(event.target.value)} /></label><button className="button-danger-secondary" type="button" disabled={actionState === "loading" || !dismissReason.trim()} onClick={() => void onDismiss(reviewer, dismissReason, note)}>Dismiss Review</button></div></div> : null}
-            <div className="detail-section"><h3>Review audit trail</h3>{selected.actions?.length ? <div className="timeline">{selected.actions.map((action) => <div className="timeline-row" key={action.id}><span /><div><strong>{reviewActionLabels[action.action] || displayLabel(action.action)}</strong><p>{action.actor_name || "System"} · {formatDate(action.created_at)}</p><small className="technical-code">{action.action}</small></div></div>)}</div> : <EmptyState title="No review events yet" body="Claims, corrections, recomparison, and decisions will appear here." />}</div>
-=======
       <div className="detail-panel-wrapper">
         {selected ? (
           <div
@@ -1755,7 +1716,6 @@ function HumanReviewPageView({
             title="Drag to resize detail panel"
           >
             <div className="resize-handle-bar" />
->>>>>>> Stashed changes
           </div>
         ) : null}
         <div className="surface-panel detail-panel">
@@ -1830,12 +1790,8 @@ export default function App() {
   const [syncState, setSyncState] = useState<LoadState>("idle");
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
-<<<<<<< Updated upstream
-  const [filters, setFilters] = useState<QueueFilters>({ limit: 25, skip: 0 });
-  const [reviewViewMode, setReviewViewMode] = useState<ReviewViewMode>("ACTIVE");
-=======
   const [filters, setFilters] = useState<QueueFilters>({ limit: 20, skip: 0 });
->>>>>>> Stashed changes
+  const [reviewViewMode, setReviewViewMode] = useState<ReviewViewMode>("ACTIVE");
   const [lastEventAt, setLastEventAt] = useState<string | undefined>(undefined);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const deepLinkHandled = useRef(false);
