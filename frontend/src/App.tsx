@@ -1958,18 +1958,18 @@ function HumanReviewPageView({
                     <div className="comparison-table-wrap">
                       <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
                         <colgroup>
-                          <col style={{ width: "21%", minWidth: "95px" }} />
-                          <col style={{ width: "28%", minWidth: "115px" }} />
-                          <col style={{ width: "26%", minWidth: "105px" }} />
-                          <col style={{ width: "15%", minWidth: "95px" }} />
-                          <col style={{ width: "10%", minWidth: "65px" }} />
+                          <col style={{ width: "18%", minWidth: "80px" }} />
+                          <col style={{ width: "28%", minWidth: "110px" }} />
+                          <col style={{ width: "26%", minWidth: "100px" }} />
+                          <col style={{ width: "18%", minWidth: "105px" }} />
+                          <col style={{ width: "10%", minWidth: "60px" }} />
                         </colgroup>
                         <thead>
                           <tr>
                             <th>Field</th>
                             <th>Shipping Instruction</th>
                             <th>Draft BL</th>
-                            <th style={{ textAlign: "center" }}>System result</th>
+                            <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>System result</th>
                             <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
                           </tr>
                         </thead>
@@ -2013,7 +2013,7 @@ function HumanReviewPageView({
                                     Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}
                                   </span>
                                 </td>
-                                <td>
+                                <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
                                   <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
                                 </td>
                                 <td style={{ textAlign: "center" }}>

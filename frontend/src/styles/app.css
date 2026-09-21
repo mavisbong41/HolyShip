@@ -1916,26 +1916,33 @@ button:disabled {
 
 .comparison-table thead th:nth-child(1),
 .comparison-table colgroup col:nth-child(1) {
-  width: 22%;
-  min-width: 100px;
+  width: 18%;
+  min-width: 80px;
 }
 
 .comparison-table thead th:nth-child(2),
 .comparison-table colgroup col:nth-child(2) {
-  width: 32%;
-  min-width: 120px;
+  width: 28%;
+  min-width: 110px;
 }
 
 .comparison-table thead th:nth-child(3),
 .comparison-table colgroup col:nth-child(3) {
   width: 26%;
-  min-width: 90px;
+  min-width: 100px;
 }
 
 .comparison-table thead th:nth-child(4),
 .comparison-table colgroup col:nth-child(4) {
-  width: 20%;
-  min-width: 85px;
+  width: 18%;
+  min-width: 105px;
+  text-align: center;
+}
+
+.comparison-table thead th:nth-child(5),
+.comparison-table colgroup col:nth-child(5) {
+  width: 10%;
+  min-width: 60px;
   text-align: center;
 }
 
@@ -1966,22 +1973,33 @@ button:disabled {
   hyphens: auto;
 }
 
+.comparison-table thead th:nth-child(4),
+.comparison-table tbody td:nth-child(4) {
+  text-align: center;
+  padding: 8px 4px;
+}
+
+.comparison-table thead th:last-child,
 .comparison-table tbody td:last-child {
   border-right: 0;
   text-align: center;
-  padding: 8px 6px;
+  padding: 8px 4px;
 }
 
+.comparison-table tbody td:nth-child(4) .badge,
 .comparison-table tbody td:last-child .badge {
   display: inline-flex;
-  max-width: 100%;
+  align-items: center;
   justify-content: center;
   box-sizing: border-box;
-  font-size: 10px;
-  padding: 0 7px;
-  min-height: 20px;
-  line-height: 20px;
+  font-size: 9.5px;
+  font-weight: 750;
+  padding: 2px 7px;
+  min-height: 19px;
+  line-height: 1.2;
   letter-spacing: 0.01em;
+  max-width: 100%;
+  white-space: nowrap;
 }
 
 .comparison-table tbody tr:last-child th,
@@ -2856,21 +2874,32 @@ button:disabled {
 .review-comparison thead th:nth-child(4),
 .review-comparison tbody td:nth-child(4) {
   text-align: center;
-  min-width: 95px;
+  min-width: 105px;
   white-space: nowrap !important;
+  padding: 8px 4px !important;
 }
 
 .review-comparison tbody td:nth-child(4) .badge {
   white-space: nowrap !important;
-  max-width: none !important;
-  font-size: 10px;
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  font-size: 9.5px !important;
+  font-weight: 750 !important;
+  padding: 2px 7px !important;
+  min-height: 19px !important;
+  line-height: 1.2 !important;
+  letter-spacing: 0.01em;
+  max-width: 100% !important;
+  box-sizing: border-box;
 }
 
 .review-comparison thead th:nth-child(5),
 .review-comparison tbody td:nth-child(5) {
   white-space: nowrap !important;
   text-align: center;
-  min-width: 65px;
+  min-width: 60px;
+  padding: 8px 4px !important;
 }
 
 .row-edit-action-btn {
