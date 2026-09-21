@@ -175,3 +175,14 @@ def test_reconciliation_uses_email_level_latest_comparison_semantics():
     assert "latest_comparison.c.mismatch_found.is_(True)" in reconciliation
     assert "json_array_length(latest_comparison.c.unresolved_fields)" in reconciliation
     assert "jsonb_array_length" not in reconciliation
+
+
+def test_part1_ui_contract_keeps_historical_read_only_and_non_field_copy_human_facing():
+    from pathlib import Path
+
+    app = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
+    assert 'selected.case_origin === "ACTIVE"' in app
+    assert "retained for audit history and is read-only" in app
+    assert 'review.affected_fields.length ? review.affected_fields.length + " affected field(s)"' in app
+    assert '(review.affected_area || "Email-level issue")' in app
+    assert '"0 affected field(s)"' not in app
