@@ -216,7 +216,49 @@ export interface ProductReview {
   age_minutes?: number;
   comparison: ProductComparison | null;
   resolutions: ProductResolution[];
+  ai_suggestions?: ProductAISuggestion[];
   created_at: string;
+}
+
+export type AISuggestionMode = "EXPLANATION_ONLY" | "ACTIONABLE_SUGGESTION" | "INSUFFICIENT_EVIDENCE";
+export type AISuggestionStatus = "PENDING" | "ACCEPTED" | "EDITED_APPLIED" | "DISMISSED";
+
+export interface AISuggestionPayload {
+  action: "FIELD_OVERRIDE";
+  document_side: "SI" | "BL";
+  field: CanonicalField | string;
+  current_value: string;
+  suggested_value: string;
+  confidence: number;
+  reason: string;
+  evidence_refs: string[];
+}
+
+export interface ProductAISuggestion {
+  id: string;
+  human_review_case_id: string;
+  mode: AISuggestionMode;
+  message: string;
+  document_side: "SI" | "BL" | null;
+  field: CanonicalField | string | null;
+  current_value: string | null;
+  suggested_value: string | null;
+  confidence: number | null;
+  reason: string | null;
+  evidence_refs: string[];
+  provider_name: string;
+  provider_model: string;
+  status: AISuggestionStatus;
+  created_at: string;
+}
+
+export interface AIAssistantResponse {
+  message: string;
+  mode: AISuggestionMode;
+  suggestion?: AISuggestionPayload | null;
+  suggestion_id?: string | null;
+  provider_name: string;
+  provider_model: string;
 }
 
 export interface EmailQueuePage {

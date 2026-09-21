@@ -53,10 +53,18 @@ from backend.app.api.product_queries import (
     list_human_reviews as list_product_human_reviews,
     list_processing_events,
 )
+from backend.app.ai_review.service import AIReviewService
 from backend.app.api.product_schemas import (
+    AIAssistantAskIn,
+    AIAssistantResponseOut,
+    AISuggestionAcceptIn,
+    AISuggestionApplyEditedIn,
+    AISuggestionDismissIn,
     ComparisonReadiness,
     EmailQueuePage,
+    HumanReviewAnalytics,
     HumanReviewPage,
+    HumanReviewReconciliation,
     ProductEmailDetail,
     ProductEvent,
     ProductIncomingOut,
@@ -67,8 +75,6 @@ from backend.app.api.product_schemas import (
     ReviewDismissIn,
     ReviewOverrideIn,
     ReviewResolveIn,
-    HumanReviewAnalytics,
-    HumanReviewReconciliation,
 )
 
 router = APIRouter()
@@ -649,6 +655,103 @@ def product_human_review_dismiss(
             reviewer_name=payload.reviewer_name,
             reason=payload.reason,
             notes=payload.notes,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/ai/ask",
+    response_model=AIAssistantResponseOut,
+    summary="Ask a grounded question to the AI Review Assistant",
+)
+def product_human_review_ai_ask(
+    review_id: uuid.UUID,
+    payload: AIAssistantAskIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+):
+    try:
+        svc = AIReviewService(session, settings)
+        response, suggestion, provider_name, provider_model = svc.ask(review_id, payload.question)
+        session.commit()
+        return AIAssistantResponseOut(
+            message=response.message,
+            mode=response.mode,
+            suggestion=response.suggestion.model_dump() if response.suggestion else None,
+            suggestion_id=suggestion.id if suggestion else None,
+            provider_name=provider_name,
+            provider_model=provider_model,
+        )
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/v1/human-review/{review_id}/ai/suggestions/{suggestion_id}/accept",
+    response_model=ProductReview,
+    summary="Accept an AI suggestion and trigger recomparison",
+)
+def product_human_review_ai_accept(
+    review_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    payload: AISuggestionAcceptIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+):
+    _run_review_mutation(
+        lambda: AIReviewService(session, settings).accept(
+            review_id,
+            suggestion_id,
+            reviewer_label=payload.reviewer_label,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/ai/suggestions/{suggestion_id}/apply-edited",
+    response_model=ProductReview,
+    summary="Edit and apply an AI suggestion then trigger recomparison",
+)
+def product_human_review_ai_apply_edited(
+    review_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    payload: AISuggestionApplyEditedIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+):
+    _run_review_mutation(
+        lambda: AIReviewService(session, settings).apply_edited(
+            review_id,
+            suggestion_id,
+            reviewer_value=payload.value,
+            reviewer_label=payload.reviewer_label,
+            note=payload.note,
+        )
+    )
+    return _review_mutation_response(session, review_id)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/ai/suggestions/{suggestion_id}/dismiss",
+    response_model=ProductReview,
+    summary="Dismiss an AI suggestion without altering case status",
+)
+def product_human_review_ai_dismiss(
+    review_id: uuid.UUID,
+    suggestion_id: uuid.UUID,
+    payload: AISuggestionDismissIn,
+    session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
+):
+    _run_review_mutation(
+        lambda: AIReviewService(session, settings).dismiss(
+            review_id,
+            suggestion_id,
+            reviewer_label=payload.reviewer_label,
         )
     )
     return _review_mutation_response(session, review_id)

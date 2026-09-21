@@ -535,6 +535,11 @@ class HumanReviewCaseRecord(TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    ai_suggestions: Mapped[list[AISuggestionRecord]] = relationship(
+        back_populates="review_case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class HumanReviewFieldOverrideRecord(Base):
@@ -580,6 +585,12 @@ class HumanReviewFieldOverrideRecord(Base):
         ForeignKey("human_review_field_overrides.id", ondelete="SET NULL"),
         nullable=True,
     )
+    ai_suggestion_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("ai_suggestions.id", ondelete="SET NULL"),
+        nullable=True,
+        index=True,
+    )
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
 
     review_case: Mapped[HumanReviewCaseRecord] = relationship(
@@ -592,7 +603,7 @@ class HumanReviewEventRecord(Base):
     __tablename__ = "human_review_events"
     __table_args__ = (
         CheckConstraint(
-            "action IN ('CASE_CREATED','CASE_OPENED','CASE_CLAIMED','FIELD_OVERRIDE_ADDED','FIELD_OVERRIDE_REPLACED','RESOLVE_REQUESTED','RECOMPARISON_COMPLETED','CASE_RESOLVED','CASE_DISMISSED')",
+            "action IN ('CASE_CREATED','CASE_OPENED','CASE_CLAIMED','FIELD_OVERRIDE_ADDED','FIELD_OVERRIDE_REPLACED','RESOLVE_REQUESTED','RECOMPARISON_COMPLETED','CASE_RESOLVED','CASE_DISMISSED','AI_ASSISTANT_ASKED','AI_SUGGESTION_CREATED','AI_SUGGESTION_ACCEPTED','AI_SUGGESTION_EDITED','AI_SUGGESTION_DISMISSED')",
             name="ck_human_review_event_action",
         ),
     )
@@ -610,4 +621,49 @@ class HumanReviewEventRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="events")
+
+
+class AISuggestionRecord(Base):
+    __tablename__ = "ai_suggestions"
+    __table_args__ = (
+        CheckConstraint(
+            "mode IN ('EXPLANATION_ONLY','ACTIONABLE_SUGGESTION','INSUFFICIENT_EVIDENCE')",
+            name="ck_ai_suggestion_mode",
+        ),
+        CheckConstraint(
+            "document_side IS NULL OR document_side IN ('SI','BL')",
+            name="ck_ai_suggestion_side",
+        ),
+        CheckConstraint(
+            "field IS NULL OR field IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_ai_suggestion_field",
+        ),
+        CheckConstraint(
+            "status IN ('PENDING','ACCEPTED','EDITED_APPLIED','DISMISSED')",
+            name="ck_ai_suggestion_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    human_review_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    mode: Mapped[str] = mapped_column(String(50), nullable=False)
+    message: Mapped[str] = mapped_column(Text, nullable=False)
+    document_side: Mapped[str | None] = mapped_column(String(10), nullable=True)
+    field: Mapped[str | None] = mapped_column(String(80), nullable=True)
+    current_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    suggested_value: Mapped[str | None] = mapped_column(Text, nullable=True)
+    confidence: Mapped[float | None] = mapped_column(Float, nullable=True)
+    reason: Mapped[str | None] = mapped_column(Text, nullable=True)
+    evidence_refs: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    provider_name: Mapped[str] = mapped_column(String(80), nullable=False, default="disabled")
+    provider_model: Mapped[str] = mapped_column(String(160), nullable=False, default="none")
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="PENDING")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
+    review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="ai_suggestions")
 

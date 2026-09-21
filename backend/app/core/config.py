@@ -33,6 +33,17 @@ class Settings(BaseSettings):
     ai_max_concurrent_calls: int = Field(default=2, ge=1, le=16)
     ai_resolver_version: str = "phase6-resolver-v1"
     ai_prompt_schema_version: str = "phase6-schema-v1"
+    ai_review_enabled: bool = True
+    ai_review_provider: str = "auto"
+    ai_review_model: str = "gemini-2.5-flash"
+    ai_review_endpoint: str | None = None
+    ai_review_api_key: SecretStr | None = None
+    gemini_api_key: SecretStr | None = None
+    openai_api_key: SecretStr | None = None
+    ai_review_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
+    ai_review_confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
+    ai_review_max_tokens: int = Field(default=2048, ge=1, le=8192)
+    ai_review_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
     ocr_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
     ocr_max_calls: int = Field(default=8, ge=1, le=1000)
     ocr_max_concurrent_calls: int = Field(default=2, ge=1, le=16)
