@@ -219,16 +219,23 @@ def test_cors_allows_onrender_origins():
         assert resp_untrusted.headers.get("access-control-allow-origin") is None
 
 
-def test_cors_headers_preserved_on_500_error(client):
-    tc, mock_session = client
-    with patch("backend.app.api.router._build_sync_service", side_effect=RuntimeError("Simulated internal explosion")):
-        resp = tc.post(
-            "/api/v1/sync/initial",
-            headers={"Origin": "https://holyship.onrender.com"},
-            json={"source": "static"},
-        )
-        assert resp.status_code == 500
-        assert resp.headers.get("access-control-allow-origin") == "https://holyship.onrender.com"
-        data = resp.json()
-        assert data["detail"] == "Internal Server Error"
-        assert "Simulated internal explosion" in data["error"]
+def test_cors_headers_preserved_on_500_error():
+    from backend.app.api.deps import get_session
+    mock_session = MagicMock()
+    app.dependency_overrides[get_session] = lambda: mock_session
+    try:
+        with TestClient(app, raise_server_exceptions=False) as tc:
+            with patch("backend.app.api.router._build_sync_service", side_effect=RuntimeError("Simulated internal explosion")):
+                resp = tc.post(
+                    "/api/v1/sync/initial",
+                    headers={"Origin": "https://holyship.onrender.com"},
+                    json={"source": "static"},
+                )
+                assert resp.status_code == 500
+                assert resp.headers.get("access-control-allow-origin") == "https://holyship.onrender.com"
+                data = resp.json()
+                assert data["detail"] == "Internal Server Error"
+                assert "Simulated internal explosion" in data["error"]
+    finally:
+        app.dependency_overrides.clear()
+
