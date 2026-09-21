@@ -1,4 +1,5 @@
 from __future__ import annotations
+from sqlalchemy import select
 
 from collections import defaultdict
 from collections.abc import Iterable
@@ -9,6 +10,10 @@ from uuid import UUID
 from sqlalchemy import and_, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
+
+from backend.app.api import review_helper, review_action_helper
+from backend.app.api import analytics_helper
+from backend.app.api.product_schemas import HumanReviewAnalytics
 from backend.app.api.product_schemas import (
     EmailQueuePage,
     HumanReviewPage,
@@ -136,6 +141,7 @@ def _queue_statement(
         needs_review_value.label("needs_review"),
         review.c.status.label("review_status"),
         review.c.reason_code.label("review_reason"),
+        review.c.id.label("review_id"),
     ]
     statement = (
         select(*columns)
@@ -210,7 +216,12 @@ def _summary_from_row(row: Any) -> ProductEmailSummary:
         unresolved_count=int(row.unresolved_count or 0),
         needs_review=bool(row.needs_review),
         review_status=row.review_status,
-        review_reason=row.review_reason,
+        review_reason=getattr(row, "review_reason", None) or (
+            _latest(row.human_review_cases).reason_code if getattr(row, "human_review_cases", None) else None
+        ),
+        review_id=getattr(row, "review_id", None) or (
+            _latest(row.human_review_cases).id if getattr(row, "human_review_cases", None) else None
+        ),
     )
 
 
@@ -512,6 +523,7 @@ def _summary_from_record(
         needs_review=needs_review,
         review_status=review.status if review else None,
         review_reason=review.reason_code if review else None,
+        review_id=review.id if review else None,
     )
 
 
@@ -553,8 +565,22 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
         review=latest_review,
     )
     comparison = _comparison(comparison_record)
-    review = [
-        ProductReview(
+    from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
+    review = []
+    comparison = _comparison(comparison_record)
+    for item in review_records:
+        aff_fields = review_helper.compute_affected_fields(item, comparison)
+        priority = review_helper.compute_priority(item, aff_fields)
+        human_explanation = review_helper.compute_human_explanation(item, aff_fields)
+        age_minutes = review_helper.compute_age_minutes(item.created_at)
+
+        raw_overrides = session.scalars(select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == item.id)).all()
+        overrides = [review_action_helper._review_override(r) for r in sorted(raw_overrides, key=lambda r: (r.created_at, str(r.id)))]
+
+        raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == item.id)).all()
+        actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
+
+        review.append(ProductReview(
             id=item.id,
             email_id=item.email_id,
             document_id=item.document_id,
@@ -562,14 +588,26 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             reason_code=item.reason_code,
             reason_text=item.reason_text,
             status=item.status,
+            case_origin=item.case_origin,
+            workflow_identity=item.workflow_identity,
+            source_comparison_id=item.source_comparison_id,
+            reviewer_name=item.reviewer_name,
+            resolution=item.resolution,
+            notes=item.notes,
             confidence=item.confidence,
-            evidence=_evidence_items(item.evidence, field=item.field_name),
+            evidence=item.evidence.get('evidence', []) if item.evidence else [],
             comparison=comparison,
+            priority=priority,
+            human_explanation=human_explanation,
+            affected_fields=aff_fields,
+            age_minutes=age_minutes,
+            overrides=overrides,
+            actions=actions,
             resolutions=[_resolution(item_resolution) for item_resolution in resolutions if item_resolution.field_name == item.field_name] if item.field_name else [],
             created_at=item.created_at,
-        )
-        for item in review_records
-    ]
+            updated_at=item.updated_at,
+            resolved_at=item.resolved_at,
+        ))
     return ProductEmailDetail(
         email=summary,
         body=record.body,
@@ -694,23 +732,48 @@ def list_human_reviews(
             if email
             else None
         )
-        items.append(
-            ProductReview(
-                id=row.id,
-                email_id=row.email_id,
-                email=email_summary,
-                document_id=row.document_id,
-                field=row.field_name,
-                reason_code=row.reason_code,
-                reason_text=row.reason_text,
-                status=row.status,
-                confidence=row.confidence,
-                evidence=_evidence_items(row.evidence, field=row.field_name),
-                comparison=_comparison(email_comparison_record),
-                resolutions=resolutions_by_email.get(str(row.email_id), []),
-                created_at=row.created_at,
-            )
-        )
+        comp = row.evidence.get('comparison') if row.evidence else None
+        aff_fields = review_helper.compute_affected_fields(row, _comparison(email_comparison_record))
+        priority = review_helper.compute_priority(row, aff_fields)
+        human_explanation = review_helper.compute_human_explanation(row, aff_fields)
+        age_minutes = review_helper.compute_age_minutes(row.created_at)
+
+        from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
+        raw_overrides = session.scalars(select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == row.id)).all()
+        overrides = [review_action_helper._review_override(r) for r in sorted(raw_overrides, key=lambda r: (r.created_at, str(r.id)))]
+        raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == row.id)).all()
+        actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
+
+        items.append(ProductReview(
+            id=row.id,
+            email_id=row.email_id,
+            email=email_summary,
+            document_id=row.document_id,
+            field=row.field_name,
+            reason_code=row.reason_code,
+            reason_text=row.reason_text,
+            status=row.status,
+            case_origin=row.case_origin,
+            workflow_identity=row.workflow_identity,
+            source_comparison_id=row.source_comparison_id,
+            reviewer_name=row.reviewer_name,
+            resolution=row.resolution,
+            notes=row.notes,
+            confidence=row.confidence,
+            evidence=row.evidence.get('evidence', []) if row.evidence else [],
+            comparison=comp,
+            priority=priority,
+            human_explanation=human_explanation,
+            affected_fields=aff_fields,
+            age_minutes=age_minutes,
+            overrides=overrides,
+            actions=actions,
+            resolutions=resolutions_by_email.get(str(row.email_id), []),
+            created_at=row.created_at,
+            updated_at=row.updated_at,
+            resolved_at=row.resolved_at,
+        ))
+    # Add python side priority sorting if needed
     return HumanReviewPage(items=items, total=total, skip=skip, limit=limit)
 
 
@@ -719,18 +782,20 @@ def get_human_review(session: Session, review_id: UUID) -> ProductReview | None:
     if row is None:
         return None
     detail = get_email_detail(session, row.email_id)
-    return ProductReview(
-        id=row.id,
-        email_id=row.email_id,
-        email=detail.email if detail else None,
-        document_id=row.document_id,
-        field=row.field_name,
-        reason_code=row.reason_code,
-        reason_text=row.reason_text,
-        status=row.status,
-        confidence=row.confidence,
-        evidence=_evidence_items(row.evidence, field=row.field_name),
-        comparison=detail.comparison if detail else None,
-        resolutions=detail.resolutions if detail else [],
-        created_at=row.created_at,
-    )
+    if not detail:
+        return None
+    for r in detail.review:
+        if r.id == review_id:
+            r.email = detail.email
+            r.documents = detail.documents
+            r.body = detail.body
+            return r
+    return None
+
+def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
+    from backend.app.api import analytics_helper
+    from backend.app.storage.models import HumanReviewCaseRecord, HumanReviewFieldOverrideRecord
+    cases = session.scalars(select(HumanReviewCaseRecord)).all()
+    overrides = session.scalars(select(HumanReviewFieldOverrideRecord)).all()
+
+    return analytics_helper.compute_analytics(cases, overrides)
