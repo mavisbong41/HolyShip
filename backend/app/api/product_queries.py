@@ -304,13 +304,23 @@ def get_product_summary(session: Session) -> ProductSummary:
         select(EmailMessageRecord.processing_status, func.count(EmailMessageRecord.id))
         .group_by(EmailMessageRecord.processing_status)
     ).all()
+    status_counts = {status: int(count) for status, count in status_rows}
+    processing_count = sum(
+        count for status, count in status_counts.items()
+        if status not in {"COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"}
+    )
     return ProductSummary(
         total_emails=int(row.total or 0),
-        status_counts={status: int(count) for status, count in status_rows},
+        status_counts=status_counts,
         needs_review_count=int(row.needs_review or 0),
         comparison_ready_count=int(row.ready or 0),
         mismatch_count=int(row.mismatch or 0),
         unresolved_count=int(row.unresolved or 0),
+        completed_count=status_counts.get("COMPLETED", 0),
+        awaiting_documents_count=status_counts.get("AWAITING_DOCUMENTS", 0),
+        human_review_open_count=status_counts.get("OPEN", 0),
+        failed_count=status_counts.get("FAILED", 0),
+        processing_count=processing_count,
     )
 
 
