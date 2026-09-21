@@ -849,7 +849,8 @@ def list_human_reviews(
                 str(item.id),
             )
         )
-    elif sort == "oldest":
+    elif sort in {"age", "oldest"}:
+        # Age descending is equivalent to created_at ascending and avoids wall-clock rounding.
         items.sort(key=lambda item: (item.created_at, str(item.id)))
     else:
         # The default and explicit newest ordering are deterministic.
