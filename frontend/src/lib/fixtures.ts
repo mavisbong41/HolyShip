@@ -219,6 +219,7 @@ export const demoHumanReview: HumanReviewPage = {
       reason_code: "COMPARISON_UNRESOLVED",
       reason_text: "Container count requires review.",
       status: "OPEN",
+      case_origin: "ACTIVE",
       confidence: 0.72,
       evidence: [],
       comparison: demoDetail.comparison,
