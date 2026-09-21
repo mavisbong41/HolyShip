@@ -192,7 +192,7 @@ class SyncService:
     # Public API
     # ------------------------------------------------------------------
 
-    def sync(self, source: EmailSource, *, force: bool = False) -> SyncReport:
+    def sync(self, source: EmailSource) -> SyncReport:
         """
         Pull all emails from *source*, persist new/changed, classify them.
         Returns a SyncReport summarising what happened.
@@ -202,9 +202,9 @@ class SyncService:
         started = time.perf_counter()
 
         if self.max_workers > 1 and self.session_factory is not None:
-            self._sync_parallel(source, report, force=force)
+            self._sync_parallel(source, report)
         else:
-            self._sync_sequential(source, report, force=force)
+            self._sync_sequential(source, report)
 
         report.wall_seconds = time.perf_counter() - started
         if report.wall_seconds > 0:
@@ -234,7 +234,7 @@ class SyncService:
         report.escalated_cases = sum(outcome.escalated_cases for outcome in report.outcomes)
         return report
 
-    def _sync_sequential(self, source: EmailSource, report: SyncReport, *, force: bool = False) -> None:
+    def _sync_sequential(self, source: EmailSource, report: SyncReport) -> None:
 
         iterator = iter(source.iter_messages())
         while True:
@@ -257,14 +257,14 @@ class SyncService:
                 break
 
             report.total += 1
-            outcome = self._process_one(message, source, force=force)
+            outcome = self._process_one(message, source)
             # Each materialized email has its own durable boundary. This
             # prevents a later _process_one() rollback from undoing prior
             # successful work in the shared session.
             self.session.commit()
             self._record_outcome(report, outcome)
 
-    def _sync_parallel(self, source: EmailSource, report: SyncReport, *, force: bool = False) -> None:
+    def _sync_parallel(self, source: EmailSource, report: SyncReport) -> None:
         """Process a bounded in-flight window using one DB session per worker."""
 
         assert self.session_factory is not None
@@ -292,7 +292,7 @@ class SyncService:
                 )
                 return
             report.total += 1
-            future = pool.submit(self._process_parallel_one, message, source, force=force)
+            future = pool.submit(self._process_parallel_one, message, source)
             pending[future] = message
 
         with ThreadPoolExecutor(
@@ -324,8 +324,6 @@ class SyncService:
         self,
         message: EmailMessage,
         source: EmailSource,
-        *,
-        force: bool = False,
     ) -> EmailSyncOutcome:
         assert self.session_factory is not None
         with self.session_factory() as session:
@@ -344,7 +342,7 @@ class SyncService:
                 ocr_shared_state=self.ocr_shared_state,
                 ocr_tesseract_cmd=self.ocr_tesseract_cmd,
             )
-            return worker.sync_one(message, source, force=force)
+            return worker.sync_one(message, source)
 
     @staticmethod
     def _record_outcome(report: SyncReport, outcome: EmailSyncOutcome) -> None:
@@ -508,12 +506,16 @@ class SyncService:
         cache_misses = 0
         reader_calls = extractor_calls = ocr_calls = vision_calls = 0
         resolver_delta: dict[str, int | float] = {}
+        current_review_reason: str | None = None
         if result.category != "document_comparison":
             transition(self.session, record, "COMPLETED", "NON_COMPARISON_COMPLETE")
+            self._active_review_service.reconcile_email(record)
         elif result.comparison_readiness == "AWAITING_DOCUMENTS":
             transition(self.session, record, "AWAITING_DOCUMENTS", "AWAITING_DOCUMENTS")
+            self._active_review_service.reconcile_email(record)
         elif result.comparison_readiness == "UNRESOLVED":
             transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
+            current_review_reason = "READINESS_UNRESOLVED"
             self._active_review_service.ensure_actionable_case(
                 record,
                 reason_code="READINESS_UNRESOLVED",
@@ -533,6 +535,7 @@ class SyncService:
                 job.status = "FAILED"
                 job.error_message = materialization.reason_code
                 self.session.flush()
+                self._active_review_service.reconcile_email(record)
                 return EmailSyncOutcome(
                     external_message_id=ext_id,
                     status="FAILED",
@@ -561,6 +564,9 @@ class SyncService:
                         "comparison_id": str(source_comparison.id) if source_comparison else None,
                     },
                 )
+                current_review_reason = materialization.reason_code
+            else:
+                self._active_review_service.reconcile_email(record)
 
         # ---- HUMAN REVIEW --------------------------------------------- #
         if result.resolved_at_stage == HUMAN_REVIEW:
@@ -574,6 +580,8 @@ class SyncService:
             )
             job.status = "HUMAN_REVIEW_REQUIRED"
             self.session.flush()
+            if current_review_reason is None:
+                self._active_review_service.reconcile_email(record)
 
             logger.info(
                 "Email %s → HUMAN_REVIEW_REQUIRED (reason: %s)",
@@ -588,6 +596,8 @@ class SyncService:
         # ---- CLASSIFIED ----------------------------------------------- #
         if job.status not in {"BLOCKED", "FAILED"}:
             job.status = "CLASSIFIED"
+        if current_review_reason is None and job.status != "FAILED":
+            self._active_review_service.reconcile_email(record)
         self.session.flush()
 
         logger.info(

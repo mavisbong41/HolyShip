@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, func, or_, select
+from sqlalchemy import and_, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 
@@ -35,6 +35,7 @@ from backend.app.api.product_schemas import (
     ProductTimelineEvent,
     ProductValue,
 )
+from backend.app.review.service import ACTIVE_REVIEW_STATUSES, ACTIONABLE_BLOCK_REASONS
 from backend.app.storage.models import (
     AIResolutionRecord,
     AttachmentRecord,
@@ -286,11 +287,28 @@ def list_email_queue(
 def get_product_summary(session: Session) -> ProductSummary:
     classification, comparison, review = _queue_sources()
     needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
+    latest_comparison_id = (
+        select(ComparisonResultRecord.id)
+        .where(ComparisonResultRecord.email_id == HumanReviewCaseRecord.email_id)
+        .order_by(ComparisonResultRecord.created_at.desc(), ComparisonResultRecord.id.desc())
+        .limit(1)
+        .correlate(HumanReviewCaseRecord)
+        .scalar_subquery()
+    )
     active_review_count = (
-        select(func.count(HumanReviewCaseRecord.id))
+        select(func.count(func.distinct(HumanReviewCaseRecord.email_id)))
+        .join(EmailMessageRecord, EmailMessageRecord.id == HumanReviewCaseRecord.email_id)
         .where(
             HumanReviewCaseRecord.case_origin == "ACTIVE",
             HumanReviewCaseRecord.status.in_(["OPEN", "IN_REVIEW"]),
+            EmailMessageRecord.processing_status == "BLOCKED",
+            HumanReviewCaseRecord.reason_code.in_(ACTIONABLE_BLOCK_REASONS),
+            ~exists(
+                select(1).where(
+                    ComparisonResultRecord.id == latest_comparison_id,
+                    ComparisonResultRecord.comparison_state == "COMPLETED",
+                )
+            ),
         )
         .scalar_subquery()
     )
@@ -756,6 +774,7 @@ def list_human_reviews(
     validate_page(skip=skip, limit=limit)
     statement = (
         select(HumanReviewCaseRecord)
+        .join(EmailMessageRecord, EmailMessageRecord.id == HumanReviewCaseRecord.email_id)
         .options(
             selectinload(HumanReviewCaseRecord.email).selectinload(EmailMessageRecord.attachments),
             selectinload(HumanReviewCaseRecord.email).selectinload(EmailMessageRecord.classification_results),
@@ -781,10 +800,29 @@ def list_human_reviews(
     if reviewer:
         statement = statement.where(HumanReviewCaseRecord.reviewer_name.ilike(f"%{reviewer}%"))
     if active_only:
-        statement = statement.where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+        latest_case_comparison_id = (
+            select(ComparisonResultRecord.id)
+            .where(ComparisonResultRecord.email_id == HumanReviewCaseRecord.email_id)
+            .order_by(ComparisonResultRecord.created_at.desc(), ComparisonResultRecord.id.desc())
+            .limit(1)
+            .correlate(HumanReviewCaseRecord)
+            .scalar_subquery()
+        )
+        statement = statement.where(
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+            HumanReviewCaseRecord.status.in_(ACTIVE_REVIEW_STATUSES),
+            HumanReviewCaseRecord.reason_code.in_(ACTIONABLE_BLOCK_REASONS),
+            EmailMessageRecord.processing_status == "BLOCKED",
+            ~exists(
+                select(1).where(
+                    ComparisonResultRecord.id == latest_case_comparison_id,
+                    ComparisonResultRecord.comparison_state == "COMPLETED",
+                )
+            ),
+        )
     if search:
         pattern = f"%{search}%"
-        statement = statement.join(HumanReviewCaseRecord.email).where(
+        statement = statement.where(
             or_(
                 EmailMessageRecord.subject.ilike(pattern),
                 EmailMessageRecord.sender.ilike(pattern),

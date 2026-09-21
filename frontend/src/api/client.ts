@@ -172,7 +172,7 @@ export async function runInitialSync(): Promise<InitialSyncResult> {
   return request<InitialSyncResult>("/sync/initial", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ source: "static" }),
+    body: JSON.stringify({ source: "static", force: true }),
   });
 }
 
