@@ -90,7 +90,7 @@ def _queue_sources() -> tuple[Any, Any, Any]:
 def _needs_review_expr(email: Any, comparison: Any, review: Any) -> Any:
     email_status = email.c.processing_status if hasattr(email, "c") else email.processing_status
     return or_(
-        review.c.case_origin == "ACTIVE",
+        and_(review.c.case_origin == "ACTIVE", review.c.status.in_(["OPEN", "IN_REVIEW"])),
         email_status == "BLOCKED",
         comparison.c.comparison_state == "BLOCKED",
     )
