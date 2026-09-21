@@ -1,6 +1,4 @@
 from __future__ import annotations
-from sqlalchemy import select
-
 from collections import defaultdict
 from collections.abc import Iterable
 from datetime import datetime
@@ -282,6 +280,14 @@ def list_email_queue(
 def get_product_summary(session: Session) -> ProductSummary:
     classification, comparison, review = _queue_sources()
     needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
+    active_review_count = (
+        select(func.count(HumanReviewCaseRecord.id))
+        .where(
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+            HumanReviewCaseRecord.status.in_(["OPEN", "IN_REVIEW"]),
+        )
+        .scalar_subquery()
+    )
     statement = (
         select(
             func.count(EmailMessageRecord.id).label("total"),
@@ -295,6 +301,7 @@ def get_product_summary(session: Session) -> ProductSummary:
                 EmailMessageRecord.processing_status == "COMPLETED"
             ).label("completed"),
             func.count(EmailMessageRecord.id).filter(needs_review_value).label("needs_review"),
+            active_review_count.label("active_review_count"),
             func.count(EmailMessageRecord.id).filter(
                 classification.c.comparison_readiness == "READY_FOR_COMPARISON"
             ).label("ready"),
@@ -316,12 +323,7 @@ def get_product_summary(session: Session) -> ProductSummary:
         .group_by(EmailMessageRecord.processing_status)
     ).all()
     status_counts = {status: int(count) for status, count in status_rows}
-    active_open_count = int(session.scalar(
-        select(func.count(HumanReviewCaseRecord.id)).where(
-            HumanReviewCaseRecord.case_origin == "ACTIVE",
-            HumanReviewCaseRecord.status == "OPEN",
-        )
-    ) or 0)
+    active_open_count = int(row.active_review_count or 0)
     processing_count = sum(
         count for status, count in status_counts.items()
         if status not in {"COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"}
