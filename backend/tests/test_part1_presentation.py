@@ -163,3 +163,15 @@ def test_part1_metric_contract_documents_units_and_populations():
     assert "ACTIVE" in semantics or "active" in semantics
     assert "legacy" in semantics.lower()
     assert "mismatch" in semantics.lower()
+
+
+def test_reconciliation_uses_email_level_latest_comparison_semantics():
+    from pathlib import Path
+
+    source = Path("backend/app/api/analytics_helper.py").read_text(encoding="utf-8")
+    reconciliation = source.split("def get_human_review_reconciliation", 1)[1]
+    assert "partition_by=ComparisonResultRecord.email_id" in reconciliation
+    assert "latest_comparison.c.rank == 1" in reconciliation
+    assert "latest_comparison.c.mismatch_found.is_(True)" in reconciliation
+    assert "json_array_length(latest_comparison.c.unresolved_fields)" in reconciliation
+    assert "jsonb_array_length" not in reconciliation
