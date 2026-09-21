@@ -571,7 +571,8 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
     for item in review_records:
         aff_fields = review_helper.compute_affected_fields(item, comparison)
         priority = review_helper.compute_priority(item, aff_fields)
-        human_explanation = review_helper.compute_human_explanation(item, aff_fields)
+        presentation = review_helper.compute_review_presentation(item, aff_fields)
+        human_explanation = presentation.explanation
         age_minutes = review_helper.compute_age_minutes(item.created_at)
 
         raw_overrides = session.scalars(select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == item.id)).all()
@@ -600,6 +601,9 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             priority=priority,
             human_explanation=human_explanation,
             affected_fields=aff_fields,
+            affected_area=presentation.affected_area,
+            suggested_action=presentation.suggested_action,
+            semantic_style=presentation.semantic_style,
             age_minutes=age_minutes,
             overrides=overrides,
             actions=actions,
@@ -753,7 +757,8 @@ def list_human_reviews(
         comp = row.evidence.get('comparison') if row.evidence else None
         aff_fields = review_helper.compute_affected_fields(row, _comparison(email_comparison_record))
         priority = review_helper.compute_priority(row, aff_fields)
-        human_explanation = review_helper.compute_human_explanation(row, aff_fields)
+        presentation = review_helper.compute_review_presentation(row, aff_fields)
+        human_explanation = presentation.explanation
         age_minutes = review_helper.compute_age_minutes(row.created_at)
 
         from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
