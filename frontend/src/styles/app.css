@@ -4654,9 +4654,13 @@ button:disabled {
    Responsive Breakpoints: Tablets & Mobile Landscape (<= 900px)
    ========================================================================== */
 @media (max-width: 900px) {
-  html, body {
+  html, body, #root {
+    width: 100%;
     max-width: 100vw;
     overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
   }
 
   .app-shell {
@@ -5044,13 +5048,36 @@ button:disabled {
    Responsive Breakpoints: Mobile Phones (<= 640px)
    ========================================================================== */
 @media (max-width: 640px) {
+  html, body, #root {
+    width: 100%;
+    max-width: 100vw;
+    overflow-x: hidden;
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
   body {
     font-size: 13px;
   }
 
   .app-shell {
-    padding: 6px 8px;
-    gap: 8px;
+    display: flex !important;
+    flex-direction: column !important;
+    width: 100% !important;
+    max-width: 100vw !important;
+    padding: 8px 6px !important;
+    margin: 0 !important;
+    gap: 8px !important;
+    box-sizing: border-box !important;
+    overflow-x: hidden !important;
+  }
+
+  .connection {
+    height: 28px !important;
+    padding: 0 8px !important;
+    font-size: 11px !important;
+    max-width: 100% !important;
   }
 
   .metric-grid,

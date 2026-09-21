@@ -489,62 +489,67 @@ export function TaskPane({
   }, [contextProvider]);
 
 
-  // In New Outlook's WebView2, window.location.reload() may be intercepted
-  // and served from memory without re-initialising Office.js.
-  // Navigate to a timestamped URL instead to force a true navigation event
-  // that causes Office.js to re-bind to the current reading-pane email.
-  const hardNavigate = useCallback(() => {
-    const base = window.location.origin + window.location.pathname;
-    window.location.href = base + "?v=" + Date.now();
-  }, []);
-
-  const refresh = hardNavigate;
-
+  // Refresh = re-resolve with whatever mailbox.item is now.
+  const refresh = useCallback(() => {
+    void resolve();
+  }, [resolve]);
 
   useEffect(() => {
+    // Run initial resolve
     void resolve();
 
-    let mounted = true;
-    let lastContextKey: string | null = null;
+    // --- Email change detection ---
+    // Key insight: mailbox.item.itemId updates synchronously when the user
+    // selects a different email in the reading pane.  Read it directly here
+    // rather than going through the async getContext() wrapper, which previously
+    // used getSelectedItemsAsync and returned stale data.
+    let lastItemId: string | null = null;
 
-    const checkForContextChange = async () => {
+    const getDirectItemId = (): string | null => {
       try {
-        const context = await contextProvider.getContext();
-        if (!mounted) return;
-
-        const currentKey = contextIdentityKey(context);
-        if (!currentKey) return;
-
-        if (lastContextKey === null) {
-          // First read: record current key without triggering another resolve
-          lastContextKey = currentKey;
-          return;
-        }
-
-        if (currentKey !== lastContextKey) {
-          // Email changed — force a hard navigation so Office.js re-binds
-          const base = window.location.origin + window.location.pathname;
-          window.location.href = base + "?v=" + Date.now();
-        }
+        const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
+        const item = mailbox?.item;
+        if (!item) return null;
+        // itemId is the primary stable identifier; fall back to subject+sender
+        return (
+          item.itemId ||
+          [item.subject, (item as any).from?.emailAddress].filter(Boolean).join("|") ||
+          null
+        );
       } catch {
-        // ignore transient failures
+        return null;
       }
     };
 
-    void checkForContextChange();
+    const checkItemChanged = () => {
+      const currentId = getDirectItemId();
+      if (!currentId) return;
 
-    // 1. Listen for Office.js ItemChanged events when user switches emails in Outlook.
+      if (lastItemId === null) {
+        lastItemId = currentId;
+        return;
+      }
+
+      if (currentId !== lastItemId) {
+        lastItemId = currentId;
+        // Clear existing state so the UI shows "loading" for the new email
+        setState({ type: "loading" });
+        void resolve();
+      }
+    };
+
+    // Seed lastItemId without triggering a resolve
+    lastItemId = getDirectItemId();
+
+    // 1. ItemChanged event (fires when add-in is pinned or supported by host)
     const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
     let itemChangedRegistered = false;
 
-    // When the user clicks a different email, force a hard navigation.
-    // Using href assignment (not reload()) bypasses WebView2 in-memory page caching
-    // and causes Office.js to re-initialise with the current reading-pane email.
     const onItemChanged = () => {
-      const base = window.location.origin + window.location.pathname;
-      window.location.href = base + "?v=" + Date.now();
+      // Give Office.js a moment to hydrate mailbox.item
+      setTimeout(checkItemChanged, 100);
+      setTimeout(checkItemChanged, 400);
     };
-
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
       try {
@@ -558,14 +563,11 @@ export function TaskPane({
       }
     }
 
-    // 2. Polling fallback: if ItemChanged doesn't fire (e.g. taskpane not pinned),
-    //    detect the change via getSelectedItemsAsync / mailbox.item and reload.
-    const interval = setInterval(() => {
-      void checkForContextChange();
-    }, 800);
+    // 2. Polling fallback — 700ms direct synchronous itemId check.
+    //    Works even when ItemChanged doesn't fire (no pinning / old account).
+    const interval = setInterval(checkItemChanged, 700);
 
     return () => {
-      mounted = false;
       clearInterval(interval);
       if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
         try {
