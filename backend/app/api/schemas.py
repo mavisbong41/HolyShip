@@ -129,6 +129,7 @@ class HumanReviewOut(BaseModel):
 class SyncRequest(BaseModel):
     source: str = "static"          # "static" | "http"
     organizer_http_url: Optional[str] = None
+    force: bool = False
 
 
 class SyncReportOut(BaseModel):

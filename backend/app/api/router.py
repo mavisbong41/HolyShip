@@ -209,7 +209,7 @@ def sync(
     else:
         email_source = StaticBundleSource(settings.resolved_bundle_path)
 
-    report = svc.sync(email_source)
+    report = svc.sync(email_source, force=body.force)
     return SyncReportOut(
         total=report.total,
         ingested=report.ingested,

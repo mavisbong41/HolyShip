@@ -192,7 +192,7 @@ class SyncService:
     # Public API
     # ------------------------------------------------------------------
 
-    def sync(self, source: EmailSource) -> SyncReport:
+    def sync(self, source: EmailSource, *, force: bool = False) -> SyncReport:
         """
         Pull all emails from *source*, persist new/changed, classify them.
         Returns a SyncReport summarising what happened.
@@ -202,9 +202,9 @@ class SyncService:
         started = time.perf_counter()
 
         if self.max_workers > 1 and self.session_factory is not None:
-            self._sync_parallel(source, report)
+            self._sync_parallel(source, report, force=force)
         else:
-            self._sync_sequential(source, report)
+            self._sync_sequential(source, report, force=force)
 
         report.wall_seconds = time.perf_counter() - started
         if report.wall_seconds > 0:
@@ -234,7 +234,7 @@ class SyncService:
         report.escalated_cases = sum(outcome.escalated_cases for outcome in report.outcomes)
         return report
 
-    def _sync_sequential(self, source: EmailSource, report: SyncReport) -> None:
+    def _sync_sequential(self, source: EmailSource, report: SyncReport, *, force: bool = False) -> None:
 
         iterator = iter(source.iter_messages())
         while True:
@@ -257,14 +257,14 @@ class SyncService:
                 break
 
             report.total += 1
-            outcome = self._process_one(message, source)
+            outcome = self._process_one(message, source, force=force)
             # Each materialized email has its own durable boundary. This
             # prevents a later _process_one() rollback from undoing prior
             # successful work in the shared session.
             self.session.commit()
             self._record_outcome(report, outcome)
 
-    def _sync_parallel(self, source: EmailSource, report: SyncReport) -> None:
+    def _sync_parallel(self, source: EmailSource, report: SyncReport, *, force: bool = False) -> None:
         """Process a bounded in-flight window using one DB session per worker."""
 
         assert self.session_factory is not None
@@ -292,7 +292,7 @@ class SyncService:
                 )
                 return
             report.total += 1
-            future = pool.submit(self._process_parallel_one, message, source)
+            future = pool.submit(self._process_parallel_one, message, source, force=force)
             pending[future] = message
 
         with ThreadPoolExecutor(
@@ -324,6 +324,8 @@ class SyncService:
         self,
         message: EmailMessage,
         source: EmailSource,
+        *,
+        force: bool = False,
     ) -> EmailSyncOutcome:
         assert self.session_factory is not None
         with self.session_factory() as session:
@@ -342,7 +344,7 @@ class SyncService:
                 ocr_shared_state=self.ocr_shared_state,
                 ocr_tesseract_cmd=self.ocr_tesseract_cmd,
             )
-            return worker.sync_one(message, source)
+            return worker.sync_one(message, source, force=force)
 
     @staticmethod
     def _record_outcome(report: SyncReport, outcome: EmailSyncOutcome) -> None:
