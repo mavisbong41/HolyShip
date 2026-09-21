@@ -1282,9 +1282,10 @@ function HumanReviewPageView({
                   <div>
                     <h2>{review.email?.subject ?? "Unknown subject"}</h2>
                     <p>{review.email?.sender || "Unknown sender"}</p>
-                    <strong className="review-reason">{reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code)}</strong>
+                    <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
                     <p className="human-explanation">{review.human_explanation}</p>
-                    <p className="affected-fields-summary">Affected: {review.affected_fields?.join(", ") || "None"}</p>
+                    <p className="affected-fields-summary">Affected area: {review.affected_area || (review.affected_fields?.length ? review.affected_fields.join(", ") : "Review case")}</p>
+                    <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
                     <p className="age-summary">Age: {review.age_minutes} mins</p>
                   </div>
                   <button type="button" onClick={() => onSelect(review.id)}>Open Review</button>
@@ -1295,7 +1296,7 @@ function HumanReviewPageView({
                   <StatusBadge value={review.email?.processing_status} />
                   {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
                   <span className="subtle">{review.reviewer_name || "Unassigned"}</span>
-                  <span className="subtle">{review.comparison?.unresolved_fields.length ?? 0} affected field(s)</span>
+                  <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : review.affected_fields.length + " affected field(s)"}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
                 </div>
               </article>
@@ -1315,7 +1316,7 @@ function HumanReviewPageView({
             </div>
             <div className="review-callout">
               <AlertTriangle size={18} aria-hidden="true" />
-              <div><strong>{reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code)}</strong><p>{selected.reason_text}</p><small className="technical-code">{selected.reason_code}</small></div>
+              <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
             </div>
             <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
             <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
