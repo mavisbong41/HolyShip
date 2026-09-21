@@ -166,15 +166,6 @@ export interface EmailQueuePage {
   total: number;
   skip: number;
   limit: number;
-  review_status: string | null;
-  review_reason: string | null;
-}
-
-export interface EmailQueuePage {
-  items: ProductEmailSummary[];
-  total: number;
-  skip: number;
-  limit: number;
 }
 
 export interface ProductSummary {
@@ -189,6 +180,11 @@ export interface ProductSummary {
   human_review_open_count?: number;
   failed_count?: number;
   processing_count?: number;
+}
+
+export interface ProductResolution {
+  attempted: boolean;
+  purpose: string;
   field: string;
   accepted: boolean;
   confidence: number;

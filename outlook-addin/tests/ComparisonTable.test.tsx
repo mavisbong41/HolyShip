@@ -35,8 +35,8 @@ describe("ComparisonTable", () => {
 
   it("shows SI and BL column headers", () => {
     render(<ComparisonTable comparison={fixtures.cleanMatch.comparison!} />);
-    expect(screen.getByText("SI")).toBeInTheDocument();
-    expect(screen.getByText("Draft BL")).toBeInTheDocument();
+    expect(screen.getAllByText("SI")).toHaveLength(7);
+    expect(screen.getAllByText("Draft BL")).toHaveLength(7);
   });
 
   it("displays SI and BL values from backend, does not compare locally", () => {
@@ -53,16 +53,16 @@ describe("ComparisonTable", () => {
     expect(dashes.length).toBeGreaterThan(0);
   });
 
-  it("has accessible table with aria-label", () => {
+  it("has an accessible compact field list", () => {
     render(<ComparisonTable comparison={fixtures.cleanMatch.comparison!} />);
     expect(
-      screen.getByRole("table", { name: /SI vs BL field comparison/i }),
+      screen.getByRole("list", { name: /SI vs BL field comparison/i }),
     ).toBeInTheDocument();
+    expect(screen.getAllByRole("listitem")).toHaveLength(7);
   });
 
-  it("has scope='col' on all column headers", () => {
+  it("does not squeeze the narrow task pane into a wide table", () => {
     const { container } = render(<ComparisonTable comparison={fixtures.cleanMatch.comparison!} />);
-    const ths = container.querySelectorAll("th[scope='col']");
-    expect(ths.length).toBe(4); // Field, SI, Draft BL, Status
+    expect(container.querySelector("table")).not.toBeInTheDocument();
   });
 });

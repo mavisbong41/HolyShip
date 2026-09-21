@@ -1,5 +1,10 @@
 # HolyShip Product UI Audit
 
+> Historical audit note: this report captured the earlier Dashboard-only pass.
+> The project owner expanded scope on 2026-09-21. Current Dashboard, Outlook
+> Add-in, and active Human Review evidence is authoritative in
+> `reports/ui_human_review_stabilization.md`.
+
 Date: 2026-09-21
 
 Scope for this pass: Dashboard only. Outlook Add-in work is intentionally deferred until the user asks to continue.

@@ -24,6 +24,10 @@
   --color-warn-bg: #fff4d8;
   --color-danger: #ae3326;
   --color-danger-bg: #fdeceb;
+  --color-info: #216a8a;
+  --color-info-bg: #e8f3f8;
+  --color-review: #8a4b16;
+  --color-review-bg: #fff1df;
 
   /* Shadows */
   --shadow-soft: 0 4px 20px rgba(28, 28, 28, 0.08);

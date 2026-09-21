@@ -33,8 +33,8 @@ describe("categoryLabels", () => {
 });
 
 describe("statusLabels", () => {
-  it("maps BLOCKED to Needs Attention (not BLOCKED)", () => {
-    expect(statusLabels.BLOCKED).toBe("Needs Attention");
+  it("maps BLOCKED to the shared Needs Review label", () => {
+    expect(statusLabels.BLOCKED).toBe("Needs Review");
   });
   it("maps AWAITING_DOCUMENTS correctly", () => {
     expect(statusLabels.AWAITING_DOCUMENTS).toBe("Awaiting Documents");

@@ -1,5 +1,10 @@
 # HolyShip — Phase F Final Adversarial Audit
 
+> Historical Phase F audit: its no-frontend/read-only-review scope was explicitly
+> superseded by the project owner on 2026-09-21. Current evidence is recorded in
+> `docs/scope_decisions/2026-09-21-ui-human-review.md` and
+> `reports/ui_human_review_stabilization.md`.
+
 ## Executive status
 
 - Branch: `phaseF`

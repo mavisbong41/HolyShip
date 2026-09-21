@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { render, screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskPane } from "../src/components/TaskPane";
 import { FakeCurrentMailContextProvider } from "../src/office/FakeContextProvider";
@@ -35,6 +35,9 @@ describe("TaskPane", () => {
   });
 
   it("shows loading state initially", () => {
+    MockAdapter.mockImplementation(
+      () => ({ resolve: vi.fn(() => new Promise(() => undefined)) }) as unknown as InstanceType<typeof IdentityAdapter>,
+    );
     render(<TaskPane contextProvider={provider} />);
     expect(screen.getByRole("status")).toBeInTheDocument();
     expect(screen.getByText(/checking holyship/i)).toBeInTheDocument();
@@ -78,7 +81,7 @@ describe("TaskPane", () => {
     setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      expect(screen.getByRole("table", { name: /SI vs BL field comparison/i })).toBeInTheDocument();
+      expect(screen.getByRole("list", { name: /SI vs BL field comparison/i })).toBeInTheDocument();
     });
     expect(screen.getByText("Shipper")).toBeInTheDocument();
     expect(screen.getByText("Consignee")).toBeInTheDocument();
@@ -93,7 +96,8 @@ describe("TaskPane", () => {
     setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      const matches = screen.getAllByText("Match");
+      const comparison = screen.getByRole("list", { name: /SI vs BL field comparison/i });
+      const matches = within(comparison).getAllByText("Match");
       expect(matches.length).toBe(7);
     });
   });
@@ -113,20 +117,22 @@ describe("TaskPane", () => {
     setupAdapter({ detail: fixtures.awaitingDocuments, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      expect(screen.getByText(/waiting for documents/i)).toBeInTheDocument();
+      expect(screen.getByRole("heading", { name: /awaiting documents/i })).toBeInTheDocument();
     });
-    expect(screen.queryByRole("table", { name: /SI vs BL/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /SI vs BL/i })).not.toBeInTheDocument();
   });
 
   it("renders blocked/needs attention state", async () => {
     setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
-      // The state card h2 should say "Needs attention"
-      const heading = screen.getByRole("heading", { name: /needs attention/i });
+      const heading = screen.getByRole("heading", { name: /needs review/i });
       expect(heading).toBeInTheDocument();
     });
-    expect(screen.getByText(/COMPARISON UNRESOLVED/i)).toBeInTheDocument();
+    expect(screen.getAllByText(/comparison needs review/i).length).toBeGreaterThan(0);
+    expect(screen.getByText(/Jordan Lee/i)).toBeInTheDocument();
+    const reviewLink = screen.getByRole("link", { name: /open human review/i });
+    expect(reviewLink.getAttribute("href")).toContain("review=review-001");
   });
 
   it("renders failed state", async () => {
@@ -153,7 +159,7 @@ describe("TaskPane", () => {
       // The h2 heading in the state card shows "Completed"
       expect(screen.getByRole("heading", { name: /^completed$/i })).toBeInTheDocument();
     });
-    expect(screen.queryByRole("table", { name: /SI vs BL/i })).not.toBeInTheDocument();
+    expect(screen.queryByRole("list", { name: /SI vs BL/i })).not.toBeInTheDocument();
   });
 
   it("shows 'Open in Dashboard' link when case is resolved", async () => {

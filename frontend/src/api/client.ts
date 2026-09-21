@@ -9,6 +9,13 @@ import type {
   QueueFilters,
   ReviewQueueFilters,
   InitialSyncResult,
+} from "./types";
+
+const defaultBaseUrl = "http://localhost:8000/api/v1";
+
+export class ApiError extends Error {
+  status: number;
+
   constructor(message: string, status: number) {
     super(message);
     this.name = "ApiError";
@@ -144,8 +151,6 @@ export async function runInitialSync(): Promise<InitialSyncResult> {
     body: JSON.stringify({ source: "static" }),
   });
 }
-
-export async function getEvents(since?: string): Promise<ProductEvent[]> {
 
 export async function getEvents(since?: string): Promise<ProductEvent[]> {
   const params = new URLSearchParams();

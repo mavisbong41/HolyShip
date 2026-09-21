@@ -8,7 +8,8 @@
 
 ## Project Snapshot
 
-**Goal:** Build the backend workflow from email ingestion through SI/BL comparison.
+**Goal:** Build the shared email-to-comparison backend, official Dashboard and
+Outlook Add-in clients, and auditable Human Review workflow.
 
 ```text
 Email Source
@@ -34,17 +35,18 @@ Persist Result
 Dashboard / Extension Backend API
 ```
 
-**Current scope now includes the persisted-result product API and the web Dashboard UI.**
-
-Human Review UI/workflow is intentionally not part of the current milestone.
+**Current scope includes the persisted product API, React Dashboard, Outlook
+Add-in, and active Human Review workflow.** The explicit owner decision and the
+superseded historical restriction are recorded in
+`docs/scope_decisions/2026-09-21-ui-human-review.md`.
 
 ---
 
 ## Last Updated
 
 **Date:** 2026-09-21
-**Updated by:** Dashboard UI sprint — 1:1 User Reference UI Match
-**Repository state:** `feature/dashboard` is the active product UI branch. Implemented exact 1:1 UI redesign matching user reference image `media_1789922618415.png`: white floating card sidebar with dark active pill, Operations Workbench Hero Banner with orange swoosh and "Faster Documents Safer Trade" watermark, 4 KPI cards with mini-bar chart indicators, 3-column middle section (Processing Load with colored status bars, Recent Activity with status icons & timestamps, Comparison Summary with verification alerts), and bottom Queue Preview table showing the latest 5 emails with checkboxes and action controls. All frontend checks and backend tests PASS.
+**Updated by:** UI/UX design unification
+**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Active Human Review and both official clients are green with a unified design language. Phase F root validation passes and the evaluation submission SHA remains `37B33169797C6AEF6B781FBCBF1BA99CB92D3A8D96AC184235EEDA167D2A4EAB`. No scoreboard POST was made.
 
 ---
 
@@ -85,7 +87,7 @@ The provided dataset may currently contain 520 emails for the demo/backlog.
 
 ## Current Status
 
-Phase F final adversarial audit passed and the Dashboard UI sprint has started on `feature/dashboard`. The backend remains the source of truth; this pass adds a React/Vite web Dashboard that consumes `/api/v1` product routes without duplicating classification, extraction, normalization, or comparison logic.
+Stabilization is implemented on `codex/ui-human-review-stabilization`. The backend remains the source of truth; the Dashboard and Outlook Add-in consume `/api/v1` without duplicating classification, extraction, normalization, or comparison logic. Human Review corrections are additive overlays and never mutate Phase 3 extraction rows or historical comparison rows.
 
 | Area | Status | Notes |
 |---|---|---|
@@ -108,10 +110,10 @@ Phase F final adversarial audit passed and the Dashboard UI sprint has started o
 | Persistence | IMPLEMENTED THROUGH PHASE 6 | Non-destructive AI proposal/audit persistence and versioned request-cache identity added |
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
-| Web Dashboard UI | IMPLEMENTED — DASHBOARD PASS PENDING VALIDATION | React/Vite Dashboard scaffold, visual tokens, overview, queue, detail comparison table, read-only Human Review, API client/types, tests, and docs added under `frontend/` |
-| Email-extension backend API | IMPLEMENTED — PHASE 7 | Shared v1 email/detail/ingestion contracts; no extension UI was added |
-| Human Review product API | IMPLEMENTED — READ-ONLY | Reviewer queue/detail composition exposes persisted reason, evidence, comparison, and AI provenance; no review mutation |
-| Human Review UI/workflow | OUT OF SCOPE | No frontend or reviewer action workflow was added |
+| Web Dashboard UI | IMPLEMENTED / VERIFIED | Unified operational design system, truthful overview, selected inbox state, hierarchical detail, evidence expansion, explicit waiting/failure states, and polished Human Review workflow; 12 component tests, typecheck, and production build pass |
+| Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, and refresh; 57 tests, typecheck, and production build pass |
+| Human Review product API | IMPLEMENTED / VERIFIED | Read queue/detail plus claim, separate override, resolve/recompare, and dismiss mutations are PostgreSQL/API-tested |
+| Human Review UI/workflow | IMPLEMENTED / VERIFIED | Actionable BLOCKED policy, idempotent active case, four-state lifecycle, immutable events, separate overrides, and comparison versioning are active |
 
 `NOT CONFIRMED` means this file was created before inspecting the repository's actual implementation. Codex must replace these statuses with truthful repository state after inspection.
 
@@ -216,16 +218,26 @@ Fast compare
 
 ## Implemented
 
+### UI/UX unification — Dashboard and Outlook Add-in
+
+- Mirrored one documented HolyShip token system across both clients: restrained charcoal/orange brand, neutral surfaces, and distinct semantic treatments for Match, Mismatch, Unresolved, Awaiting Documents, Needs Review, Processing Failed, and review lifecycle states.
+- Removed invented overview counts and relative timestamps; all visible operational metrics and dates now come from backend payloads.
+- Refined the inbox and email inspector with visible selection, separate processing/review status, recipients/body hierarchy, document validation context, expandable field evidence, explicit Awaiting Documents and technical-failure recovery states, and readable audit reason labels.
+- Rebuilt Human Review presentation around original/reviewed/effective values, field-appropriate correction inputs, separate resolve and dismiss explanations, action progress, historical legacy styling, and readable immutable event history.
+- Rebuilt the Add-in as a narrow current-email companion with compact field cards, real match/mismatch/unresolved totals, dedicated active-review card, `?review=` deep link, and real failed-email retry.
+- Added `docs/ui_design_system.md`. No classification, readiness, document, extraction, comparison, submission, or Human Review lifecycle semantics changed; no backend application code changed in this task.
+- Made Make's Node executable configurable as `NPM` so the existing root UI gates run on Windows via `NPM=npm.cmd`.
+
 ### Product UI — Dashboard client
 
 - Added `frontend/` with React, TypeScript, Vite, Vitest, Testing Library, and `lucide-react`.
 - Added centralized Dashboard API client for `/api/v1/summary`, `/api/v1/emails`, `/api/v1/emails/{id}`, `/api/v1/human-review`, and `/api/v1/events`.
 - Added project-owned TypeScript types mirroring the backend product schemas and exact enum values.
 - Added Averis-inspired orange/grey/black/white design tokens and responsive Dashboard styling.
-- Implemented Overview, Email Queue, unified Email Detail, seven-field SI vs Draft BL comparison, and read-only Human Review screens.
+- Implemented Overview, Email Queue, unified Email Detail, seven-field SI vs Draft BL comparison, and active Human Review queue/detail/actions.
 - The frontend renders backend `MATCH` / `MISMATCH` / `UNRESOLVED` statuses only; it does not compare SI and BL values locally.
 - Added Dashboard docs and audit reports: `reports/product_ui_audit.md`, `docs/dashboard_api_contract.md`, `docs/product_ui.md`, `frontend/README.md`, and `reports/product_ui_completion.md`.
-- Outlook Add-in work is intentionally deferred until explicitly continued.
+- Integrated the official Outlook Add-in email-ID deep link with Dashboard `?email=` handling and root validation.
 
 ### Phase R — close Phase 7 implementation and verification gaps
 
@@ -343,7 +355,7 @@ Fast compare
 
 ### Phase 1 — R3B scope/process closure
 
-- Human Review is frozen: current classifier/sync processing creates no new review cases; unresolved readiness persists `BLOCKED` with `READINESS_UNRESOLVED`. Historical storage and read-only routes remain compatible.
+- Historical note: Phase 1 originally froze Human Review. The project owner superseded that restriction on 2026-09-21; active behavior is documented in `docs/scope_decisions/2026-09-21-ui-human-review.md` and the stabilization entry above.
 - Alembic `20260920_0005` adds non-null persisted classification `reason_code` and database checks for the five categories, confidence `[0, 1]`, and the three readiness values.
 - API schemas now expose exact category, readiness, and 11-state processing-status contracts; email responses include processing status and classification responses include reason code.
 - `reports/phase1_consistency_audit.md` records runtime, persistence, live-database, API, migration, test, and documentation consistency.
@@ -395,9 +407,8 @@ Fast compare
 
 ## In Progress
 
-- Phase R implementation and service-backed verification are complete for the current scope. The live API, PostgreSQL migration/checkpoint path, demo, exporter, AI-disabled evaluation, reliability, performance, and full test gate have evidence below.
-- `ING-08` is now PASS in the requirements matrix after live A/B, restart, and A/B/C polling evidence; no Phase F work has started.
-- The older Phase 0 and Phase R notes below are historical implementation context, not current blockers.
+- UI + Human Review implementation and repository validation are complete. The only remaining external step is the one authorized baseline score, blocked because Docker is not installed/running and localhost:8080 is unreachable.
+- The older phase notes below are historical implementation context, not current blockers.
 
 ### Phase 0 — Audit, traceability, evaluation harness, baseline
 
@@ -419,9 +430,9 @@ Fast compare
 
 ## Next
 
-- Human review of the Phase 7 evidence and commit is next. Do not merge or start Phase F from this task.
-- Keep the three database identities isolated for any future destructive test/evaluation operation.
-- Do not merge. Human Review UI/actions remain out of scope.
+- Install/start Docker Desktop, extract/start the documented organizer evaluator outside this repository without inspecting private answers, and verify `http://localhost:8080/health`.
+- Only then run exactly one `make score PHASE=F` attempt against the already validated current submission; do not tune from the result.
+- Keep `holyship_dev`, `holyship_test`, and `holyship_eval` isolated. Do not reset dev.
 
 Recommended implementation order after the dataset audit:
 
@@ -718,6 +729,10 @@ GET  /api/v1/emails/{email_id}/detail
 GET  /api/v1/summary
 GET  /api/v1/human-review
 GET  /api/v1/human-review/{review_id}
+POST /api/v1/human-review/{review_id}/claim
+POST /api/v1/human-review/{review_id}/overrides
+POST /api/v1/human-review/{review_id}/resolve
+POST /api/v1/human-review/{review_id}/dismiss
 GET  /api/v1/events
 POST /api/v1/emails/{email_id}/reprocess
 ```
@@ -773,6 +788,32 @@ When adding an environment variable:
 ---
 
 ## Tests & Validation
+
+### UI/UX design unification (2026-09-21)
+
+- Live visual QA used the real local `/api/v1` backend at `http://127.0.0.1:8000` and Dashboard at `http://127.0.0.1:5173`; overview, inbox selection, and detail hierarchy rendered correctly.
+- Dashboard: typecheck PASS; 12 tests passed; production build PASS.
+- Outlook Add-in: typecheck PASS; 57 tests passed; production build PASS.
+- PostgreSQL-enabled full backend: 299 passed, 0 failed, 0 skipped, 1 existing Starlette/AnyIO deprecation warning.
+- Reliability: 14 passed. `make check-fast`: PASS (34 backend + 12 Dashboard + 57 Add-in tests and diff check) with `NPM=npm.cmd` on Windows.
+- `make check PHASE=F`: PASS: backend 299; clean evaluation 520; reliability 14; trace 114 PASS / 0 TODO / 0 FAIL / 2 WAIVED with 251 evidence tests; both UI suites and production builds passed.
+- Submission SHA-256 before and after the root gate: `37B33169797C6AEF6B781FBCBF1BA99CB92D3A8D96AC184235EEDA167D2A4EAB` (unchanged).
+- Manual consistency audit: brand, typography, semantic colors, comparison labels, Human Review labels, button hierarchy, spacing/radius, deep links, and loading/error states all PASS/YES.
+- Scoreboard POST: NO.
+
+### UI + Human Review stabilization (2026-09-21)
+
+- Safe Git branch: `codex/ui-human-review-stabilization`; starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`.
+- Dev migrated additively from `20260920_0008` through 0009/0010/0011/0012 and new `20260921_0013`. `pg_dump` was unavailable, so no local backup could be created. Dev survived with 520 emails, 250 attachments, 520 classifications, 21 legacy review cases, and unchanged identity hashes; no reset or evaluation write occurred.
+- Migration evidence: isolated test proves a historical OPEN review row survives 0012→0013 with `case_origin=LEGACY`; new override/event tables and constraints exist.
+- Focused Human Review/scope suite: 12 passed; dedicated migration suite: 1 passed.
+- Full backend: 299 passed, 0 failed, 0 skipped, 1 deprecation warning.
+- Reliability: 14 passed. `make check-fast`: PASS (34 backend + 9 Dashboard + 57 Add-in tests, typechecks, diff check).
+- Dashboard `npm run check`: 9 passed plus typecheck/build. Outlook Add-in `npm run check`: 57 passed plus typecheck/build, with the prior React `act(...)` warning eliminated.
+- Phase F trace: PASS, 114 PASS / 0 TODO / 0 FAIL / 2 owner-waived historical scope rows; 251 evidence tests passed.
+- Root `make check PHASE=F`: PASS across backend, clean eval, reliability, trace, Dashboard, and Add-in.
+- Clean eval run 1 processed 520 emails in 23.308s and run 2 in 23.722s; both produced submission SHA-256 `37B33169797C6AEF6B781FBCBF1BA99CB92D3A8D96AC184235EEDA167D2A4EAB` byte-for-byte. Distribution: BL_COMPARISON 203, SI_REQUEST 141, INVOICE_QUERY 84, GENERAL 66, SPAM 26; public OK 317, NEEDS_REVIEW 203, MISMATCH 0. Internal states: COMPLETED 317, AWAITING_DOCUMENTS 91, BLOCKED 112; active OPEN review cases 112.
+- The organizer archive and documented `/submit` instructions were located without reading private answers. `docker` was not installed/discoverable in Windows or Ubuntu WSL and `http://localhost:8080/health` timed out; therefore score POST performed: NO.
 
 ### Dashboard UI sprint (2026-09-21)
 
@@ -1054,7 +1095,9 @@ Never fabricate test results.
 
 Current document-level limitations:
 
-- Phase 7 exposes read-only Human Review queue/detail context; reviewer UI/actions and authentication remain out of scope.
+- Human Review accepts an explicit reviewer name but the project has no authentication; the name is never represented as verified identity.
+- The Dashboard refresh/event model is polling-compatible rather than a durable WebSocket/SSE job stream, and initial sync remains synchronous.
+- Docker Desktop is not installed/discoverable on this host (only `Docker Desktop Installer.exe` is present), so the documented organizer service and authorized one-time score POST remain blocked.
 - Microsoft Graph is a provider-isolated payload adapter only; OAuth and live Graph polling are not implemented. Generic static/Organizer HTTP polling and startup lifecycle wiring are implemented.
 - `/api/v1/sync/initial` is a synchronous initial-sync boundary that returns a product job ID for the completed request; background job progress persistence is not implemented.
 - PostgreSQL joins/checkpoint migration, live demo, full evaluation, latency measurements, and bounded product-query counts are verified in the 2026-09-20 service-backed report above. Peak RSS remains unavailable by declared dependency design.
@@ -1064,6 +1107,22 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-21 — Dashboard / Outlook UI/UX unification
+
+- **Changed:** Unified design tokens and semantic copy; refined overview/inbox/detail/review states; added auditable review editing presentation; replaced the Add-in table with compact comparison cards; added active-review and retry actions; documented the visual system.
+- **Why:** The two working clients needed to feel like one calm, professional shipping-document operations product without duplicating or changing backend decisions.
+- **Files:** Dashboard App/labels/styles/tests; Add-in TaskPane/comparison/status/config/API/types/styles/tests; `docs/ui_design_system.md`; Makefile; this handoff.
+- **Validation:** Backend 299 passed/0 skipped; reliability 14; Dashboard 12 tests/typecheck/build; Add-in 57 tests/typecheck/build; check-fast PASS; Phase F root check PASS; submission SHA unchanged.
+- **Next:** User visual review at target deployment sizes. No deployment or scoreboard action was performed.
+
+### 2026-09-21 — UI + Human Review stabilization
+
+- **Changed:** Reconciled the explicit owner scope expansion; added migration `20260921_0013`, active/idempotent Human Review cases, separate reviewer overrides, immutable review events, review-aware comparison versions, mutation APIs, Dashboard review/retry/sync/deep-link UI, Add-in wiring/docs, client-aware root gates, and safe database/evaluation inspection.
+- **Why:** The merged repository contained official clients but stale authority and read-only legacy review infrastructure. Reviewable business blocks needed an additive, auditable resolution path while preserving deterministic backend semantics and history.
+- **Files:** Scope decision/protocol/matrix and project docs; migration/models/repository/review/sync/API modules; PostgreSQL/API/migration tests; Dashboard/API client/tests; Add-in docs/test; Makefile and harness inspection/report files.
+- **Validation:** 299 backend tests; 14 reliability tests; Dashboard 9 tests/typecheck/build; Add-in 57 tests/typecheck/build; Phase F trace 114 PASS/0 TODO/0 FAIL/2 owner-waived; root check PASS; two clean 520-email eval submissions byte-identical at SHA-256 `37B331...A4EAB`; dev hashes unchanged.
+- **Next:** Install/start Docker Desktop, start the documented organizer compose project outside the repository without inspecting private data, verify `/health`, then perform the single authorized `make score PHASE=F` attempt. No business-rule tuning is authorized from that result.
 
 ### 2026-09-21 — Dashboard UI sprint
 

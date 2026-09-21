@@ -1221,6 +1221,7 @@ function HumanReviewPageView({
   const [reasonFilter, setReasonFilter] = useState("");
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
+  const [sortFilter, setSortFilter] = useState("newest");
   const [reviewer, setReviewer] = useState("Demo Reviewer");
   const [side, setSide] = useState<"SI" | "BL">("BL");
   const [field, setField] = useState("notify_party");
@@ -1234,6 +1235,13 @@ function HumanReviewPageView({
       && (!reasonFilter || review.reason_code === reasonFilter)
       && (!reviewerFilter || (review.reviewer_name ?? "").toLowerCase().includes(reviewerFilter.toLowerCase()))
       && (!search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search));
+  }).sort((left, right) => {
+    if (sortFilter === "priority") {
+      const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
+      return (rank[left.priority] ?? 3) - (rank[right.priority] ?? 3);
+    }
+    const delta = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
+    return sortFilter === "oldest" ? delta : -delta;
   });
   const reasons = [...new Set((reviews?.items ?? []).map((review) => review.reason_code))].sort();
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];

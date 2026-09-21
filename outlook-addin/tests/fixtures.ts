@@ -177,8 +177,10 @@ export const fixtures = {
   blocked: makeDetail({
     processing_status: "BLOCKED",
     needs_review: true,
+    review_id: "review-001",
+    review_status: "IN_REVIEW",
     review_reason: "COMPARISON_UNRESOLVED",
-  }, null),
+  }, mismatchComparison),
   failed: makeDetail({ processing_status: "FAILED" }, null),
   processing: makeDetail({ processing_status: "EXTRACTING" }, null),
   newSiRequest: makeDetail({
@@ -187,3 +189,23 @@ export const fixtures = {
     comparison_readiness: null,
   }, null),
 };
+
+fixtures.blocked.review = [
+  {
+    id: "review-001",
+    email_id: "email-001",
+    email: fixtures.blocked.email,
+    document_id: null,
+    field: "notify_party",
+    reason_code: "COMPARISON_UNRESOLVED",
+    reason_text: "One comparison field needs a reviewer decision.",
+    status: "IN_REVIEW",
+    case_origin: "ACTIVE",
+    reviewer_name: "Jordan Lee",
+    confidence: 0.72,
+    evidence: [],
+    comparison: mismatchComparison,
+    resolutions: [],
+    created_at: "2024-05-01T09:02:00Z",
+  },
+];

@@ -1,6 +1,8 @@
 # HolyShip Product UI Completion
 
-Status: IN PROGRESS — Dashboard pass only.
+Status: PASS — the original Dashboard-only checkpoint was superseded by the
+completed Dashboard, Outlook Add-in, and active Human Review stabilization
+record in `reports/ui_human_review_stabilization.md`.
 
 ## Scope Completed
 
@@ -10,14 +12,15 @@ Status: IN PROGRESS — Dashboard pass only.
 - Overview page.
 - Email Queue page with backend-supported filters, pagination, loading, empty, and error states.
 - Email Detail panel with classification, attachments, timeline, and seven-field SI vs Draft BL comparison.
-- Human Review read-only queue with empty/populated states.
+- Human Review actionable queue/detail, separate corrections, resolve/recompare, dismiss, and audit states.
+- Outlook Add-in email-ID deep link into real Dashboard detail.
 - Dashboard documentation and API contract.
 
 ## Validation
 
 - `npm run check` in `frontend/`: PASS
   - TypeScript typecheck passed.
-  - Vitest passed: 6 tests.
+  - Vitest passed: 9 tests.
   - Production build passed.
 - `mingw32-make check-fast PYTHON=py`: PASS
   - Backend compileall passed.
@@ -28,12 +31,10 @@ Status: IN PROGRESS — Dashboard pass only.
 
 ## Scope Deferred
 
-- Outlook Add-in.
-- Outlook identity boundary.
-- Add-in manifest.
-- Human Review write/action workflows.
-- Backend changes beyond existing product API.
+- Production authentication.
+- Production Microsoft Graph OAuth/identity linkage.
+- Replacement SI/BL upload.
 
 ## Final Status
 
-Dashboard implementation is validated locally. Full PRODUCT UI PASS is not claimed until the Outlook Add-in scope is completed in a later continuation.
+Dashboard and Outlook Add-in clients, active Human Review, backend APIs, and root validation pass. The external organizer score remains blocked only by the unavailable Docker runtime; it is not a product UI gate.
