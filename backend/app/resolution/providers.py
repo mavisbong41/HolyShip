@@ -114,3 +114,91 @@ class HttpJsonResolverProvider:
             )
         except (KeyError, TypeError, ValueError):
             return payload
+
+
+class GeminiResolverProvider:
+    """Direct provider connecting to Google Gemini REST API for targeted resolution."""
+
+    def __init__(
+        self,
+        *,
+        api_key: str,
+        model_name: str = "gemini-2.5-flash",
+        timeout_seconds: float = 15.0,
+        endpoint: str | None = None,
+    ) -> None:
+        if not api_key.strip():
+            raise ValueError("API key is required for the gemini provider")
+        self.api_key = api_key
+        self.model_name = model_name or "gemini-2.5-flash"
+        self.timeout_seconds = timeout_seconds
+        self.endpoint = endpoint
+
+    def resolve(
+        self,
+        request: ExtractionResolutionRequest | SemanticResolutionRequest,
+    ) -> ProviderResolution:
+        if isinstance(request, ExtractionResolutionRequest):
+            prompt = (
+                f"You are a shipping document extraction resolver.\n"
+                f"Document role: {request.document_role}\n"
+                f"Target canonical field: {request.field.value}\n"
+                f"Escalation reason: {request.escalation_reason}\n"
+                f"Evidence text:\n{request.evidence}\n\n"
+                f"Extract the exact value for field '{request.field.value}' from the evidence text.\n"
+                f"Output strictly a JSON object with keys:\n"
+                f'{{"field": "{request.field.value}", "value": "<extracted string>", "normalized_value": <normalized value or null>, "confidence": <float 0.0-1.0>, "evidence": "<quote>", "reasoning_code": "GEMINI_EXTRACTION"}}'
+            )
+        else:
+            prompt = (
+                f"You are a shipping document semantic comparison resolver.\n"
+                f"Target canonical field: {request.field.value}\n"
+                f"SI reference value: {request.si_value}\n"
+                f"BL document value: {request.bl_value}\n"
+                f"SI evidence:\n{request.si_evidence}\n"
+                f"BL evidence:\n{request.bl_evidence}\n\n"
+                f"Determine if the SI value and BL value are semantically equivalent.\n"
+                f"Output strictly a JSON object with keys:\n"
+                f'{{"field": "{request.field.value}", "equivalent": <true or false>, "confidence": <float 0.0-1.0>, "evidence": "<explanation>", "reasoning_code": "GEMINI_SEMANTIC"}}'
+            )
+
+        base_url = self.endpoint or "https://generativelanguage.googleapis.com/v1beta/models"
+        import urllib.parse
+        url = f"{base_url}/{self.model_name}:generateContent?key={urllib.parse.quote(self.api_key)}"
+
+        payload = {
+            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": 0.0,
+                "maxOutputTokens": 1024,
+            },
+        }
+        body = json.dumps(payload).encode("utf-8")
+        headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
+        http_request = urllib.request.Request(url, data=body, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
+                decoded = json.loads(response.read().decode("utf-8"))
+        except urllib.error.HTTPError as exc:
+            if exc.code in {408, 425, 429} or exc.code >= 500:
+                raise TransientResolverError(f"Gemini HTTP {exc.code}") from exc
+            raise RuntimeError(f"Gemini HTTP {exc.code}") from exc
+        except (TimeoutError, ConnectionError, urllib.error.URLError) as exc:
+            raise TransientResolverError("Gemini transport failure") from exc
+
+        try:
+            raw_text = decoded["candidates"][0]["content"]["parts"][0]["text"]
+            parsed = json.loads(raw_text)
+            return ProviderResolution(
+                field=parsed["field"],
+                value=parsed.get("value"),
+                normalized_value=parsed.get("normalized_value"),
+                equivalent=parsed.get("equivalent"),
+                confidence=float(parsed["confidence"]),
+                evidence=str(parsed.get("evidence", "")),
+                reasoning_code=str(parsed.get("reasoning_code", "GEMINI")),
+            )
+        except Exception as exc:
+            raise RuntimeError(f"Failed to parse Gemini response: {exc}") from exc

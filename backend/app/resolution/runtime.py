@@ -8,6 +8,8 @@ from sqlalchemy.orm import Session
 
 from backend.app.core.config import Settings
 from backend.app.resolution.providers import (
+    DisabledResolverProvider,
+    GeminiResolverProvider,
     HttpJsonResolverProvider,
     ResolverProvider,
 )
@@ -26,16 +28,20 @@ def build_resolution_executor_factory(
 ) -> ExecutorFactory | None:
     """Build one process-shared provider boundary and session-local stores."""
 
-    if not settings.ai_escalation_enabled:
+    if not settings.ai_escalation_enabled or settings.ai_provider.lower() in ("disabled", "none", "off", ""):
         return None
-    builders = provider_builders or {"http_json": _build_http_json_provider}
-    builder = builders.get(settings.ai_provider)
+    builders = provider_builders or {
+        "http_json": _build_http_json_provider,
+        "gemini": _build_gemini_provider,
+        "google": _build_gemini_provider,
+        "custom": _build_http_json_provider,
+    }
+    builder = builders.get(settings.ai_provider.lower())
     if builder is None:
-        raise ValueError(
-            f"Unsupported AI_PROVIDER {settings.ai_provider!r}; configured providers: "
-            f"{', '.join(sorted(builders)) or 'none'}"
-        )
+        return None
     provider = builder(settings)
+    if isinstance(provider, DisabledResolverProvider):
+        return None
     shared_state = ResolutionSharedState(
         max_concurrent_calls=settings.ai_max_concurrent_calls
     )
@@ -58,6 +64,22 @@ def build_resolution_executor_factory(
         )
 
     return factory
+
+
+def _build_gemini_provider(settings: Settings) -> ResolverProvider:
+    api_key = (
+        (settings.gemini_api_key.get_secret_value() if settings.gemini_api_key else None)
+        or (settings.ai_api_key.get_secret_value() if settings.ai_api_key else None)
+        or (settings.ai_review_api_key.get_secret_value() if settings.ai_review_api_key else None)
+    )
+    if not api_key:
+        return DisabledResolverProvider()
+    return GeminiResolverProvider(
+        api_key=api_key,
+        model_name=settings.ai_model if settings.ai_model not in ("none", "", "disabled") else "gemini-2.5-flash",
+        timeout_seconds=settings.ai_timeout_seconds,
+        endpoint=settings.ai_endpoint,
+    )
 
 
 def _build_http_json_provider(settings: Settings) -> ResolverProvider:

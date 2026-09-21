@@ -79,6 +79,25 @@ def test_disabled_runtime_does_not_construct_provider_or_executor():
     assert constructed == 0
 
 
+def test_unknown_or_disabled_provider_returns_none_gracefully():
+    factory_disabled = build_resolution_executor_factory(
+        _settings(ai_escalation_enabled=True, ai_provider="disabled")
+    )
+    assert factory_disabled is None
+
+    factory_unknown = build_resolution_executor_factory(
+        _settings(ai_escalation_enabled=True, ai_provider="some_nonexistent_provider")
+    )
+    assert factory_unknown is None
+
+
+def test_gemini_provider_without_api_key_returns_none_gracefully():
+    factory = build_resolution_executor_factory(
+        _settings(ai_escalation_enabled=True, ai_provider="gemini", ai_api_key=None, gemini_api_key=None)
+    )
+    assert factory is None
+
+
 class RuntimeSource(EmailSource):
     def __init__(self, external_id: str):
         self.message = EmailMessage(

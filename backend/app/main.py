@@ -53,9 +53,27 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     @application.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         logger.exception("Unhandled server error processing %s %s: %s", request.method, request.url.path, exc)
+        headers: dict[str, str] = {}
+        origin = request.headers.get("origin")
+        if origin:
+            allowed_origins = configured.cors_origin_list
+            if "*" in allowed_origins:
+                headers["Access-Control-Allow-Origin"] = "*"
+            elif origin in allowed_origins:
+                headers["Access-Control-Allow-Origin"] = origin
+                headers["Vary"] = "Origin"
+            elif configured.cors_allow_origin_regex:
+                import re
+                if re.match(configured.cors_allow_origin_regex, origin):
+                    headers["Access-Control-Allow-Origin"] = origin
+                    headers["Vary"] = "Origin"
+            if "Access-Control-Allow-Origin" in headers:
+                headers["Access-Control-Allow-Methods"] = "*"
+                headers["Access-Control-Allow-Headers"] = "*"
         return JSONResponse(
             status_code=500,
             content={"detail": "Internal Server Error", "error": str(exc)},
+            headers=headers,
         )
 
     application.include_router(router, prefix="/api")
