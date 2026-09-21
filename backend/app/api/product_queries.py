@@ -238,6 +238,8 @@ def _summary_from_row(row: Any) -> ProductEmailSummary:
     )
 
 
+
+
 def list_email_queue(
     session: Session,
     *,
@@ -651,6 +653,9 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             affected_area=presentation.affected_area,
             suggested_action=presentation.suggested_action,
             semantic_style=presentation.semantic_style,
+            canonical_reason=presentation.canonical_reason or presentation.title,
+            trigger=presentation.trigger,
+            stage=presentation.stage,
             age_minutes=age_minutes,
             overrides=overrides,
             actions=actions,
@@ -758,7 +763,16 @@ def list_human_reviews(
     if status:
         statement = statement.where(HumanReviewCaseRecord.status == status)
     if reason:
-        statement = statement.where(HumanReviewCaseRecord.reason_code == reason)
+        reason_map = {
+            "Missing Required Value": ["COMPARISON_UNRESOLVED"],
+            "Wrong Document Type": ["WRONG_DOCUMENT_TYPE", "DOCUMENT_ROLE_UNRESOLVED", "MULTIPLE_CANDIDATES"],
+            "Missing Attachment": ["MISSING_REQUIRED_ATTACHMENT", "READINESS_UNRESOLVED"],
+            "Unreadable Document": ["UNREADABLE_ATTACHMENT", "CORRUPTED_ATTACHMENT", "UNSUPPORTED_ATTACHMENT"],
+        }
+        if reason in reason_map:
+            statement = statement.where(HumanReviewCaseRecord.reason_code.in_(reason_map[reason]))
+        else:
+            statement = statement.where(HumanReviewCaseRecord.reason_code == reason)
     if reviewer:
         statement = statement.where(HumanReviewCaseRecord.reviewer_name.ilike(f"%{reviewer}%"))
     if active_only:
@@ -848,6 +862,9 @@ def list_human_reviews(
             affected_area=presentation.affected_area,
             suggested_action=presentation.suggested_action,
             semantic_style=presentation.semantic_style,
+            canonical_reason=presentation.canonical_reason or presentation.title,
+            trigger=presentation.trigger,
+            stage=presentation.stage,
             age_minutes=age_minutes,
             overrides=overrides,
             actions=actions,

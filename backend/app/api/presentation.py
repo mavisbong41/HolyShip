@@ -13,6 +13,9 @@ class ReviewPresentation:
     affected_area: str
     suggested_action: str
     semantic_style: str
+    canonical_reason: str = ""
+    trigger: str = ""
+    stage: str = ""
 
 REVIEW_STATUS_PRESENTATION = {
     "OPEN": ("Needs review", "This case needs a human decision before processing can continue.", "Human Review", "Open Human Review", "attention"),
@@ -23,23 +26,23 @@ REVIEW_STATUS_PRESENTATION = {
 PROCESSING_STATUS_PRESENTATION = {
     "AWAITING_DOCUMENTS": ("Waiting for required documents", "HolyShip is waiting for the required shipping document before comparison can begin.", "Documents", "Provide the required document", "info"),
     "FAILED": ("Processing failed", "HolyShip could not finish processing this email.", "Processing", "Retry / Reprocess", "bad"),
-    "BLOCKED": ("Needs attention", "Processing cannot continue until the business issue is reviewed.", "Processing", "Open Human Review", "attention"),
+    "BLOCKED": ("Needs review", "Processing cannot continue until the business issue is reviewed.", "Processing", "Open Human Review", "attention"),
     "COMPLETED": ("Completed", "HolyShip finished processing this email.", "Processing", "View result", "good"),
 }
 REASON_PRESENTATION = {
-    "CLASSIFICATION_UNRESOLVED": ("Email type unclear", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "Confirm the email type in Human Review", "attention"),
-    "COMPARISON_UNRESOLVED": ("One or more document fields could not be verified", "The SI and BL evidence was not sufficient to determine one or more field values confidently.", "Document fields", "Review the unresolved fields", "attention"),
-    "COMPARISON_MISMATCH": ("The SI and BL contain different values", "One or more shipping-document fields do not agree between the SI and BL.", "Document fields", "Review the mismatched fields", "attention"),
-    "DOCUMENT_ROLE_UNRESOLVED": ("Document role unclear", "HolyShip could not confidently identify which document is the SI or BL.", "Documents", "Confirm the document roles", "attention"),
-    "WRONG_DOCUMENT_TYPE": ("Wrong document type", "The attached file does not appear to be the required shipping document.", "Documents", "Confirm the attached document", "attention"),
-    "MISSING_REQUIRED_ATTACHMENT": ("Required shipping document is missing", "A required shipping document is not available for comparison.", "Documents", "Provide the required document", "attention"),
-    "UNREADABLE_ATTACHMENT": ("Document could not be read reliably", "The attached document could not be read reliably.", "Documents", "Check or replace the document", "attention"),
-    "UNSUPPORTED_ATTACHMENT": ("Document format is unsupported", "HolyShip cannot process the attached document format.", "Documents", "Provide a supported document", "attention"),
-    "CORRUPTED_ATTACHMENT": ("Document could not be read", "The attached document appears to be corrupted or invalid.", "Documents", "Replace the document", "attention"),
-    "MULTIPLE_CANDIDATES": ("More than one document may match", "More than one document may match the required shipping-document role.", "Documents", "Confirm the correct document", "attention"),
-    "READINESS_UNRESOLVED": ("Document readiness unclear", "HolyShip is unsure whether the documents are ready for comparison.", "Documents", "Review document readiness", "attention"),
-    "STAGE2_UNRESOLVED": ("Email type unclear (historical)", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "View history", "muted"),
-    "OCR_BACKEND_UNAVAILABLE": ("Document processing unavailable", "OCR service is not available in the current environment. Retry after OCR is available.", "Processing", "Retry / Reprocess", "bad"),
+    "CLASSIFICATION_UNRESOLVED": ("Email type unclear", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "Confirm the email type in Human Review", "attention", "Email Intent Unclear", "Low classification confidence", "Classification"),
+    "COMPARISON_UNRESOLVED": ("One or more document fields could not be verified", "The SI and BL evidence was not sufficient to determine one or more field values confidently.", "Document fields", "Review the unresolved fields", "attention", "Missing Required Value", "Field verification uncertainty", "Comparison"),
+    "COMPARISON_MISMATCH": ("The SI and BL contain different values", "One or more shipping-document fields do not agree between the SI and BL.", "Document fields", "Review the mismatched fields", "attention", "Field Mismatch", "Comparison field disparity", "Comparison"),
+    "DOCUMENT_ROLE_UNRESOLVED": ("Document role unclear", "HolyShip could not confidently identify which document is the SI or BL.", "Documents", "Confirm the document roles", "attention", "Wrong Document Type", "Document role ambiguity", "Document Validation"),
+    "WRONG_DOCUMENT_TYPE": ("Wrong document type", "The attached file does not appear to be the required shipping document.", "Documents", "Confirm the attached document", "attention", "Wrong Document Type", "Conflicting document type marker", "Document Role Validation"),
+    "MISSING_REQUIRED_ATTACHMENT": ("Required shipping document is missing", "A required shipping document is not available for comparison.", "Documents", "Provide the required document", "attention", "Missing Attachment", "Missing comparison file", "Attachment Retrieval"),
+    "UNREADABLE_ATTACHMENT": ("Document could not be read reliably", "The attached document could not be read reliably.", "Documents", "Check or replace the document", "attention", "Unreadable Document", "OCR / Parser failure", "Document Ingestion & OCR"),
+    "UNSUPPORTED_ATTACHMENT": ("Document format is unsupported", "HolyShip cannot process the attached document format.", "Documents", "Provide a supported document", "attention", "Unreadable Document", "Unsupported format", "Document Ingestion"),
+    "CORRUPTED_ATTACHMENT": ("Document could not be read", "The attached document appears to be corrupted or invalid.", "Documents", "Replace the document", "attention", "Unreadable Document", "Corrupted file content", "Document Ingestion"),
+    "MULTIPLE_CANDIDATES": ("More than one document may match", "More than one document may match the required shipping-document role.", "Documents", "Confirm the correct document", "attention", "Wrong Document Type", "Multiple role candidates", "Document Role Validation"),
+    "READINESS_UNRESOLVED": ("Document readiness unclear", "HolyShip is unsure whether the documents are ready for comparison.", "Documents", "Review document readiness", "attention", "Missing Attachment", "Readiness check inconclusive", "Comparison Readiness"),
+    "STAGE2_UNRESOLVED": ("Email type unclear (historical)", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "View history", "muted", "Historical Record", "Legacy evaluation", "Historical"),
+    "OCR_BACKEND_UNAVAILABLE": ("Document processing unavailable", "OCR service is not available in the current environment. Retry after OCR is available.", "Processing", "Retry / Reprocess", "bad", "Unreadable Document", "OCR engine unavailable", "Document Ingestion & OCR"),
 }
 
 FIELD_LABELS = {
@@ -55,11 +58,11 @@ FIELD_LABELS = {
 def present_reason(reason_code: str, *, affected_fields: list[str] | None = None) -> ReviewPresentation:
     base = REASON_PRESENTATION.get(reason_code)
     if base:
-        title, explanation, area, action, style = base
+        title, explanation, area, action, style, canonical, trigger, stage = base
         if reason_code in {"COMPARISON_UNRESOLVED", "COMPARISON_MISMATCH"} and affected_fields:
             labels = ", ".join(FIELD_LABELS.get(f, f.replace("_", " ").title()) for f in affected_fields)
             explanation = f"{explanation} Affected fields: {labels}."
-        return ReviewPresentation(title, explanation, area, action, style)
+        return ReviewPresentation(title, explanation, area, action, style, canonical, trigger, stage)
     if reason_code in REVIEW_STATUS_PRESENTATION:
         title, explanation, area, action, style = REVIEW_STATUS_PRESENTATION[reason_code]
         return ReviewPresentation(title, explanation, area, action, style)
