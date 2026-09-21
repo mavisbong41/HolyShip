@@ -4,6 +4,8 @@
 
 ### Multi-stage AI-assisted shipping document verification — from inbox to trusted SI–BL comparison.
 
+**Team Name:** NJHL
+
 **Team:** Wong Jia Hui · Bong Zi Shan · Lee Mei Shuet · Christ Ting Shin Ling · Gan Rui En
 
 [🌐 Dashboard](https://holyship.onrender.com/) · [⚙️ Backend API](https://holyship-backend.onrender.com) · [📘 API Docs](https://holyship-backend.onrender.com/docs) · [📑 Presentation Slides](https://canva.link/kflchdm6qu1pslv) · 🎥 Demo Video: _link coming soon_
