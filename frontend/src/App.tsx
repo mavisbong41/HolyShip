@@ -43,6 +43,7 @@ import {
   runInitialSync,
   saveHumanReviewOverride,
 } from "./api/client";
+import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
 import type {
   EmailQueuePage,
   HumanReviewAnalytics,
@@ -2204,6 +2205,14 @@ function HumanReviewPageView({
                   </details>
                 </div>
               </div>
+
+              {selected.case_origin === "ACTIVE" ? (
+                <AIReviewPanel
+                  review={selected}
+                  reviewerName={reviewer}
+                  onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
+                />
+              ) : null}
 
               {detailTab === "fields" && (
                 <div className="tab-pane">
