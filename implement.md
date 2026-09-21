@@ -45,8 +45,8 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-22
-**Updated by:** Discrepancies workspace visual refinement
-**Repository state:** `main` includes pushed Outlook Add-in current-email binding commit `083a588`. The Confirmed Discrepancies workspace has been harmonized with the Human Review visual system, using warmer orange/review tones instead of high-contrast red/blue treatments. Latest validation in this task: Dashboard typecheck, focused Discrepancy workflow tests, and production build PASS.
+**Updated by:** KPI cards typography unification & Captain Jack persona alignment
+**Repository state:** `main` includes pushed Outlook Add-in current-email binding commit `083a588`. Unified KPI card components between Confirmed Discrepancies and Human Review workspaces, ensuring exact font size match. Harmonized user persona across the application and Human Review to Captain Jack (`captain.holyship@outlook.com`, initials `CJ`). Latest validation: Dashboard typecheck, Vitest suite (29 tests), and production build PASS.
 
 ---
 
@@ -1136,6 +1136,13 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-22 — KPI cards typography unification & Captain Jack persona alignment
+
+- **Changed:** Unified `MetricCard` rendering between Discrepancies and Human Review, ensuring identical typography across all cards (11.5px headers, 26px metric values with single-line ellipsis for long values, and 11.5px subtitles). Updated the operator/reviewer persona across the dashboard, user profile dropdown, and Human Review workspace from John Doe / Demo Reviewer (`JD`, `john.doe@outlook.com`) to Captain Jack (`CJ`, `captain.holyship@outlook.com`).
+- **Why:** Satisfies visual consistency requirements across workspaces and aligns user profile and audit trails with Captain Jack's real Outlook identity.
+- **Files:** `frontend/src/App.tsx`, `frontend/src/components/common/MetricCard.tsx`, `frontend/src/components/discrepancies/ConfirmedDiscrepanciesPageView.tsx`, `frontend/src/styles/app.css`, `frontend/tests/AIReview.test.tsx`, `implement.md`.
+- **Validation:** Frontend `npm run typecheck`, full Vitest suite (29 tests passed), and production build `npm run build` passed cleanly. Outlook Add-in typecheck and tests (64 passed) also verified.
 
 ### 2026-09-22 — Discrepancies workspace visual refinement
 

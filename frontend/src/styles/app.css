@@ -718,6 +718,11 @@ button:disabled {
   font-weight: 750;
   line-height: 1.1;
   color: var(--color-black);
+  display: inline-block;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .metric-footer {

@@ -85,7 +85,7 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
             original_field_id: "",
             corrected_value: "3",
             corrected_canonical_value: 3,
-            reviewer_name: "Demo Reviewer",
+            reviewer_name: "Captain Jack",
             note: "Accepted AI suggestion",
             active: true,
             supersedes_override_id: null,
@@ -128,7 +128,7 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
             original_field_id: "",
             corrected_value: body.value || "3",
             corrected_canonical_value: 3,
-            reviewer_name: body.reviewer_label || "Demo Reviewer",
+            reviewer_name: body.reviewer_label || "Captain Jack",
             note: body.note || "Edited AI suggestion",
             active: true,
             supersedes_override_id: null,
@@ -261,7 +261,7 @@ describe("AI Review Assistant Dashboard UI", () => {
         expect.stringContaining("/human-review/99999999-9999-4999-8999-999999999999/ai/suggestions/sugg-1111-2222-3333-444444444444/accept"),
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ reviewer_label: "Demo Reviewer" }),
+          body: JSON.stringify({ reviewer_label: "Captain Jack" }),
         }),
       );
     });
@@ -303,7 +303,7 @@ describe("AI Review Assistant Dashboard UI", () => {
           method: "POST",
           body: JSON.stringify({
             value: "5",
-            reviewer_label: "Demo Reviewer",
+            reviewer_label: "Captain Jack",
             note: "Adjusted to 5 based on revised packing list",
           }),
         }),
@@ -330,7 +330,7 @@ describe("AI Review Assistant Dashboard UI", () => {
         expect.stringContaining("/human-review/99999999-9999-4999-8999-999999999999/ai/suggestions/sugg-1111-2222-3333-444444444444/dismiss"),
         expect.objectContaining({
           method: "POST",
-          body: JSON.stringify({ reviewer_label: "Demo Reviewer" }),
+          body: JSON.stringify({ reviewer_label: "Captain Jack" }),
         }),
       );
     });

@@ -83,7 +83,7 @@ export function ConfirmedDiscrepanciesPageView({
   onRefresh,
   onDeselect,
 }: ConfirmedDiscrepanciesPageViewProps) {
-  const [operatorName, setOperatorName] = useState("Demo Reviewer");
+  const [operatorName, setOperatorName] = useState("Captain Jack");
   const [showAllFields, setShowAllFields] = useState(false);
   const [activeTab, setActiveTab] = useState<"differences" | "documents" | "history">("differences");
   const [fieldFilter, setFieldFilter] = useState<string>("");

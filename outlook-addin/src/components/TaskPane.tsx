@@ -39,7 +39,7 @@ type PaneState =
 
 function contextIdentityKey(context: MailContextResult): string {
   if (context.state !== "ready" || !context.item) {
-    return `unavailable:${context.error ?? "no-item"}`;
+    return "";
   }
 
   const { holyshipCaseId, internetMessageId, outlookItemId, sender, subject } = context.item;
@@ -505,12 +505,16 @@ export function TaskPane({
         if (!mounted) return;
 
         const currentKey = contextIdentityKey(context);
+        if (!currentKey) {
+          return;
+        }
+
         if (lastContextKey === null) {
           lastContextKey = currentKey;
           return;
         }
 
-        if (force || (currentKey && currentKey !== lastContextKey)) {
+        if (force || currentKey !== lastContextKey) {
           lastContextKey = currentKey;
           void resolve();
         }
@@ -526,7 +530,11 @@ export function TaskPane({
     let itemChangedRegistered = false;
 
     const onItemChanged = () => {
+      // Trigger context check immediately and with staggered retries
+      // because Office.js sometimes hydrates item properties with 100-300ms delay.
       void checkForContextChange(true);
+      setTimeout(() => void checkForContextChange(true), 250);
+      setTimeout(() => void checkForContextChange(true), 600);
     };
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
@@ -541,10 +549,10 @@ export function TaskPane({
       }
     }
 
-    // 2. Provider-based interval fallback for Outlook hosts where ItemChanged may not fire.
+    // 2. Continuous interval check as universal fallback
     const interval = setInterval(() => {
       void checkForContextChange();
-    }, 1000);
+    }, 800);
 
     return () => {
       mounted = false;
