@@ -216,6 +216,9 @@ export interface ProductReview {
   priority: "HIGH" | "MEDIUM" | "LOW";
   human_explanation: string | null;
   affected_fields: string[];
+  affected_area: string | null;
+  suggested_action: string | null;
+  semantic_style: string | null;
   age_minutes: number;
   body?: string | null;
   documents?: ProductDocument[];
