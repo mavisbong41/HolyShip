@@ -53,8 +53,9 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: flex-end;
-  padding: 6px 14px 4px;
-  background: transparent;
+  padding: 8px 14px;
+  background: var(--color-black);
+  color: var(--color-white);
   border-bottom: 0;
   flex-shrink: 0;
 }
@@ -70,17 +71,15 @@ button:disabled {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 1px solid rgba(0, 0, 0, 0.08);
+  border: 0;
   border-radius: var(--radius-sm);
-  background: #f8fafc;
-  color: #475569;
-  transition: all 140ms;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--color-white);
+  transition: background 140ms;
 }
 
 .pane-icon-btn:hover {
-  background: #f1f5f9;
-  color: #0f172a;
-  border-color: rgba(0, 0, 0, 0.16);
+  background: rgba(255, 255, 255, 0.22);
 }
 
 /* ─── Main content ────────────────────────────────────────────── */
