@@ -32,7 +32,7 @@ import {
   getEvents,
   getHumanReviewAnalytics,
   getHumanReviewDetail,
-  getHumanReviewQueue,
+  getAllHumanReviews,
   getSummary,
   claimHumanReview,
   dismissHumanReview,
@@ -1401,7 +1401,7 @@ export default function App() {
     setReviewState("loading");
     try {
       const [reviewPage, analytics] = await Promise.all([
-        getHumanReviewQueue({ active_only: false }),
+        getAllHumanReviews({ active_only: false }),
         getHumanReviewAnalytics(),
       ]);
       setReviews(reviewPage);
