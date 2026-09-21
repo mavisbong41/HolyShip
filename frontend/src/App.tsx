@@ -124,7 +124,7 @@ function StatusBadge({
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="empty-state">
-      <Archive aria-hidden="true" size={16} />
+      <Archive aria-hidden="true" size={22} />
       <h3>{title}</h3>
       <p>{body}</p>
     </div>
@@ -1206,7 +1206,7 @@ function QueuePage({
               <div className="resize-handle-bar" />
             </div>
           ) : null}
-          <div className="surface-panel detail-panel">
+          <div className={cx("surface-panel detail-panel", !detail && "detail-panel-empty")}>
             {detailState === "loading" ? (
               <LoadingRows />
             ) : detail ? (
@@ -1933,7 +1933,7 @@ function HumanReviewPageView({
             <div className="resize-handle-bar" />
           </div>
         ) : null}
-        <div className="surface-panel detail-panel">
+        <div className={cx("surface-panel detail-panel", !selected && "detail-panel-empty")}>
           {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
             <div className="review-detail">
               <header className="detail-sticky-header">
