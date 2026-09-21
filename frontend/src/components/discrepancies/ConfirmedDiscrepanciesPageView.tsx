@@ -125,15 +125,11 @@ export function ConfirmedDiscrepanciesPageView({
     return result;
   }, [rawItems, fieldFilter, sortFilter]);
 
-  // Client pagination for left list
-  const [pageIndex, setPageIndex] = useState(0);
-  const pageSize = 10;
-  const totalPages = Math.max(1, Math.ceil(filteredItems.length / pageSize));
-  const safePage = Math.min(pageIndex, totalPages - 1);
-  const pagedItems = useMemo(
-    () => filteredItems.slice(safePage * pageSize, (safePage + 1) * pageSize),
-    [filteredItems, safePage, pageSize]
-  );
+  // Pagination is server-side. The API page is already bounded by the
+  // requested limit, so never slice the loaded items again in the client.
+  const pageSize = filters.limit ?? 20;
+  const currentPage = Math.floor((filters.skip ?? 0) / pageSize);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
 
   // Compute top mismatched field for metrics
   const topMismatchedField = useMemo(() => {
@@ -323,7 +319,7 @@ export function ConfirmedDiscrepanciesPageView({
                 value={fieldFilter}
                 onChange={(e) => {
                   setFieldFilter(e.target.value);
-                  setPageIndex(0);
+                  onFilterChange({ ...filters, skip: 0 });
                 }}
               >
                 <option value="">All Mismatched Fields</option>
@@ -337,7 +333,10 @@ export function ConfirmedDiscrepanciesPageView({
               <select
                 aria-label="Sort queue"
                 value={sortFilter}
-                onChange={(e) => setSortFilter(e.target.value as "newest" | "oldest" | "mismatches")}
+                onChange={(e) => {
+                  setSortFilter(e.target.value as "newest" | "oldest" | "mismatches");
+                  onFilterChange({ ...filters, skip: 0 });
+                }}
               >
                 <option value="newest">Newest first</option>
                 <option value="oldest">Oldest first</option>
@@ -360,7 +359,7 @@ export function ConfirmedDiscrepanciesPageView({
             />
           ) : (
             <div className="review-list" role="list">
-              {pagedItems.map((item) => {
+              {filteredItems.map((item) => {
                 const isSelected = selected?.discrepancy.id === item.id;
                 const statusTone =
                   item.resolution_status === "OPEN"
@@ -430,27 +429,27 @@ export function ConfirmedDiscrepanciesPageView({
           )}
 
           {/* Left List Pagination */}
-          {filteredItems.length > pageSize && (
+          {total > pageSize && (
             <div className="pagination" style={{ marginTop: "16px" }}>
               <span className="pagination-info">
-                Showing {safePage * pageSize + 1}–{Math.min(filteredItems.length, (safePage + 1) * pageSize)} of {filteredItems.length}
+                Showing {(filters.skip ?? 0) + 1}–{Math.min((filters.skip ?? 0) + rawItems.length, total)} of {total}
               </span>
               <div className="pagination-nav">
                 <button
                   className="pagination-btn pagination-btn-nav"
-                  disabled={safePage === 0}
-                  onClick={() => setPageIndex((p) => Math.max(0, p - 1))}
+                  disabled={currentPage === 0}
+                  onClick={() => onFilterChange({ ...filters, skip: Math.max(0, currentPage - 1) * pageSize })}
                   type="button"
                 >
                   ‹ Previous
                 </button>
                 <span className="pagination-ellipsis" style={{ padding: "0 8px", fontSize: "12px" }}>
-                  Page {safePage + 1} of {totalPages}
+                  Page {currentPage + 1} of {totalPages}
                 </span>
                 <button
                   className="pagination-btn pagination-btn-nav"
-                  disabled={safePage >= totalPages - 1}
-                  onClick={() => setPageIndex((p) => Math.min(totalPages - 1, p + 1))}
+                  disabled={currentPage >= totalPages - 1}
+                  onClick={() => onFilterChange({ ...filters, skip: Math.min(totalPages - 1, currentPage + 1) * pageSize })}
                   type="button"
                 >
                   Next ›

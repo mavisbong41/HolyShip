@@ -176,7 +176,9 @@ function jsonResponse(payload: unknown, ok = true, status = 200): Response {
   } as Response;
 }
 
-function setupDiscrepancyFetch() {
+function setupDiscrepancyFetch(
+  discrepancyPage: DiscrepancyPage | ((url: URL) => DiscrepancyPage) = mockDiscrepancyPage,
+) {
   const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     const method = init?.method ?? "GET";
@@ -192,7 +194,8 @@ function setupDiscrepancyFetch() {
       return jsonResponse(demoQueue);
     }
     if (url.includes("/discrepancies?")) {
-      return jsonResponse(mockDiscrepancyPage);
+      const payload = typeof discrepancyPage === "function" ? discrepancyPage(new URL(url, "http://localhost")) : discrepancyPage;
+      return jsonResponse(payload);
     }
     if (url.includes("/discrepancies/d1111111-1111-4111-8111-111111111111/acknowledge") && method === "POST") {
       return jsonResponse({
@@ -256,6 +259,25 @@ function setupDiscrepancyFetch() {
   });
   vi.stubGlobal("fetch", fetchMock);
   return fetchMock;
+}
+
+function paginatedDiscrepancyPage(url: URL): DiscrepancyPage {
+  const skip = Number(url.searchParams.get("skip") ?? 0);
+  const limit = Number(url.searchParams.get("limit") ?? 20);
+  const total = 46;
+  const count = Math.max(0, Math.min(limit, total - skip));
+  return {
+    ...mockDiscrepancyPage,
+    items: Array.from({ length: count }, (_, index) => ({
+      ...mockDiscrepancySummary,
+      id: `d1111111-1111-4111-8111-${String(skip + index + 1).padStart(12, "0")}`,
+      external_message_id: `MSG-MISMATCH-${String(skip + index + 1).padStart(3, "0")}`,
+      subject: `Draft BL for Verification - Ref ${skip + index + 1}`,
+    })),
+    total,
+    skip,
+    limit,
+  };
 }
 
 beforeEach(() => {
@@ -343,5 +365,29 @@ describe("Confirmed Discrepancies Workspace", () => {
     const discharge = await screen.findAllByText("Singapore");
     expect(discharge.length).toBeGreaterThanOrEqual(1);
     expect((await screen.findAllByText("Gross Weight")).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("fetches all server-side discrepancy pages and resets pagination on filter changes", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    const fetchMock = setupDiscrepancyFetch(paginatedDiscrepancyPage);
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Discrepancies/i }));
+    expect(await screen.findByText("20 shown · 46 total")).toBeInTheDocument();
+    expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
+    expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/discrepancies?skip=0&limit=20"))).toBe(true);
+
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    expect(await screen.findByText("Page 2 of 3")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/discrepancies?skip=20&limit=20"))).toBe(true));
+
+    await user.click(screen.getByRole("button", { name: /Next/ }));
+    expect(await screen.findByText("Page 3 of 3")).toBeInTheDocument();
+    expect(await screen.findByText("6 shown · 46 total")).toBeInTheDocument();
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/discrepancies?skip=40&limit=20"))).toBe(true));
+
+    await user.click(screen.getByRole("tab", { name: /^Open/ }));
+    await waitFor(() => expect(fetchMock.mock.calls.some(([input]) => String(input).includes("/discrepancies?status=OPEN&skip=0&limit=20"))).toBe(true));
+    expect(await screen.findByText("Page 1 of 3")).toBeInTheDocument();
   });
 });
