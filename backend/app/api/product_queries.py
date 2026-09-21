@@ -877,9 +877,4 @@ def get_human_review(session: Session, review_id: UUID) -> ProductReview | None:
     return None
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
-    from backend.app.api import analytics_helper
-    from backend.app.storage.models import HumanReviewCaseRecord, HumanReviewFieldOverrideRecord
-    cases = session.scalars(select(HumanReviewCaseRecord)).all()
-    overrides = session.scalars(select(HumanReviewFieldOverrideRecord)).all()
-
     return analytics_helper.get_human_review_analytics(session)
