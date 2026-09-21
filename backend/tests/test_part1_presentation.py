@@ -60,7 +60,7 @@ def test_record_summary_excludes_failed_and_legacy_open_from_human_review():
     from backend.app.api.product_queries import _summary_from_record
 
     email = SimpleNamespace(
-        id="email-id",
+        id="11111111-1111-4111-8111-111111111111",
         external_message_id="external-id",
         source_type="TEST",
         sender=None,
@@ -71,7 +71,7 @@ def test_record_summary_excludes_failed_and_legacy_open_from_human_review():
         attachments=[],
     )
     legacy_open = SimpleNamespace(
-        id="review-id",
+        id="22222222-2222-4222-8222-222222222222",
         case_origin="LEGACY",
         status="OPEN",
         reason_code="CLASSIFICATION_UNRESOLVED",
@@ -89,7 +89,7 @@ def test_record_summary_counts_active_in_review_as_actionable():
     from backend.app.api.product_queries import _summary_from_record
 
     email = SimpleNamespace(
-        id="email-id",
+        id="11111111-1111-4111-8111-111111111111",
         external_message_id="external-id",
         source_type="TEST",
         sender=None,
@@ -100,7 +100,7 @@ def test_record_summary_counts_active_in_review_as_actionable():
         attachments=[],
     )
     active_claimed = SimpleNamespace(
-        id="review-id",
+        id="22222222-2222-4222-8222-222222222222",
         case_origin="ACTIVE",
         status="IN_REVIEW",
         reason_code="COMPARISON_UNRESOLVED",
