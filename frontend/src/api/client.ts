@@ -1,17 +1,14 @@
 import type {
   EmailQueuePage,
+  HumanReviewAnalytics,
   HumanReviewPage,
   ProductEmailDetail,
   ProductEvent,
+  ProductReview,
   ProductSummary,
   QueueFilters,
-} from "./types";
-
-const defaultBaseUrl = "http://localhost:8000/api/v1";
-
-export class ApiError extends Error {
-  status: number;
-
+  ReviewQueueFilters,
+  InitialSyncResult,
   constructor(message: string, status: number) {
     super(message);
     this.name = "ApiError";
@@ -69,13 +66,94 @@ export async function getEmailDetail(emailId: string): Promise<ProductEmailDetai
   return request<ProductEmailDetail>(`/emails/${emailId}`);
 }
 
-export async function getHumanReviewQueue(): Promise<HumanReviewPage> {
-  return request<HumanReviewPage>("/human-review?limit=50");
+export async function getHumanReviewQueue(filters: ReviewQueueFilters = {}): Promise<HumanReviewPage> {
+  const params = new URLSearchParams();
+  appendParam(params, "status", filters.status);
+  appendParam(params, "reason", filters.reason?.trim());
+  appendParam(params, "reviewer", filters.reviewer?.trim());
+  appendParam(params, "search", filters.search?.trim());
+  appendParam(params, "active_only", filters.active_only ?? true);
+  appendParam(params, "skip", filters.skip ?? 0);
+  appendParam(params, "limit", filters.limit ?? 50);
+  return request<HumanReviewPage>(`/human-review?${params.toString()}`);
 }
+
+export async function getHumanReviewDetail(reviewId: string): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}`);
+}
+
+export async function claimHumanReview(reviewId: string, reviewerName: string): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function saveHumanReviewOverride(
+  reviewId: string,
+  payload: {
+    document_side: "SI" | "BL";
+    field: string;
+    corrected_value: unknown;
+    corrected_canonical_value?: unknown;
+    reviewer_name?: string;
+    note?: string;
+  },
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/overrides`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resolveHumanReview(
+  reviewId: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, notes }),
+  });
+}
+
+export async function dismissHumanReview(
+  reviewId: string,
+  reason: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, reason, notes }),
+  });
+}
+
+export async function reprocessEmail(emailId: string): Promise<{ email_id: string; status: string }> {
+  return request(`/emails/${emailId}/reprocess`, { method: "POST" });
+}
+
+export async function runInitialSync(): Promise<InitialSyncResult> {
+  return request<InitialSyncResult>("/sync/initial", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ source: "static" }),
+  });
+}
+
+export async function getEvents(since?: string): Promise<ProductEvent[]> {
 
 export async function getEvents(since?: string): Promise<ProductEvent[]> {
   const params = new URLSearchParams();
   appendParam(params, "since", since);
   appendParam(params, "limit", 100);
   return request<ProductEvent[]>(`/events?${params.toString()}`);
+}
+
+export async function getHumanReviewAnalytics(): Promise<HumanReviewAnalytics> {
+  return request<HumanReviewAnalytics>('/human-review-analytics');
 }

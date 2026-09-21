@@ -156,6 +156,16 @@ export interface ProductEmailSummary {
   mismatch_count: number;
   unresolved_count: number;
   needs_review: boolean;
+  review_id?: string | null;
+  review_status: string | null;
+  review_reason: string | null;
+}
+
+export interface EmailQueuePage {
+  items: ProductEmailSummary[];
+  total: number;
+  skip: number;
+  limit: number;
   review_status: string | null;
   review_reason: string | null;
 }
@@ -174,11 +184,11 @@ export interface ProductSummary {
   comparison_ready_count: number;
   mismatch_count: number;
   unresolved_count: number;
-}
-
-export interface ProductResolution {
-  attempted: boolean;
-  purpose: string;
+  completed_count?: number;
+  awaiting_documents_count?: number;
+  human_review_open_count?: number;
+  failed_count?: number;
+  processing_count?: number;
   field: string;
   accepted: boolean;
   confidence: number;
@@ -198,10 +208,48 @@ export interface ProductReview {
   reason_code: string;
   reason_text: string;
   status: string;
+  case_origin?: "LEGACY" | "ACTIVE";
+  workflow_identity?: string | null;
+  source_comparison_id?: string | null;
+  reviewer_name?: string | null;
+  resolution?: string | null;
+  notes?: string | null;
   confidence: number | null;
   evidence: ProductEvidence[];
   comparison: ProductComparison | null;
+  priority: "HIGH" | "MEDIUM" | "LOW";
+  human_explanation: string | null;
+  affected_fields: string[];
+  age_minutes: number;
+  body?: string | null;
+  documents?: ProductDocument[];
+  overrides?: ProductReviewOverride[];
+  actions?: ProductReviewAction[];
   resolutions: ProductResolution[];
+  created_at: string;
+  updated_at?: string | null;
+  resolved_at?: string | null;
+}
+
+export interface ProductReviewOverride {
+  id: string;
+  document_side: "SI" | "BL";
+  field: CanonicalField | string;
+  original_field_id: string;
+  corrected_value: unknown;
+  corrected_canonical_value: unknown;
+  reviewer_name: string | null;
+  note: string | null;
+  active: boolean;
+  supersedes_override_id: string | null;
+  created_at: string;
+}
+
+export interface ProductReviewAction {
+  id: string;
+  action: string;
+  actor_name: string | null;
+  details: Record<string, unknown>;
   created_at: string;
 }
 
@@ -245,4 +293,44 @@ export interface QueueFilters {
   search?: string;
   skip?: number;
   limit?: number;
+}
+
+export interface ReviewQueueFilters {
+  status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED" | "";
+  reason?: string;
+  reviewer?: string;
+  search?: string;
+  active_only?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
+export interface InitialSyncResult {
+  job_id: string;
+  total: number;
+  ingested: number;
+  skipped: number;
+  failed: number;
+  progress: {
+    total: number;
+    processed: number;
+    percent: number;
+    ingested: number;
+    skipped: number;
+    failed: number;
+  };
+}
+
+export interface HumanReviewAnalytics {
+  open_count: number;
+  in_review_count: number;
+  resolved_count: number;
+  dismissed_count: number;
+  resolved_today_count: number;
+  average_open_age_minutes: number | null;
+  priority_distribution: Record<string, number>;
+  reason_distribution: Record<string, number>;
+  most_reviewed_fields: Record<string, number>;
+  most_corrected_fields: Record<string, number>;
+  correction_reasons: Record<string, number>;
 }
