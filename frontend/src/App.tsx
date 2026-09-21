@@ -73,6 +73,7 @@ import {
 
 type Page = "overview" | "queue" | "review";
 type LoadState = "idle" | "loading" | "ready" | "error";
+export type ReviewViewMode = "ACTIVE" | "HISTORY";
 
 const pageTitles: Record<Page, string> = {
   overview: "Overview",
@@ -1324,6 +1325,8 @@ function HumanReviewPageView({
   state,
   selected,
   actionState,
+  reviewViewMode,
+  onChangeReviewViewMode,
   onSelect,
   onClaim,
   onOverride,
@@ -1335,13 +1338,16 @@ function HumanReviewPageView({
   state: LoadState;
   selected: ProductReview | null;
   actionState: LoadState;
+  reviewViewMode: ReviewViewMode;
+  onChangeReviewViewMode: (mode: ReviewViewMode) => void;
   onSelect: (reviewId: string) => void;
   onClaim: (reviewer: string) => Promise<void>;
   onOverride: (payload: { document_side: "SI" | "BL"; field: string; corrected_value: string; reviewer_name: string; note?: string }) => Promise<void>;
   onResolve: (reviewer: string, notes?: string) => Promise<void>;
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
 }) {
-  const [statusFilter, setStatusFilter] = useState("ACTIVE");
+  const [activeStatusFilter, setActiveStatusFilter] = useState("ACTIVE");
+  const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL_HISTORY");
   const [reasonFilter, setReasonFilter] = useState("");
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
@@ -1355,10 +1361,40 @@ function HumanReviewPageView({
 
   const visibleReviews = (reviews?.items ?? []).filter((review) => {
     const search = searchFilter.trim().toLowerCase();
-    return (statusFilter === "ACTIVE" ? ["OPEN", "IN_REVIEW"].includes(review.status) : !statusFilter || review.status === statusFilter)
-      && (!reasonFilter || review.reason_code === reasonFilter)
-      && (!reviewerFilter || (review.reviewer_name ?? "").toLowerCase().includes(reviewerFilter.toLowerCase()))
-      && (!search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search));
+    const matchesSearch = !search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search);
+    const matchesReason = !reasonFilter || review.reason_code === reasonFilter;
+    const matchesReviewer = !reviewerFilter || (review.reviewer_name ?? "").toLowerCase().includes(reviewerFilter.toLowerCase());
+
+    if (reviewViewMode === "ACTIVE") {
+      const isActionable = review.case_origin === "ACTIVE" && ["OPEN", "IN_REVIEW"].includes(review.status);
+      if (!isActionable) return false;
+
+      const matchesStatus =
+        activeStatusFilter === "ACTIVE" || !activeStatusFilter
+          ? true
+          : activeStatusFilter === "OPEN"
+          ? review.status === "OPEN"
+          : activeStatusFilter === "IN_REVIEW"
+          ? review.status === "IN_REVIEW"
+          : true;
+      return matchesStatus && matchesReason && matchesReviewer && matchesSearch;
+    } else {
+      // HISTORY mode
+      const isHistorical = review.case_origin === "LEGACY" || review.status === "RESOLVED" || review.status === "DISMISSED";
+      if (!isHistorical) return false;
+
+      const matchesStatus =
+        historyStatusFilter === "ALL_HISTORY"
+          ? true
+          : historyStatusFilter === "LEGACY"
+          ? review.case_origin === "LEGACY"
+          : historyStatusFilter === "RESOLVED"
+          ? review.status === "RESOLVED"
+          : historyStatusFilter === "DISMISSED"
+          ? review.status === "DISMISSED"
+          : true;
+      return matchesStatus && matchesReason && matchesReviewer && matchesSearch;
+    }
   }).sort((left, right) => {
     if (sortFilter === "priority") {
       const rank = { HIGH: 0, MEDIUM: 1, LOW: 2 } as const;
@@ -1369,11 +1405,29 @@ function HumanReviewPageView({
     const delta = new Date(left.created_at).getTime() - new Date(right.created_at).getTime();
     return sortFilter === "oldest" || sortFilter === "age" ? delta : -delta;
   });
+
   const reasons = [...new Set((reviews?.items ?? []).map((review) => review.reason_code))].sort();
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
   const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
+
+  // Total count in current view mode population
+  const totalInCurrentMode = (reviews?.items ?? []).filter((review) => {
+    if (reviewViewMode === "ACTIVE") {
+      return review.case_origin === "ACTIVE" && ["OPEN", "IN_REVIEW"].includes(review.status);
+    }
+    return review.case_origin === "LEGACY" || review.status === "RESOLVED" || review.status === "DISMISSED";
+  }).length;
+
+  const countLabel =
+    reviewViewMode === "ACTIVE"
+      ? visibleReviews.length === totalInCurrentMode
+        ? `${totalInCurrentMode} active`
+        : `${visibleReviews.length} shown · ${totalInCurrentMode} active`
+      : visibleReviews.length === totalInCurrentMode
+      ? `${totalInCurrentMode} historical`
+      : `${visibleReviews.length} shown · ${totalInCurrentMode} historical`;
 
   return (
     <section className="page-grid">
@@ -1393,23 +1447,61 @@ function HumanReviewPageView({
             <p className="eyebrow">Actionable exception handling</p>
             <h2>Human Review Queue</h2>
           </div>
-          <span className="total-pill">{visibleReviews.length} shown · {reviews?.total ?? 0} total</span>
+          <span className="total-pill">{countLabel}</span>
         </div>
-        <div className="filters" aria-label="Human Review filters">
-          <label><Search size={16} /><input aria-label="Search reviews" placeholder="Search subject, sender, reason" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} /></label>
-          <select aria-label="Filter review status" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}>
-            <option value="ACTIVE">Open and in review</option><option value="OPEN">Open</option><option value="IN_REVIEW">In Review</option><option value="RESOLVED">Resolved</option><option value="DISMISSED">Dismissed</option><option value="">All statuses</option>
-          </select>
-          <select aria-label="Filter review reason" value={reasonFilter} onChange={(event) => setReasonFilter(event.target.value)}>
-            <option value="">All reasons</option>{reasons.map((reason) => <option key={reason}>{reason}</option>)}
-          </select>
-          <input aria-label="Filter reviewer" placeholder="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} />
-          <select aria-label="Sort queue" value={sortFilter} onChange={(event) => setSortFilter(event.target.value)}>
-            <option value="newest">Newest first</option>
-            <option value="oldest">Oldest first</option>
-            <option value="age">Review age</option>
-            <option value="priority">Priority</option>
-          </select>
+        <div className="review-filters" aria-label="Human Review filters">
+          <div className="review-filters-row-1">
+            <label><Search size={16} /><input aria-label="Search reviews" placeholder="Search subject, sender, reason" value={searchFilter} onChange={(event) => setSearchFilter(event.target.value)} /></label>
+            <div className="review-view-switch" role="tablist" aria-label="Review view mode">
+              <button
+                type="button"
+                role="tab"
+                aria-selected={reviewViewMode === "ACTIVE"}
+                className={cx(reviewViewMode === "ACTIVE" && "active")}
+                onClick={() => onChangeReviewViewMode("ACTIVE")}
+              >
+                Active Reviews
+              </button>
+              <button
+                type="button"
+                role="tab"
+                aria-selected={reviewViewMode === "HISTORY"}
+                className={cx(reviewViewMode === "HISTORY" && "active")}
+                onClick={() => onChangeReviewViewMode("HISTORY")}
+              >
+                History
+              </button>
+            </div>
+          </div>
+          <div className="review-filters-row">
+            {reviewViewMode === "ACTIVE" ? (
+              <select aria-label="Filter review status" value={activeStatusFilter} onChange={(event) => setActiveStatusFilter(event.target.value)}>
+                <option value="ACTIVE">Open and in review</option>
+                <option value="OPEN">Open</option>
+                <option value="IN_REVIEW">In Review</option>
+                <option value="">All active statuses</option>
+              </select>
+            ) : (
+              <select aria-label="Filter review status" value={historyStatusFilter} onChange={(event) => setHistoryStatusFilter(event.target.value)}>
+                <option value="ALL_HISTORY">All history</option>
+                <option value="LEGACY">Legacy review records</option>
+                <option value="RESOLVED">Resolved</option>
+                <option value="DISMISSED">Dismissed</option>
+              </select>
+            )}
+            <select aria-label="Filter review reason" value={reasonFilter} onChange={(event) => setReasonFilter(event.target.value)}>
+              <option value="">All reasons</option>{reasons.map((reason) => <option key={reason}>{reason}</option>)}
+            </select>
+          </div>
+          <div className="review-filters-row">
+            <input aria-label="Filter reviewer" placeholder="Reviewer" value={reviewerFilter} onChange={(event) => setReviewerFilter(event.target.value)} />
+            <select aria-label="Sort queue" value={sortFilter} onChange={(event) => setSortFilter(event.target.value)}>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="age">Review age</option>
+              <option value="priority">Priority</option>
+            </select>
+          </div>
         </div>
         {state === "loading" ? <LoadingRows /> : visibleReviews.length ? (
           <div className="review-list">
@@ -1425,13 +1517,23 @@ function HumanReviewPageView({
                     <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
                     <p className="age-summary">Age: {review.age_minutes} mins</p>
                   </div>
-                  <button type="button" onClick={() => onSelect(review.id)}>Open Review</button>
+                  <button
+                    type="button"
+                    className={cx(review.case_origin === "LEGACY" && "button-view-history")}
+                    onClick={() => onSelect(review.id)}
+                  >
+                    {review.case_origin === "LEGACY" ? "View History" : "Open Review"}
+                  </button>
                 </div>
                 <div className="review-meta">
                   <StatusBadge value={review.priority} />
-                  <StatusBadge value={review.status} />
+                  {review.case_origin === "LEGACY" ? (
+                    <span className="badge badge-neutral">COMPLETED</span>
+                  ) : (
+                    <StatusBadge value={review.status} />
+                  )}
                   <StatusBadge value={review.email?.processing_status} />
-                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
+                  {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical review record</span> : null}
                   <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
                   <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : (review.affected_fields.length ? review.affected_fields.length + " affected field(s)" : (review.affected_area || "Email-level issue"))}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
@@ -1439,7 +1541,11 @@ function HumanReviewPageView({
               </article>
             ))}
           </div>
-        ) : <EmptyState title="No active review cases" body="Awaiting-document and technical-failure states are intentionally handled outside Human Review." />}
+        ) : reviewViewMode === "ACTIVE" ? (
+          <EmptyState title="No active review cases" body="Awaiting-document and technical-failure states are intentionally handled outside Human Review." />
+        ) : (
+          <EmptyState title="No review history" body="No historical, resolved, or dismissed review records match the current filters." />
+        )}
       </div>
 
       <div className="surface-panel detail-panel">
@@ -1453,7 +1559,7 @@ function HumanReviewPageView({
             </div>
             <div className="review-callout">
               <AlertTriangle size={18} aria-hidden="true" />
-              <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
+              <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields?.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
             </div>
             <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
             <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
@@ -1495,6 +1601,7 @@ export default function App() {
   const [error, setError] = useState<string | null>(null);
   const [pageIndex, setPageIndex] = useState(0);
   const [filters, setFilters] = useState<QueueFilters>({ limit: 25, skip: 0 });
+  const [reviewViewMode, setReviewViewMode] = useState<ReviewViewMode>("ACTIVE");
   const [lastEventAt, setLastEventAt] = useState<string | undefined>(undefined);
   const [lastSyncedAt, setLastSyncedAt] = useState<Date | null>(null);
   const deepLinkHandled = useRef(false);
@@ -1520,8 +1627,9 @@ export default function App() {
   const loadReviews = useCallback(async () => {
     setReviewState("loading");
     try {
+      const showAllReviews = reviewViewMode === "HISTORY";
       const [reviewPage, analytics] = await Promise.all([
-        getAllHumanReviews({ active_only: false }),
+        getAllHumanReviews({ active_only: !showAllReviews }),
         getHumanReviewAnalytics(),
       ]);
       setReviews(reviewPage);
@@ -1531,7 +1639,7 @@ export default function App() {
       setError(caught instanceof Error ? caught.message : "Unable to load review queue");
       setReviewState("error");
     }
-  }, []);
+  }, [reviewViewMode]);
 
   const selectEmailById = useCallback(async (emailId: string, updateUrl = true) => {
     setPage("queue");
@@ -1550,7 +1658,13 @@ export default function App() {
     setPage("review");
     setReviewActionState("loading");
     try {
-      setSelectedReview(await getHumanReviewDetail(reviewId));
+      const reviewDetail = await getHumanReviewDetail(reviewId);
+      setSelectedReview(reviewDetail);
+      if (reviewDetail.case_origin === "LEGACY" || reviewDetail.status === "RESOLVED" || reviewDetail.status === "DISMISSED") {
+        setReviewViewMode("HISTORY");
+      } else {
+        setReviewViewMode("ACTIVE");
+      }
       setReviewActionState("ready");
       if (updateUrl) window.history.replaceState({}, "", `?review=${encodeURIComponent(reviewId)}`);
     } catch (caught) {
@@ -1734,6 +1848,8 @@ export default function App() {
             state={reviewState}
             selected={selectedReview}
             actionState={reviewActionState}
+            reviewViewMode={reviewViewMode}
+            onChangeReviewViewMode={(mode) => setReviewViewMode(mode)}
             onSelect={(reviewId) => void selectReviewById(reviewId)}
             onClaim={(reviewer) => reviewMutation(() => claimHumanReview(selectedReview!.id, reviewer))}
             onOverride={(payload) => reviewMutation(() => saveHumanReviewOverride(selectedReview!.id, payload))}
