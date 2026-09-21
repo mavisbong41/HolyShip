@@ -787,6 +787,7 @@ def list_human_reviews(
         overrides = [review_action_helper._review_override(r) for r in sorted(raw_overrides, key=lambda r: (r.created_at, str(r.id)))]
         raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == row.id)).all()
         actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
+        claimed_at = next((action.created_at for action in actions if action.action == "CASE_CLAIMED"), None)
 
         items.append(ProductReview(
             id=row.id,
@@ -801,6 +802,7 @@ def list_human_reviews(
             workflow_identity=row.workflow_identity,
             source_comparison_id=row.source_comparison_id,
             reviewer_name=row.reviewer_name,
+            claimed_at=claimed_at,
             resolution=row.resolution,
             notes=row.notes,
             confidence=row.confidence,
