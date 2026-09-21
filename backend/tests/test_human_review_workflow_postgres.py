@@ -12,7 +12,7 @@ from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.api.deps import get_session
-from backend.app.api.product_queries import get_product_summary
+from backend.app.api.product_queries import get_product_summary, list_human_reviews
 from backend.app.extraction.models import (
     CANONICAL_FIELDS,
     CanonicalField,
@@ -668,6 +668,7 @@ def test_reprocess_reconciles_stale_reviews_and_summary_counts_distinct_emails(d
 
         summary = get_product_summary(session)
         assert summary.human_review_open_count == 1
+        assert list_human_reviews(session, active_only=True).total == 1
 
         # A changed workflow identity supersedes the old active case without
         # deleting its history, then creates exactly one current case.
