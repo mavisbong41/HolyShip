@@ -1263,11 +1263,23 @@ function EmailDetailContent({
         <div className="detail-badge-row">
           <StatusBadge value={detail.email.category} />
           <StatusBadge value={detail.email.processing_status} />
-          {detail.email.review_status ? <StatusBadge value={detail.email.review_status} /> : null}
+          {detail.email.review_status &&
+          displayLabel(detail.email.processing_status) !== displayLabel(detail.email.review_status) ? (
+            <StatusBadge value={detail.email.review_status} />
+          ) : null}
         </div>
         <div className="detail-actions">
           {detail.email.review_id ? (
-            <button className="button-primary" type="button" onClick={() => onOpenReview(detail.email.review_id!)}>Open Human Review</button>
+            <button
+              className="button-primary button-action-cta"
+              type="button"
+              onClick={() => onOpenReview(detail.email.review_id!)}
+              title="Open Human Review workspace for this case"
+            >
+              <ShieldAlert size={15} />
+              <span>Open Human Review</span>
+              <ArrowUpRight size={15} />
+            </button>
           ) : null}
           {detail.email.processing_status === "FAILED" ? (
             <button className="button-primary" type="button" onClick={() => onReprocess(detail.email.id)}>Retry / Reprocess</button>
@@ -2110,7 +2122,10 @@ function HumanReviewPageView({
                     <div className="detail-section dismiss-section">
                       <div id="dismiss-zone-box" className="dismiss-zone">
                         <div className="dismiss-zone-header">
-                          <strong className="dismiss-title">Dismiss without resolving</strong>
+                          <div className="dismiss-zone-title-row">
+                            <span className="dismiss-tag">Danger Zone</span>
+                            <strong className="dismiss-title">Dismiss without resolving</strong>
+                          </div>
                           <p className="dismiss-subtitle">
                             Dismiss records an audited decision. It does not mark the comparison completed.
                           </p>

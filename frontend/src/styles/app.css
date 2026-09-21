@@ -2976,15 +2976,16 @@ button:disabled {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 12px 14px;
+  padding: 14px 16px;
   border-radius: var(--radius-md);
-  border: 1px solid var(--color-grey-300);
-  background: #fafaf9;
+  border: 1px solid rgba(220, 38, 38, 0.22);
+  background: #fef7f7;
   transition: all 140ms ease;
 }
 
 .dismiss-zone:hover {
-  border-color: rgba(174, 51, 38, 0.35);
+  border-color: rgba(220, 38, 38, 0.4);
+  box-shadow: 0 2px 8px rgba(220, 38, 38, 0.08);
 }
 
 .dismiss-zone-header {
@@ -2993,16 +2994,36 @@ button:disabled {
   gap: 2px;
 }
 
+.dismiss-zone-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.dismiss-tag {
+  display: inline-flex;
+  align-items: center;
+  padding: 1px 6px;
+  border-radius: 4px;
+  background: #fee2e2;
+  color: #991b1b;
+  font-size: 10px;
+  font-weight: 750;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+}
+
 .dismiss-title {
   font-size: 12.5px;
-  font-weight: 700;
-  color: var(--color-grey-900);
+  font-weight: 750;
+  color: #991b1b;
 }
 
 .dismiss-subtitle {
-  margin: 0 !important;
+  margin: 3px 0 0 !important;
   font-size: 11px !important;
-  color: var(--color-grey-600) !important;
+  color: #7f1d1d !important;
+  opacity: 0.85;
   line-height: 1.4 !important;
 }
 
@@ -3018,8 +3039,8 @@ button:disabled {
   gap: 4px;
   flex: 1;
   font-size: 11px;
-  font-weight: 650;
-  color: var(--color-grey-700);
+  font-weight: 700;
+  color: #7f1d1d;
   text-transform: uppercase;
   letter-spacing: 0.02em;
 }
@@ -3029,36 +3050,48 @@ button:disabled {
   min-height: 32px;
   padding: 4px 10px;
   font-size: 12px;
-  border: 1px solid var(--color-grey-300);
+  border: 1px solid rgba(220, 38, 38, 0.3);
   border-radius: var(--radius-sm);
   background: var(--color-white);
+  color: #991b1b;
+  font-weight: 600;
   box-sizing: border-box;
+}
+
+.dismiss-form-grid input:focus {
+  border-color: #dc2626;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.15);
 }
 
 .button-danger-secondary {
   height: 32px;
   min-height: 32px;
-  padding: 0 14px;
-  border: 1px solid rgba(174, 51, 38, 0.3);
-  background: var(--color-white);
-  color: var(--color-danger);
+  padding: 0 16px;
+  border: 1px solid #dc2626;
+  background: #dc2626;
+  color: var(--color-white);
   font-size: 11.5px;
-  font-weight: 650;
+  font-weight: 700;
   border-radius: var(--radius-sm);
   cursor: pointer;
   white-space: nowrap;
   transition: all 120ms ease;
+  box-shadow: 0 1px 3px rgba(220, 38, 38, 0.2);
 }
 
 .button-danger-secondary:hover:not(:disabled) {
-  background: #fef2f2;
-  border-color: var(--color-danger);
-  color: #991b1b;
+  background: #b91c1c;
+  border-color: #b91c1c;
+  box-shadow: 0 2px 6px rgba(185, 28, 28, 0.3);
+  transform: translateY(-1px);
 }
 
 .button-danger-secondary:disabled {
   opacity: 0.45;
   cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
 }
 
 .dismiss-presets {
@@ -3071,32 +3104,62 @@ button:disabled {
 
 .dismiss-presets-label {
   font-size: 10.5px;
-  color: var(--color-grey-500);
-  font-weight: 600;
+  color: #991b1b;
+  font-weight: 700;
 }
 
 .dismiss-preset-chip {
-  padding: 2px 7px;
+  padding: 2px 8px;
   font-size: 10px;
-  font-weight: 600;
+  font-weight: 650;
   font-family: monospace;
   border-radius: 4px;
-  border: 1px solid var(--color-grey-300);
+  border: 1px solid rgba(220, 38, 38, 0.25);
   background: var(--color-white);
-  color: var(--color-grey-700);
+  color: #991b1b;
   cursor: pointer;
   transition: all 120ms ease;
 }
 
 .dismiss-preset-chip:hover {
-  border-color: var(--color-grey-500);
-  color: var(--color-black);
+  border-color: #dc2626;
+  background: #fee2e2;
+  color: #7f1d1d;
 }
 
 .dismiss-preset-chip.active {
-  background: var(--color-grey-800);
+  background: #991b1b;
   color: var(--color-white);
-  border-color: var(--color-grey-800);
+  border-color: #991b1b;
+}
+
+/* Prominent CTA button for Case Inspector */
+.button-action-cta {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 36px;
+  padding: 0 16px;
+  font-size: 12px;
+  font-weight: 750;
+  border-radius: var(--radius-md);
+  background: var(--color-black);
+  color: var(--color-white);
+  border: 1px solid var(--color-black);
+  cursor: pointer;
+  transition: all 140ms cubic-bezier(0.16, 1, 0.3, 1);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.18);
+}
+
+.button-action-cta:hover {
+  background: #f97316;
+  border-color: #f97316;
+  transform: translateY(-1px);
+  box-shadow: 0 4px 14px rgba(249, 115, 22, 0.4);
+}
+
+.button-action-cta:active {
+  transform: translateY(0);
 }
 
 @media (max-width: 1400px) {
