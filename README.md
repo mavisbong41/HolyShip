@@ -10,6 +10,13 @@ Instead of treating document verification as a single AI prediction, HolyShip us
 
 ---
 
+## Live Deployment
+
+- Dashboard: [https://holyship.onrender.com/](https://holyship.onrender.com/)
+- Backend API: [https://holyship-backend.onrender.com](https://holyship-backend.onrender.com)
+
+---
+
 ## 🚢 Why HolyShip Stands Out
 
 ### 1. Verification happens in stages — not in one black box
