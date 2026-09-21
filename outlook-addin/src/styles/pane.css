@@ -53,9 +53,9 @@ button:disabled {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 14px 9px;
-  background: var(--color-black);
-  color: var(--color-white);
+  padding: 8px 14px;
+  background: #ffffff;
+  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
   flex-shrink: 0;
 }
 
@@ -65,25 +65,12 @@ button:disabled {
   gap: 8px;
 }
 
-.pane-brand-mark {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  background: var(--color-orange-500);
-  font-size: 13px;
-  font-weight: 900;
-  font-style: italic;
-  color: var(--color-white);
-  flex-shrink: 0;
-}
-
-.pane-brand-name {
-  font-size: 14px;
-  font-weight: 750;
-  letter-spacing: -0.02em;
-  color: var(--color-white);
+.pane-brand-logo {
+  height: 24px;
+  width: auto;
+  max-width: 140px;
+  object-fit: contain;
+  display: block;
 }
 
 .pane-header-actions {
@@ -97,15 +84,17 @@ button:disabled {
   place-items: center;
   width: 28px;
   height: 28px;
-  border: 0;
+  border: 1px solid rgba(0, 0, 0, 0.08);
   border-radius: var(--radius-sm);
-  background: rgba(255, 255, 255, 0.1);
-  color: var(--color-white);
-  transition: background 140ms;
+  background: #f8fafc;
+  color: #475569;
+  transition: all 140ms;
 }
 
 .pane-icon-btn:hover {
-  background: rgba(255, 255, 255, 0.18);
+  background: #f1f5f9;
+  color: #0f172a;
+  border-color: rgba(0, 0, 0, 0.16);
 }
 
 /* ─── Main content ────────────────────────────────────────────── */

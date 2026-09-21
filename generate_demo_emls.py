@@ -10,6 +10,7 @@ Preserves:
 - Formatted Date headers spaced over recent hours so they appear ordered in Outlook
 """
 
+import html
 import json
 import mimetypes
 import os
@@ -91,8 +92,17 @@ def generate_emls():
         msg["X-HolyShip-Case-ID"] = case_id
         msg["X-Demo-Description"] = label
 
-        # Set email plain-text body
+        # Set email plain-text and rich HTML body for Outlook
         msg.set_content(body, charset="utf-8")
+        escaped_body = html.escape(body).replace("\n", "<br/>")
+        html_content = f"""<!DOCTYPE html>
+<html>
+<head><meta charset="utf-8"></head>
+<body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif; font-size: 14px; line-height: 1.6; color: #1e293b;">
+<div>{escaped_body}</div>
+</body>
+</html>"""
+        msg.add_alternative(html_content, subtype="html")
 
         # Attach real documents
         for att_ref in attachment_refs:

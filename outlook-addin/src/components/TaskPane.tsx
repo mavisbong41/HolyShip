@@ -555,8 +555,7 @@ export function TaskPane({
       {/* Header */}
       <header className="pane-header">
         <div className="pane-brand" aria-label="HolyShip">
-          <div className="pane-brand-mark" aria-hidden="true">H</div>
-          <span className="pane-brand-name">HolyShip</span>
+          <img src="/holyship-logo.png" alt="HolyShip" className="pane-brand-logo" />
         </div>
         <div className="pane-header-actions">
           <button
