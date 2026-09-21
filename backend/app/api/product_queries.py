@@ -83,7 +83,22 @@ def _ranked(model: Any, *, partition: Any) -> Any:
 def _queue_sources() -> tuple[Any, Any, Any]:
     classification = _ranked(ClassificationResultRecord, partition=ClassificationResultRecord.email_id)
     comparison = _ranked(ComparisonResultRecord, partition=ComparisonResultRecord.email_id)
-    review = _ranked(HumanReviewCaseRecord, partition=HumanReviewCaseRecord.email_id)
+    # Queue/summary semantics are about current actionable work. Legacy review
+    # rows remain available in Human Review history, but must never make an
+    # email look actively reviewable.
+    review = (
+        select(
+            HumanReviewCaseRecord,
+            func.row_number()
+            .over(
+                partition_by=HumanReviewCaseRecord.email_id,
+                order_by=[HumanReviewCaseRecord.created_at.desc(), HumanReviewCaseRecord.id.desc()],
+            )
+            .label("rank"),
+        )
+        .where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+        .subquery()
+    )
     return classification, comparison, review
 
 
@@ -520,8 +535,12 @@ def _summary_from_record(
     mismatch_count = len(comparison.mismatched_fields or []) if comparison else 0
     unresolved_count = len(comparison.unresolved_fields or []) if comparison else 0
     needs_review = bool(
-        (review and review.status == "OPEN")
-        or record.processing_status in {"BLOCKED", "FAILED"}
+        (
+            review
+            and review.case_origin == "ACTIVE"
+            and review.status in {"OPEN", "IN_REVIEW"}
+        )
+        or record.processing_status == "BLOCKED"
         or (comparison and comparison.comparison_state == "BLOCKED")
     )
     return ProductEmailSummary(
@@ -572,7 +591,9 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
     classification_record = _latest(record.classification_results)
     comparison_record = _latest(record.comparison_results)
     review_records = sorted(record.human_review_cases, key=lambda item: (item.created_at, str(item.id)))
-    latest_review = _latest(review_records)
+    latest_review = _latest(
+        [item for item in review_records if item.case_origin == "ACTIVE"]
+    )
     resolutions = session.scalars(
         select(AIResolutionRecord)
         .where(AIResolutionRecord.case_id == str(record.id))
