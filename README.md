@@ -1,20 +1,38 @@
-# HolyShip
+<div align="center">
+
+# 🚢 HolyShip
 
 ### Multi-stage AI-assisted shipping document verification — from inbox to trusted SI–BL comparison.
 
-HolyShip is an end-to-end verification workflow for shipping operations teams. It reads incoming emails, understands what the sender is asking for, checks whether the required documents are ready, validates Shipping Instruction (SI) and Bill of Lading (BL) attachments, extracts seven shipment-critical fields, compares them through layered verification, and sends only genuine exceptions to Human Review.
+**Team:** Wong Jia Hui · Bong Zi Shan · Lee Mei Shuet · Christ Ting Shin Ling · Gan Rui En
 
-The core idea is simple: **do not treat every shipping email as a one-shot AI problem**. HolyShip separates classification, readiness, document validation, extraction, normalization, comparison, AI assistance, and human review into clear stages. This makes the workflow easier to trust, explain, reprocess, and audit.
+[🌐 Live Dashboard](https://holyship.onrender.com/) · [📘 API Docs](https://holyship-backend.onrender.com/docs)
 
-> **HolyShip principle:** Verify in stages. Automate what is certain. Wait when documents are genuinely pending. Escalate only what still needs judgment.
+<br>
+
+> **Shipping document verification should not depend on one black-box AI answer.**
+>
+> HolyShip verifies in stages, preserves the evidence, and sends only genuine uncertainty to a human reviewer.
+
+<br>
+
+**Classify → Validate → Extract → Normalize → Compare → Review only when needed.**
+
+<br>
+
+**Latest verified snapshot:** 520 emails evaluated · 409 completed · 91 awaiting documents · 20 Human Review cases · 46 confirmed mismatches · 0 failed
+
+</div>
 
 ---
 
-## Live Deployment
+HolyShip is an end-to-end workflow for shipping operations teams. It reads incoming emails, works out what the sender is asking for, checks whether the required documents are ready, validates the Shipping Instruction (SI) and Bill of Lading (BL) attachments, extracts seven key fields, compares them, and sends only the cases that still need judgment to Human Review.
 
-- **Dashboard:** https://holyship.onrender.com/
-- **Backend API:** https://holyship-backend.onrender.com
-- **API Docs:** https://holyship-backend.onrender.com/docs
+The project uses multi-stage verification rather than one large model call. Classification, readiness, document validation, extraction, normalization, comparison, review, and re-comparison are separate steps, so it is always possible to see where a case stopped, why a mismatch was reported, and which evidence was used.
+
+LLMs are used only where they add value: optional hard semantic cases and the reviewer assistant. The deterministic pipeline remains authoritative for the main SI–BL comparison, and a human approves every review change.
+
+> **HolyShip principle:** Verify in stages. Automate what is certain. Wait when documents are genuinely pending. Escalate only what still needs judgment.
 
 ---
 
