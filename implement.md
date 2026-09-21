@@ -45,8 +45,8 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-21
-**Updated by:** Dashboard overview visual refinement
-**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Dashboard overview metric cards were visually refined into a softer Averis-orange card color progression without backend/API behavior changes. Latest validation in this task: Dashboard typecheck PASS.
+**Updated by:** Render + Neon deployment preparation
+**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Backend Dockerfile now copies the public demo bundle into `/app/data/bundle`, uses Render's `$PORT`, and runs Alembic migrations at container startup. Added `docs/render_deploy.md` with Render Static Site + Render Web Service + Neon PostgreSQL instructions. Latest validation in this task: Docker backend image build PASS.
 
 ---
 
@@ -1113,6 +1113,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-21 — Render + Neon deployment preparation
+
+- **Changed:** Updated `backend/Dockerfile` for Render by copying `data/bundle` into `/app/data/bundle`, running `alembic upgrade head` on startup, and binding Uvicorn to `${PORT:-8000}`. Added `docs/render_deploy.md` with full Render Static Site, Render Web Service, Neon PostgreSQL, CORS, frontend API URL, and Initial Sync instructions.
+- **Why:** The Render backend cannot read local workstation files, so the demo bundle must be packaged in the backend image. Render also assigns the runtime port through `$PORT`.
+- **Files:** `backend/Dockerfile`, `docs/render_deploy.md`, `implement.md`.
+- **Validation:** `docker build -f backend/Dockerfile -t holyship-backend-render-check .` passed and confirmed `COPY data/bundle /app/data/bundle` succeeds.
+- **Next:** Push the branch to GitHub, create the Neon database, create Render backend/frontend services, set `DATABASE_URL`, `ORGANIZER_BUNDLE_PATH=/app/data/bundle`, `VITE_API_BASE_URL=https://<backend>.onrender.com/api/v1`, and update backend CORS with the final frontend URL.
 
 ### 2026-09-21 — Dashboard overview card refinement
 

@@ -3,6 +3,7 @@ from __future__ import annotations
 import uuid
 import subprocess
 import sys
+import inspect
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 from pathlib import Path
@@ -142,6 +143,15 @@ def test_product_get_routes_do_not_construct_processing_services():
                                 assert client.get("/api/v1/events?limit=10").status_code == 200
     finally:
         app.dependency_overrides.clear()
+
+
+@pytest.mark.req("API-02")
+def test_human_review_analytics_get_path_has_no_review_sync_side_effect():
+    from backend.app.api.analytics_helper import get_human_review_analytics
+
+    source = inspect.getsource(get_human_review_analytics)
+    assert "sync_blocked_cases_to_review" not in source
+    assert "ensure_actionable_case" not in source
 
 
 def test_product_detail_preserves_unresolved_and_blocked_semantics():

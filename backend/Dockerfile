@@ -11,6 +11,6 @@ RUN pip install --no-cache-dir -r /app/backend/requirements.txt
 
 COPY backend /app/backend
 COPY alembic.ini /app/alembic.ini
+COPY data/bundle /app/data/bundle
 
-CMD ["uvicorn", "backend.app.main:app", "--host", "0.0.0.0", "--port", "8000"]
-
+CMD sh -c "alembic upgrade head && uvicorn backend.app.main:app --host 0.0.0.0 --port ${PORT:-8000}"
