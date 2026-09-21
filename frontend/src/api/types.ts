@@ -208,6 +208,7 @@ export interface ProductReview {
   workflow_identity?: string | null;
   source_comparison_id?: string | null;
   reviewer_name?: string | null;
+  claimed_at?: string | null;
   resolution?: string | null;
   notes?: string | null;
   confidence: number | null;
