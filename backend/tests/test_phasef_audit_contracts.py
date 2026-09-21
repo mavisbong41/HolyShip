@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import subprocess
 from pathlib import Path
 
 import pytest
@@ -69,26 +68,20 @@ def test_backend_logger_calls_do_not_receive_document_content_values():
     assert violations == []
 
 
-@pytest.mark.req("SCP-02")
-def test_backend_milestone_contains_no_frontend_or_outlook_addin_artifacts():
-    completed = subprocess.run(
-        ["git", "ls-files"],
-        cwd=ROOT,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
-    tracked = [Path(line) for line in completed.stdout.splitlines() if line]
-    frontend_roots = {"frontend", "dashboard", "extension", "outlook-addin", "outlook_addin", "ui"}
-    frontend_suffixes = {".jsx", ".tsx", ".vue", ".svelte"}
-    forbidden = [
-        str(path)
-        for path in tracked
-        if frontend_roots.intersection(part.lower() for part in path.parts)
-        or path.suffix.lower() in frontend_suffixes
-    ]
-    assert tracked, "audit must inspect tracked repository content"
-    assert forbidden == []
+@pytest.mark.req("UI-01")
+def test_official_clients_are_api_consumers_with_root_validation():
+    decision = (ROOT / "docs" / "scope_decisions" / "2026-09-21-ui-human-review.md").read_text(encoding="utf-8")
+    dashboard = (ROOT / "frontend" / "src" / "App.tsx").read_text(encoding="utf-8")
+    addin_config = (ROOT / "outlook-addin" / "src" / "lib" / "config.ts").read_text(encoding="utf-8")
+    backend_config = (ROOT / "backend" / "app" / "core" / "config.py").read_text(encoding="utf-8")
+    makefile = (ROOT / "Makefile").read_text(encoding="utf-8")
+
+    assert "Dashboard" in decision and "Outlook Add-in" in decision and "Human Review" in decision
+    assert "?email=" in addin_config
+    assert 'params.get("email")' in dashboard
+    assert "https://localhost:3200" in backend_config
+    assert "frontend-check" in makefile
+    assert "addin-check" in makefile
 
 
 @pytest.mark.req("SCP-06")

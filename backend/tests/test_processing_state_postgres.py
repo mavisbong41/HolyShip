@@ -54,9 +54,10 @@ def test_awaiting_persists(db):
         r=s.scalar(select(EmailMessageRecord).where(EmailMessageRecord.external_message_id=="await")); c=s.scalar(select(ClassificationResultRecord).where(ClassificationResultRecord.email_id==r.id)); assert (c.category,c.comparison_readiness,r.processing_status)==("document_comparison","AWAITING_DOCUMENTS","AWAITING_DOCUMENTS")
 
 @pytest.mark.req("STA-07")
-def test_unresolved_persists_blocked_without_review(db):
+def test_unresolved_persists_blocked_with_actionable_review(db):
     with db() as s: SyncService(s).sync_one(message("unresolved","Check BL","Please check draft BL details.")); s.commit()
     with db() as s:
         r=s.scalar(select(EmailMessageRecord).where(EmailMessageRecord.external_message_id=="unresolved")); c=s.scalar(select(ClassificationResultRecord).where(ClassificationResultRecord.email_id==r.id)); e=_events(s,"unresolved")[-1]
         assert (c.category,c.comparison_readiness,r.processing_status,e.new_status,e.reason_code)==("document_comparison","UNRESOLVED","BLOCKED","BLOCKED","READINESS_UNRESOLVED")
-        assert s.scalar(select(HumanReviewCaseRecord).where(HumanReviewCaseRecord.email_id==r.id)) is None
+        review=s.scalar(select(HumanReviewCaseRecord).where(HumanReviewCaseRecord.email_id==r.id))
+        assert review is not None and review.status=="OPEN" and review.reason_code=="READINESS_UNRESOLVED"

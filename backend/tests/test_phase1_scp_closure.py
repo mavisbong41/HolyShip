@@ -61,8 +61,8 @@ def db_factory():
         engine.dispose()
 
 
-@pytest.mark.req("SCP-01")
-def test_current_sync_never_creates_new_human_review_cases(db_factory):
+@pytest.mark.req("HR-01")
+def test_sync_creates_review_only_for_actionable_blocked_cases(db_factory):
     messages = [
         _message("scp-invoice", "Invoice", "Please clarify this payment amount on the invoice."),
         _message("scp-awaiting", "Draft BL", "Please send the draft BL for booking 42 for checking."),
@@ -78,7 +78,12 @@ def test_current_sync_never_creates_new_human_review_cases(db_factory):
     with db_factory() as session:
         records = {row.external_message_id: row for row in session.scalars(select(EmailMessageRecord)).all()}
         classifications = session.scalars(select(ClassificationResultRecord)).all()
-        assert session.query(HumanReviewCaseRecord).count() == before == 0
+        cases = session.scalars(select(HumanReviewCaseRecord)).all()
+        assert before == 0
+        assert len(cases) == 1
+        assert cases[0].email_id == records["scp-unresolved"].id
+        assert cases[0].case_origin == "ACTIVE"
+        assert cases[0].status == "OPEN"
         assert [outcome.status for outcome in outcomes] == ["CLASSIFIED"] * 4
         assert records["scp-invoice"].processing_status == "COMPLETED"
         assert records["scp-awaiting"].processing_status == "AWAITING_DOCUMENTS"

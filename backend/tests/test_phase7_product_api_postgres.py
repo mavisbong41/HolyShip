@@ -271,10 +271,12 @@ def test_product_queue_detail_and_summary_join_persisted_phase6_rows(db_factory)
         assert page.items[0].id == email_id
         assert page.items[0].mismatch_count == 1
         assert page.items[0].needs_review is True
+        assert page.items[0].review_id is not None
 
         detail = get_email_detail(session, email_id)
         assert detail is not None
         assert detail.classification.category == "document_comparison"
+        assert detail.email.review_id == detail.review[0].id
         assert [field.field for field in detail.comparison.fields] == list(FIELDS)
         assert detail.comparison.mismatched_fields == ["shipper"]
         assert detail.review[0].field == "shipper"
