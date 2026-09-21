@@ -1,0 +1,61 @@
+name: Part 1 verification
+
+on:
+  push:
+    branches:
+      - feature/part1-human-review
+
+jobs:
+  part1-gates:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: holyship
+          POSTGRES_PASSWORD: holyship
+          POSTGRES_DB: holyship_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U holyship"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    env:
+      DATABASE_URL: postgresql+psycopg://holyship:holyship@localhost:5432/holyship_test
+      TEST_DATABASE_URL: postgresql+psycopg://holyship:holyship@localhost:5432/holyship_test
+      EVAL_DATABASE_URL: postgresql+psycopg://holyship:holyship@localhost:5432/holyship_test
+      PYTHONPATH: .
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: backend/requirements.txt
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: npm
+          cache-dependency-path: |
+            frontend/package-lock.json
+            outlook-addin/package-lock.json
+      - name: Install backend
+        run: python -m pip install -r backend/requirements.txt
+      - name: Install Dashboard
+        run: npm ci --prefix frontend
+      - name: Install Outlook Add-in
+        run: npm ci --prefix outlook-addin
+      - name: Apply migrations
+        run: python -m alembic upgrade head
+      - name: Part 1 regression tests
+        run: python -m pytest backend/tests/test_part1_presentation.py backend/tests/test_human_review_workflow_postgres.py backend/tests/test_phase7_product_api.py -q
+      - name: Dashboard typecheck, tests and build
+        run: npm --prefix frontend run check
+      - name: Fast repository gate
+        run: make check-fast
+      - name: Phase F full gate
+        run: make check PHASE=F
+      - name: Diff whitespace gate
+        run: git diff --check HEAD^ HEAD
