@@ -29,3 +29,23 @@ The reconciliation endpoint `/api/v1/human-review-reconciliation` reports persis
 ## Cross-surface reuse
 
 Outlook must consume these API presentation fields or the same deterministic mapping. It must not create a second reason-code wording table.
+
+
+## Metric truth table
+
+| Metric | Persisted source | Population/filter | Unit | Overlap / timestamp basis |
+| --- | --- | --- | --- | --- |
+| Total emails | `email_messages` | all persisted emails | email | exhaustive population |
+| Processing status counts | `email_messages.processing_status` | grouped by current persisted status | email | mutually exclusive current status |
+| Needs Review | active Human Review + current blocked business state | ACTIVE `OPEN` / `IN_REVIEW`; legacy excluded; technical `FAILED` and `AWAITING_DOCUMENTS` excluded | email | operational attention bucket; may overlap a BLOCKED processing state |
+| Human Review Open / In Review / Resolved / Dismissed | `human_review_cases` | `case_origin=ACTIVE` only | review case | lifecycle buckets are mutually exclusive |
+| Resolved today | `human_review_cases.resolved_at` | ACTIVE + RESOLVED, UTC calendar day | review case | timestamp basis: `resolved_at` |
+| Average current open age | `human_review_cases.created_at` | ACTIVE + OPEN only | review case age in minutes | current UTC time minus `created_at` |
+| Priority distribution | active Human Review cases | deterministic priority mapping from reason/affected fields | review case | ACTIVE only |
+| Reason distribution | `human_review_cases.reason_code` | ACTIVE only | review case | internal code grouped for analytics |
+| Most reviewed fields | Human Review + comparison evidence | ACTIVE only | affected-field occurrence | field-level; not an email count |
+| Most corrected fields | active field overrides joined to Human Review | ACTIVE case + active override only | corrected-field occurrence | field-level |
+| Emails with mismatch | latest persisted comparison per email | at least one persisted MISMATCH | email | email-level, never total mismatch fields |
+| Emails with unresolved fields | latest persisted comparison per email | at least one persisted UNRESOLVED field | email | email-level |
+
+Summary processing cards must not be interpreted as an exhaustive partition when the operational Needs Review/Blocked attention bucket overlaps processing status. The reconciliation diagnostic is the source of truth for explaining persisted totals and overlap.
