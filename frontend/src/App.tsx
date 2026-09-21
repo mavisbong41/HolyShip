@@ -708,56 +708,51 @@ const MASTER_WAVE_MAIN =
 const MASTER_WAVE_SHEEN =
   "M -20,4 C 60,4 100,13 160,13 C 220,13 260,0 295,0 C 330,0 370,3 420,6 C 470,9 510,10 550,8 C 580,6 610,1 660,0 C 720,-1 750,11 800,11 C 850,11 880,-2 930,-2 C 970,-2 1010,3 1040,7 C 1070,11 1100,12 1130,9 C 1160,5 1190,-1 1230,-2";
 
-const CARD_VIEW_SLICES = [
-  { x: 0, w: 291 },
-  { x: 303, w: 291 },
-  { x: 606, w: 291 },
-  { x: 909, w: 291 },
-];
-
-function MetricCardWave({ index }: { index: number }) {
-  const slice = CARD_VIEW_SLICES[index % CARD_VIEW_SLICES.length];
-  const gradId = `cardWaveGrad_${index}`;
-  const glowId = `cardWaveGlow_${index}`;
-  const sheenId = `cardWaveSheen_${index}`;
+function MetricCardWave({ index, totalCards = 7 }: { index: number; totalCards?: number }) {
+  const cardCount = Math.max(totalCards, 1);
+  const sliceW = 1200 / cardCount;
+  const sliceX = (index % cardCount) * sliceW;
+  const gradId = `cardWaveGrad_${index}_${cardCount}`;
+  const glowId = `cardWaveGlow_${index}_${cardCount}`;
+  const sheenId = `cardWaveSheen_${index}_${cardCount}`;
 
   return (
     <svg
       className="card-ribbon-svg"
-      viewBox={`${slice.x} 0 ${slice.w} 100`}
+      viewBox={`${sliceX} -2 ${sliceW} 26`}
       preserveAspectRatio="none"
       aria-hidden="true"
     >
       <defs>
         <linearGradient id={gradId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#e39439" stopOpacity="0.24" />
-          <stop offset="35%" stopColor="#f59e0b" stopOpacity="0.36" />
-          <stop offset="70%" stopColor="#f97316" stopOpacity="0.30" />
-          <stop offset="100%" stopColor="#e39439" stopOpacity="0.20" />
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.32" />
+          <stop offset="35%" stopColor="#f59e0b" stopOpacity="0.48" />
+          <stop offset="70%" stopColor="#f97316" stopOpacity="0.40" />
+          <stop offset="100%" stopColor="#e39439" stopOpacity="0.26" />
         </linearGradient>
         <linearGradient id={glowId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#e39439" stopOpacity="0.08" />
-          <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.14" />
-          <stop offset="100%" stopColor="#ea580c" stopOpacity="0.06" />
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.10" />
+          <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#ea580c" stopOpacity="0.08" />
         </linearGradient>
         <linearGradient id={sheenId} x1="0%" y1="0%" x2="100%" y2="0%">
-          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.32" />
-          <stop offset="50%" stopColor="#fff7ed" stopOpacity="0.55" />
-          <stop offset="100%" stopColor="#fed7aa" stopOpacity="0.22" />
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+          <stop offset="50%" stopColor="#fff7ed" stopOpacity="0.80" />
+          <stop offset="100%" stopColor="#fed7aa" stopOpacity="0.30" />
         </linearGradient>
       </defs>
       <path
         d={MASTER_WAVE_MAIN}
         fill="none"
         stroke={`url(#${glowId})`}
-        strokeWidth="18"
+        strokeWidth="14"
         strokeLinecap="round"
       />
       <path
         d={MASTER_WAVE_MAIN}
         fill="none"
         stroke={`url(#${gradId})`}
-        strokeWidth="9"
+        strokeWidth="7"
         strokeLinecap="round"
       />
       <path
@@ -780,6 +775,7 @@ function MetricCard({
   trend,
   tone = "neutral",
   cardIndex = 0,
+  totalCards = 7,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -789,10 +785,11 @@ function MetricCard({
   trend?: "up" | "down";
   tone?: "neutral" | "good" | "warn" | "bad" | "attention";
   cardIndex?: number;
+  totalCards?: number;
 }) {
   return (
     <article className={`metric-card metric-${tone}`}>
-      <MetricCardWave index={cardIndex} />
+      <MetricCardWave index={cardIndex} totalCards={totalCards} />
       <div className="metric-card-top">
         <div className="metric-header-left">
           {icon}
@@ -1625,11 +1622,11 @@ function HumanReviewPageView({
     <section className="page-grid">
       <section className="overview-summary-panel" aria-label="Human Review analytics">
         <div className="metric-grid human-review-metric-grid" aria-label="Human Review analytics">
-          <MetricCard cardIndex={0} icon={<ShieldAlert size={18} color="currentColor" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="attention" />
-          <MetricCard cardIndex={1} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
-          <MetricCard cardIndex={2} icon={<CircleCheck size={18} color="var(--color-success)" />} label="Resolved Today" value={analytics?.resolved_today_count ?? 0} trendText={analytics?.resolved_count ? String(analytics.resolved_count) + " resolved total" : "No resolved cases"} tone="good" />
-          <MetricCard cardIndex={3} icon={<Archive size={18} color="var(--color-grey-700)" />} label="Dismissed" value={analytics?.dismissed_count ?? 0} trendText="Review decisions" tone="neutral" />
-          <MetricCard cardIndex={4} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
+          <MetricCard cardIndex={0} totalCards={5} icon={<ShieldAlert size={18} color="currentColor" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="attention" />
+          <MetricCard cardIndex={1} totalCards={5} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
+          <MetricCard cardIndex={2} totalCards={5} icon={<CircleCheck size={18} color="var(--color-success)" />} label="Resolved Today" value={analytics?.resolved_today_count ?? 0} trendText={analytics?.resolved_count ? String(analytics.resolved_count) + " resolved total" : "No resolved cases"} tone="good" />
+          <MetricCard cardIndex={3} totalCards={5} icon={<Archive size={18} color="var(--color-grey-700)" />} label="Dismissed" value={analytics?.dismissed_count ?? 0} trendText="Review decisions" tone="neutral" />
+          <MetricCard cardIndex={4} totalCards={5} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
         </div>
       </section>
       <section className={cx("queue-layout", isResizing && "is-resizing")} style={layoutStyle}>
