@@ -172,6 +172,7 @@ class ProductEmailSummary(BaseModel):
     mismatch_count: int = 0
     unresolved_count: int = 0
     needs_review: bool = False
+    review_id: uuid.UUID | None = None
     review_status: str | None = None
     review_reason: str | None = None
 
@@ -190,6 +191,11 @@ class ProductSummary(BaseModel):
     comparison_ready_count: int
     mismatch_count: int
     unresolved_count: int
+    completed_count: int = 0
+    awaiting_documents_count: int = 0
+    human_review_open_count: int = 0
+    failed_count: int = 0
+    processing_count: int = 0
 
 
 class ProductEmailDetail(BaseModel):
@@ -215,11 +221,73 @@ class ProductReview(BaseModel):
     reason_code: str
     reason_text: str
     status: str
+    case_origin: str = "LEGACY"
+    workflow_identity: str | None = None
+    source_comparison_id: uuid.UUID | None = None
+    reviewer_name: str | None = None
+    resolution: str | None = None
+    notes: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence: list[ProductEvidence] = Field(default_factory=list)
     comparison: ProductComparison | None = None
+    priority: Literal["HIGH", "MEDIUM", "LOW"] = "LOW"
+    human_explanation: str | None = None
+    affected_fields: list[str] = Field(default_factory=list)
+    age_minutes: int = 0
+    body: str | None = None
+    documents: list[ProductDocument] = Field(default_factory=list)
+    overrides: list["ProductReviewOverride"] = Field(default_factory=list)
+    actions: list["ProductReviewAction"] = Field(default_factory=list)
     resolutions: list[ProductResolution] = Field(default_factory=list)
     created_at: datetime
+    updated_at: datetime | None = None
+    resolved_at: datetime | None = None
+
+
+class ProductReviewOverride(BaseModel):
+    id: uuid.UUID
+    document_side: Literal["SI", "BL"]
+    field: str
+    original_field_id: uuid.UUID
+    corrected_value: Any
+    corrected_canonical_value: Any
+    reviewer_name: str | None = None
+    note: str | None = None
+    active: bool
+    supersedes_override_id: uuid.UUID | None = None
+    created_at: datetime
+
+
+class ProductReviewAction(BaseModel):
+    id: uuid.UUID
+    action: str
+    actor_name: str | None = None
+    details: dict[str, Any] = Field(default_factory=dict)
+    created_at: datetime
+
+
+class ReviewClaimIn(BaseModel):
+    reviewer_name: str = Field(min_length=1, max_length=255)
+
+
+class ReviewOverrideIn(BaseModel):
+    document_side: Literal["SI", "BL"]
+    field: str
+    corrected_value: Any
+    corrected_canonical_value: Any | None = None
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class ReviewResolveIn(BaseModel):
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    notes: str | None = Field(default=None, max_length=4000)
+
+
+class ReviewDismissIn(BaseModel):
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    reason: str = Field(min_length=1, max_length=80)
+    notes: str | None = Field(default=None, max_length=4000)
 
 
 class HumanReviewPage(BaseModel):
@@ -251,4 +319,19 @@ class ProductIncomingOut(BaseModel):
     error: str | None = None
 
 
+class HumanReviewAnalytics(BaseModel):
+    open_count: int = 0
+    in_review_count: int = 0
+    resolved_count: int = 0
+    dismissed_count: int = 0
+    resolved_today_count: int = 0
+    average_open_age_minutes: float | None = None
+    priority_distribution: dict[str, int] = Field(default_factory=dict)
+    reason_distribution: dict[str, int] = Field(default_factory=dict)
+    most_reviewed_fields: dict[str, int] = Field(default_factory=dict)
+    most_corrected_fields: dict[str, int] = Field(default_factory=dict)
+    correction_reasons: dict[str, int] = Field(default_factory=dict)
+
+
 ProductEmailDetail.model_rebuild()
+ProductReview.model_rebuild()
