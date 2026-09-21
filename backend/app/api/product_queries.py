@@ -90,8 +90,8 @@ def _queue_sources() -> tuple[Any, Any, Any]:
 def _needs_review_expr(email: Any, comparison: Any, review: Any) -> Any:
     email_status = email.c.processing_status if hasattr(email, "c") else email.processing_status
     return or_(
-        review.c.status == "OPEN",
-        email_status.in_(["BLOCKED", "FAILED"]),
+        and_(review.c.case_origin == "ACTIVE", review.c.status.in_(["OPEN", "IN_REVIEW"])),
+        email_status == "BLOCKED",
         comparison.c.comparison_state == "BLOCKED",
     )
 
@@ -266,7 +266,11 @@ def list_email_queue(
 
 def get_product_summary(session: Session) -> ProductSummary:
     classification, comparison, review = _queue_sources()
-    needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
+    needs_review_value = or_(
+        review.c.status.in_(["OPEN", "IN_REVIEW"]),
+        EmailMessageRecord.processing_status == "BLOCKED",
+        comparison.c.comparison_state == "BLOCKED",
+    )
     statement = (
         select(
             func.count(EmailMessageRecord.id).label("total"),
@@ -300,13 +304,29 @@ def get_product_summary(session: Session) -> ProductSummary:
         select(EmailMessageRecord.processing_status, func.count(EmailMessageRecord.id))
         .group_by(EmailMessageRecord.processing_status)
     ).all()
+    status_counts = {status: int(count) for status, count in status_rows}
+    active_open_count = int(session.scalar(
+        select(func.count(HumanReviewCaseRecord.id)).where(
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+            HumanReviewCaseRecord.status == "OPEN",
+        )
+    ) or 0)
+    processing_count = sum(
+        count for status, count in status_counts.items()
+        if status not in {"COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"}
+    )
     return ProductSummary(
         total_emails=int(row.total or 0),
-        status_counts={status: int(count) for status, count in status_rows},
+        status_counts=status_counts,
         needs_review_count=int(row.needs_review or 0),
         comparison_ready_count=int(row.ready or 0),
         mismatch_count=int(row.mismatch or 0),
         unresolved_count=int(row.unresolved or 0),
+        completed_count=status_counts.get("COMPLETED", 0),
+        awaiting_documents_count=status_counts.get("AWAITING_DOCUMENTS", 0),
+        human_review_open_count=active_open_count,
+        failed_count=status_counts.get("FAILED", 0),
+        processing_count=processing_count,
     )
 
 
@@ -571,7 +591,8 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
     for item in review_records:
         aff_fields = review_helper.compute_affected_fields(item, comparison)
         priority = review_helper.compute_priority(item, aff_fields)
-        human_explanation = review_helper.compute_human_explanation(item, aff_fields)
+        presentation = review_helper.compute_review_presentation(item, aff_fields)
+        human_explanation = presentation.explanation
         age_minutes = review_helper.compute_age_minutes(item.created_at)
 
         raw_overrides = session.scalars(select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == item.id)).all()
@@ -598,8 +619,12 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             evidence=item.evidence.get('evidence', []) if item.evidence else [],
             comparison=comparison,
             priority=priority,
+            presentation_title=presentation.title,
             human_explanation=human_explanation,
             affected_fields=aff_fields,
+            affected_area=presentation.affected_area,
+            suggested_action=presentation.suggested_action,
+            semantic_style=presentation.semantic_style,
             age_minutes=age_minutes,
             overrides=overrides,
             actions=actions,
@@ -753,7 +778,8 @@ def list_human_reviews(
         comp = row.evidence.get('comparison') if row.evidence else None
         aff_fields = review_helper.compute_affected_fields(row, _comparison(email_comparison_record))
         priority = review_helper.compute_priority(row, aff_fields)
-        human_explanation = review_helper.compute_human_explanation(row, aff_fields)
+        presentation = review_helper.compute_review_presentation(row, aff_fields)
+        human_explanation = presentation.explanation
         age_minutes = review_helper.compute_age_minutes(row.created_at)
 
         from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
@@ -761,6 +787,7 @@ def list_human_reviews(
         overrides = [review_action_helper._review_override(r) for r in sorted(raw_overrides, key=lambda r: (r.created_at, str(r.id)))]
         raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == row.id)).all()
         actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
+        claimed_at = next((action.created_at for action in actions if action.action == "CASE_CLAIMED"), None)
 
         items.append(ProductReview(
             id=row.id,
@@ -775,14 +802,19 @@ def list_human_reviews(
             workflow_identity=row.workflow_identity,
             source_comparison_id=row.source_comparison_id,
             reviewer_name=row.reviewer_name,
+            claimed_at=claimed_at,
             resolution=row.resolution,
             notes=row.notes,
             confidence=row.confidence,
             evidence=row.evidence.get('evidence', []) if row.evidence else [],
             comparison=comp,
             priority=priority,
+            presentation_title=presentation.title,
             human_explanation=human_explanation,
             affected_fields=aff_fields,
+            affected_area=presentation.affected_area,
+            suggested_action=presentation.suggested_action,
+            semantic_style=presentation.semantic_style,
             age_minutes=age_minutes,
             overrides=overrides,
             actions=actions,
@@ -830,4 +862,4 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
     cases = session.scalars(select(HumanReviewCaseRecord)).all()
     overrides = session.scalars(select(HumanReviewFieldOverrideRecord)).all()
 
-    return analytics_helper.compute_analytics(cases, overrides)
+    return analytics_helper.get_human_review_analytics(session)

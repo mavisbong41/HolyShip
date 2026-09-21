@@ -30,6 +30,7 @@ import {
   getEmailDetail,
   getEmailQueue,
   getEvents,
+  getHumanReviewAnalytics,
   getHumanReviewDetail,
   getHumanReviewQueue,
   getSummary,
@@ -42,6 +43,7 @@ import {
 } from "./api/client";
 import type {
   EmailQueuePage,
+  HumanReviewAnalytics,
   HumanReviewPage,
   ProcessingStatus,
   ProductCategory,
@@ -270,9 +272,9 @@ function OverviewPage({
           <MetricCard
             cardIndex={3}
             icon={<AlertTriangle size={18} color="var(--color-danger)" />}
-            label="Mismatch"
+            label="Emails with Mismatch"
             value={summary?.mismatch_count ?? 0}
-            trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total`}
+            trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total emails`}
             trend="down"
             tone="bad"
           />
@@ -415,8 +417,8 @@ function OverviewPage({
                   <X size={13} />
                 </div>
                 <div className="alert-row-info">
-                  <strong>BL vs SI mismatch</strong>
-                  <p>Container no. or weight discrepancy</p>
+                  <strong>Emails with BL vs SI mismatch</strong>
+                  <p>At least one comparison field differs between the SI and BL</p>
                 </div>
               </div>
               <div className="alert-row-right">
@@ -463,8 +465,8 @@ function OverviewPage({
                   <AlertCircle size={13} />
                 </div>
                 <div className="alert-row-info">
-                  <strong>Unresolved fields</strong>
-                  <p>Requires manual review verification</p>
+                  <strong>Emails with unresolved fields</strong>
+                  <p>At least one comparison field could not be verified</p>
                 </div>
               </div>
               <div className="alert-row-right">
@@ -1198,6 +1200,7 @@ function EmailDetailContent({
 
 function HumanReviewPageView({
   reviews,
+  analytics,
   state,
   selected,
   actionState,
@@ -1208,6 +1211,7 @@ function HumanReviewPageView({
   onDismiss,
 }: {
   reviews: HumanReviewPage | null;
+  analytics: HumanReviewAnalytics | null;
   state: LoadState;
   selected: ProductReview | null;
   actionState: LoadState;
@@ -1250,7 +1254,17 @@ function HumanReviewPageView({
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
 
   return (
-    <section className="queue-layout">
+    <section className="page-grid">
+      <section className="metric-grid-wrap">
+        <div className="metric-grid" aria-label="Human Review analytics">
+          <MetricCard cardIndex={0} icon={<ShieldAlert size={18} color="var(--color-warn)" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="warn" />
+          <MetricCard cardIndex={1} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
+          <MetricCard cardIndex={2} icon={<CircleCheck size={18} color="var(--color-success)" />} label="Resolved Today" value={analytics?.resolved_today_count ?? 0} trendText={analytics?.resolved_count ? String(analytics.resolved_count) + " resolved total" : "No resolved cases"} tone="good" />
+          <MetricCard cardIndex={3} icon={<Archive size={18} color="var(--color-grey-700)" />} label="Dismissed" value={analytics?.dismissed_count ?? 0} trendText="Review decisions" tone="neutral" />
+          <MetricCard cardIndex={4} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
+        </div>
+      </section>
+      <section className="queue-layout">
       <div className="surface-panel queue-panel">
         <div className="section-header">
           <div>
@@ -1282,9 +1296,10 @@ function HumanReviewPageView({
                   <div>
                     <h2>{review.email?.subject ?? "Unknown subject"}</h2>
                     <p>{review.email?.sender || "Unknown sender"}</p>
-                    <strong className="review-reason">{reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code)}</strong>
+                    <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
                     <p className="human-explanation">{review.human_explanation}</p>
-                    <p className="affected-fields-summary">Affected: {review.affected_fields?.join(", ") || "None"}</p>
+                    <p className="affected-fields-summary">Affected area: {review.affected_area || (review.affected_fields?.length ? review.affected_fields.join(", ") : "Review case")}</p>
+                    <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
                     <p className="age-summary">Age: {review.age_minutes} mins</p>
                   </div>
                   <button type="button" onClick={() => onSelect(review.id)}>Open Review</button>
@@ -1294,8 +1309,8 @@ function HumanReviewPageView({
                   <StatusBadge value={review.status} />
                   <StatusBadge value={review.email?.processing_status} />
                   {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
-                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>
-                  <span className="subtle">{review.comparison?.unresolved_fields.length ?? 0} affected field(s)</span>
+                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
+                  <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : review.affected_fields.length + " affected field(s)"}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
                 </div>
               </article>
@@ -1311,11 +1326,11 @@ function HumanReviewPageView({
               <p className="eyebrow">Human Review</p>
               <h2>{selected.email?.subject || "Review case"}</h2>
               <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
-              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span></div>
+              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span>{selected.claimed_at ? <span className="subtle">Claimed {formatDate(selected.claimed_at)}</span> : null}</div>
             </div>
             <div className="review-callout">
               <AlertTriangle size={18} aria-hidden="true" />
-              <div><strong>{reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code)}</strong><p>{selected.reason_text}</p><small className="technical-code">{selected.reason_code}</small></div>
+              <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
             </div>
             <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
             <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
@@ -1336,6 +1351,7 @@ function HumanReviewPageView({
           </div>
         )}
       </div>
+      </section>
     </section>
   );
 }
@@ -1346,6 +1362,7 @@ export default function App() {
   const [queue, setQueue] = useState<EmailQueuePage | null>(null);
   const [detail, setDetail] = useState<ProductEmailDetail | null>(null);
   const [reviews, setReviews] = useState<HumanReviewPage | null>(null);
+  const [reviewAnalytics, setReviewAnalytics] = useState<HumanReviewAnalytics | null>(null);
   const [selectedReview, setSelectedReview] = useState<ProductReview | null>(null);
   const [loadState, setLoadState] = useState<LoadState>("idle");
   const [detailState, setDetailState] = useState<LoadState>("idle");
@@ -1380,7 +1397,12 @@ export default function App() {
   const loadReviews = useCallback(async () => {
     setReviewState("loading");
     try {
-      setReviews(await getHumanReviewQueue({ active_only: false }));
+      const [reviewPage, analytics] = await Promise.all([
+        getHumanReviewQueue({ active_only: false }),
+        getHumanReviewAnalytics(),
+      ]);
+      setReviews(reviewPage);
+      setReviewAnalytics(analytics);
       setReviewState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load review queue");
@@ -1589,6 +1611,7 @@ export default function App() {
         {page === "review" ? (
           <HumanReviewPageView
             reviews={reviews}
+            analytics={reviewAnalytics}
             state={reviewState}
             selected={selectedReview}
             actionState={reviewActionState}

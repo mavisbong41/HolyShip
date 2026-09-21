@@ -225,14 +225,19 @@ class ProductReview(BaseModel):
     workflow_identity: str | None = None
     source_comparison_id: uuid.UUID | None = None
     reviewer_name: str | None = None
+    claimed_at: datetime | None = None
     resolution: str | None = None
     notes: str | None = None
     confidence: float | None = Field(default=None, ge=0.0, le=1.0)
     evidence: list[ProductEvidence] = Field(default_factory=list)
     comparison: ProductComparison | None = None
     priority: Literal["HIGH", "MEDIUM", "LOW"] = "LOW"
+    presentation_title: str | None = None
     human_explanation: str | None = None
     affected_fields: list[str] = Field(default_factory=list)
+    affected_area: str | None = None
+    suggested_action: str | None = None
+    semantic_style: str | None = None
     age_minutes: int = 0
     body: str | None = None
     documents: list[ProductDocument] = Field(default_factory=list)
@@ -317,6 +322,15 @@ class ProductIncomingOut(BaseModel):
     external_message_id: str
     status: str
     error: str | None = None
+
+
+class HumanReviewReconciliation(BaseModel):
+    total_emails: int = 0
+    processing_status_counts: dict[str, int] = Field(default_factory=dict)
+    active_review_status_counts: dict[str, int] = Field(default_factory=dict)
+    historical_review_status_counts: dict[str, int] = Field(default_factory=dict)
+    emails_with_mismatch: int = 0
+    emails_with_unresolved_fields: int = 0
 
 
 class HumanReviewAnalytics(BaseModel):

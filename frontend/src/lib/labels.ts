@@ -19,12 +19,12 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   QUEUED: "Queued",
   CLASSIFYING: "Classifying",
   CLASSIFIED: "Classified",
-  AWAITING_DOCUMENTS: "Awaiting Documents",
+  AWAITING_DOCUMENTS: "Waiting for Documents",
   RETRIEVING_ATTACHMENTS: "Retrieving Attachments",
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
   COMPLETED: "Completed",
-  BLOCKED: "Needs Review",
+  BLOCKED: "Needs Attention",
   FAILED: "Processing Failed",
 };
 
@@ -51,18 +51,25 @@ export const fieldStatusLabels: Record<FieldStatus, string> = {
 };
 
 export const reviewStatusLabels: Record<string, string> = {
-  OPEN: "Open",
-  IN_REVIEW: "In Review",
-  RESOLVED: "Resolved",
-  DISMISSED: "Dismissed",
+  OPEN: "Needs Review",
+  IN_REVIEW: "Being Reviewed",
+  RESOLVED: "Review Completed",
+  DISMISSED: "Review Dismissed",
 };
 
 export const reasonLabels: Record<string, string> = {
-  COMPARISON_UNRESOLVED: "Comparison needs review",
-  MISSING_REQUIRED_ATTACHMENT: "Required document is missing",
-  WRONG_DOCUMENT_TYPE: "Document type does not match",
+  COMPARISON_UNRESOLVED: "One or more document fields could not be verified",
+  COMPARISON_MISMATCH: "The SI and BL contain different values",
+  CLASSIFICATION_UNRESOLVED: "Email type unclear",
+  DOCUMENT_ROLE_UNRESOLVED: "Document role unclear",
+  WRONG_DOCUMENT_TYPE: "Wrong document type",
+  MISSING_REQUIRED_ATTACHMENT: "Required shipping document is missing",
+  UNREADABLE_ATTACHMENT: "Document could not be read reliably",
+  UNSUPPORTED_ATTACHMENT: "Document format is unsupported",
+  CORRUPTED_ATTACHMENT: "Document could not be read",
+  MULTIPLE_CANDIDATES: "More than one document may match",
+  READINESS_UNRESOLVED: "Document readiness unclear",
   DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
-  READINESS_UNRESOLVED: "Comparison readiness needs review",
   NOT_ACTIONABLE: "Not actionable",
 };
 

@@ -214,8 +214,12 @@ export interface ProductReview {
   evidence: ProductEvidence[];
   comparison: ProductComparison | null;
   priority: "HIGH" | "MEDIUM" | "LOW";
+  presentation_title: string | null;
   human_explanation: string | null;
   affected_fields: string[];
+  affected_area: string | null;
+  suggested_action: string | null;
+  semantic_style: string | null;
   age_minutes: number;
   body?: string | null;
   documents?: ProductDocument[];
