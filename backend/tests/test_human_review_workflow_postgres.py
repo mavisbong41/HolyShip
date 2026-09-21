@@ -485,8 +485,33 @@ def test_historical_review_records_are_read_only(db_factory):
         with pytest.raises(ReviewConflictError, match="read-only"):
             service.dismiss(case.id, reviewer_name="Reviewer", reason="NOT_ACTIONABLE")
 from backend.app.storage.models import EmailMessageRecord, ClassificationResultRecord, HumanReviewCaseRecord
+from backend.app.api.analytics_helper import get_human_review_analytics
 from backend.app.api.product_queries import get_product_summary, list_human_reviews
 import uuid
+
+
+@pytest.mark.req("HR-02")
+def test_human_review_analytics_is_read_only_and_does_not_sync_blocked_cases(db_factory):
+    with db_factory() as session:
+        blocked = EmailMessageRecord(
+            id=uuid.uuid4(),
+            external_message_id="analytics-read-only-blocked",
+            source_type="STATIC_BUNDLE",
+            sender="a@b.com",
+            subject="blocked",
+            body="blocked",
+            content_hash=hashlib.sha256(b"analytics-read-only-blocked").hexdigest(),
+            processing_status="BLOCKED",
+        )
+        session.add(blocked)
+        session.commit()
+
+        analytics = get_human_review_analytics(session)
+
+        assert analytics.open_count == 0
+        assert session.scalar(select(func.count(HumanReviewCaseRecord.id))) == 0
+
+
 def test_legacy_not_counted_in_summary(db_factory):
     with db_factory() as session:
         now = datetime.now(timezone.utc)

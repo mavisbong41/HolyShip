@@ -11,7 +11,7 @@ import type {
   InitialSyncResult,
 } from "./types";
 
-const defaultBaseUrl = "http://localhost:8000/api/v1";
+const defaultBaseUrl = "/api/v1";
 
 export class ApiError extends Error {
   status: number;

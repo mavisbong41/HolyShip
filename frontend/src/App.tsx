@@ -103,12 +103,59 @@ const categoryOptions: ProductCategory[] = [
   "spam",
 ];
 
+const defaultReviewerName = "Demo Reviewer";
+
 function cx(...items: Array<string | false | null | undefined>): string {
   return items.filter(Boolean).join(" ");
 }
 
 function metricFromStatus(summary: ProductSummary | null, status: ProcessingStatus): number {
   return summary?.status_counts[status] ?? 0;
+}
+
+function reviewAnalyticsFallback(page: HumanReviewPage): HumanReviewAnalytics {
+  const analytics: HumanReviewAnalytics = {
+    open_count: 0,
+    in_review_count: 0,
+    resolved_count: 0,
+    dismissed_count: 0,
+    resolved_today_count: 0,
+    average_open_age_minutes: null,
+    priority_distribution: {},
+    reason_distribution: {},
+    most_reviewed_fields: {},
+    most_corrected_fields: {},
+    correction_reasons: {},
+  };
+  const openAges: number[] = [];
+  const today = new Date().toDateString();
+
+  for (const review of page.items) {
+    if (review.status === "OPEN") {
+      analytics.open_count += 1;
+      if (typeof review.age_minutes === "number") openAges.push(review.age_minutes);
+    } else if (review.status === "IN_REVIEW") {
+      analytics.in_review_count += 1;
+    } else if (review.status === "RESOLVED") {
+      analytics.resolved_count += 1;
+      if (review.resolved_at && new Date(review.resolved_at).toDateString() === today) {
+        analytics.resolved_today_count += 1;
+      }
+    } else if (review.status === "DISMISSED") {
+      analytics.dismissed_count += 1;
+    }
+
+    analytics.priority_distribution[review.priority] = (analytics.priority_distribution[review.priority] ?? 0) + 1;
+    analytics.reason_distribution[review.reason_code] = (analytics.reason_distribution[review.reason_code] ?? 0) + 1;
+    for (const field of review.affected_fields ?? []) {
+      analytics.most_reviewed_fields[field] = (analytics.most_reviewed_fields[field] ?? 0) + 1;
+    }
+  }
+
+  if (openAges.length) {
+    analytics.average_open_age_minutes = openAges.reduce((sum, value) => sum + value, 0) / openAges.length;
+  }
+  return analytics;
 }
 
 function StatusBadge({
@@ -1539,6 +1586,7 @@ function HumanReviewPageView({
   onResolve,
   onDismiss,
   onReprocess,
+  onCaseUpdated,
 }: {
   reviews: HumanReviewPage | null;
   analytics: HumanReviewAnalytics | null;
@@ -1553,6 +1601,7 @@ function HumanReviewPageView({
   onResolve: (reviewer: string, notes?: string) => Promise<void>;
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
   onReprocess?: (emailId: string) => void | Promise<void>;
+  onCaseUpdated?: (review: ProductReview) => void | Promise<void>;
 }) {
   const [activeStatusFilter, setActiveStatusFilter] = useState("ACTIVE");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL_HISTORY");
@@ -1560,7 +1609,7 @@ function HumanReviewPageView({
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [sortFilter, setSortFilter] = useState("newest");
-  const [reviewer, setReviewer] = useState("John Doe");
+  const [reviewer, setReviewer] = useState(defaultReviewerName);
   const [side, setSide] = useState<"SI" | "BL">("BL");
   const [field, setField] = useState("notify_party");
   const [correctedValue, setCorrectedValue] = useState("");
@@ -1575,7 +1624,7 @@ function HumanReviewPageView({
     if (selected?.reviewer_name) {
       setReviewer(selected.reviewer_name);
     } else {
-      setReviewer("John Doe");
+      setReviewer(defaultReviewerName);
     }
 
     if (selected?.reason_code) {
@@ -2209,7 +2258,7 @@ function HumanReviewPageView({
               {selected.case_origin === "ACTIVE" ? (
                 <AIReviewPanel
                   review={selected}
-                  reviewerName={reviewer}
+                  reviewerName={selected.reviewer_name || reviewer}
                   onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
                 />
               ) : null}
@@ -3131,12 +3180,13 @@ export default function App() {
     setReviewState("loading");
     try {
       const showAllReviews = reviewViewMode === "HISTORY";
-      const [reviewPage, analytics] = await Promise.all([
-        getAllHumanReviews({ active_only: !showAllReviews }),
-        getHumanReviewAnalytics(),
-      ]);
+      const reviewPage = await getAllHumanReviews({ active_only: !showAllReviews });
       setReviews(reviewPage);
-      setReviewAnalytics(analytics);
+      try {
+        setReviewAnalytics(await getHumanReviewAnalytics());
+      } catch {
+        setReviewAnalytics(reviewAnalyticsFallback(reviewPage));
+      }
       setReviewState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load review queue");
@@ -3366,6 +3416,7 @@ export default function App() {
             onResolve={(reviewer, notes) => reviewMutation(() => resolveHumanReview(selectedReview!.id, reviewer, notes))}
             onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
             onReprocess={(emailId) => void reprocess(emailId)}
+            onCaseUpdated={(updated) => void refreshAfterReview(updated)}
           />
         ) : null}
       </main>
