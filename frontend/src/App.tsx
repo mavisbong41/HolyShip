@@ -14,10 +14,12 @@ import {
   FileSearch,
   FileText,
   Inbox,
+  Mail,
   MailCheck,
   Maximize2,
   Minimize2,
   MoreHorizontal,
+  LogOut,
   RefreshCw,
   Search,
   ShieldAlert,
@@ -165,6 +167,9 @@ function AppHeader({
   syncState?: LoadState;
 }) {
   const [syncTimeText, setSyncTimeText] = useState(() => formatRelativeTime(lastSyncedAt));
+  const [userMenuOpen, setUserMenuOpen] = useState(false);
+  const [isLoggedOut, setIsLoggedOut] = useState(false);
+  const userMenuRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     setSyncTimeText(formatRelativeTime(lastSyncedAt));
@@ -173,6 +178,18 @@ function AppHeader({
     }, 5000);
     return () => window.clearInterval(interval);
   }, [lastSyncedAt]);
+
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (userMenuRef.current && !userMenuRef.current.contains(event.target as Node)) {
+        setUserMenuOpen(false);
+      }
+    };
+    if (userMenuOpen) {
+      document.addEventListener("mousedown", handleClickOutside);
+      return () => document.removeEventListener("mousedown", handleClickOutside);
+    }
+  }, [userMenuOpen]);
 
   const eyebrowText =
     page === "overview"
@@ -188,35 +205,138 @@ function AppHeader({
         <h1 className="sr-only">Shipping document operations, at a glance.</h1>
       </div>
       <div className="overview-header-actions">
-        <button type="button" onClick={onInitialSync} disabled={syncState === "loading"}>
-          {syncState === "loading" ? "Syncing…" : "Initial Sync"}
-        </button>
-        <span className={cx("connection", state === "error" ? "offline" : "online")}>
-          <span
-            style={{
-              width: 7,
-              height: 7,
-              borderRadius: "50%",
-              background: state === "error" ? "var(--color-danger)" : "var(--color-success)",
-              display: "inline-block",
-              marginRight: 6,
-            }}
-          />
-          {state === "error" ? "API Attention" : "Backend Online"}
-          <span style={{ opacity: 0.65, marginLeft: 6, fontWeight: 400, fontSize: "11.5px" }}>
-            Last synced {syncTimeText}
+        <div className="tooltip-wrap">
+          <span className={cx("connection", state === "error" ? "offline" : "online")}>
+            <span
+              style={{
+                width: 7,
+                height: 7,
+                borderRadius: "50%",
+                background: state === "error" ? "var(--color-danger)" : "var(--color-success)",
+                display: "inline-block",
+                marginRight: 6,
+              }}
+            />
+            {state === "error" ? "API Attention" : "Backend Online"}
+            <span style={{ opacity: 0.65, marginLeft: 6, fontWeight: 400, fontSize: "11px" }}>
+              Synced {syncTimeText}
+            </span>
           </span>
-        </span>
-        <button
-          className="icon-button"
-          onClick={onRefresh}
-          type="button"
-          aria-label="Refresh overview"
-          style={{ width: 34, height: 34, borderRadius: 8 }}
-        >
-          <RefreshCw size={15} />
-        </button>
-        <div className="avatar-badge">JD</div>
+          <div className="tooltip-bubble">
+            <strong>Backend Online</strong>
+            <span>API service operational with automated live event sync</span>
+          </div>
+        </div>
+
+        <div className="topbar-divider" />
+
+        <div className="tooltip-wrap">
+          <button
+            className="sync-button"
+            type="button"
+            onClick={onInitialSync}
+            disabled={syncState === "loading"}
+          >
+            {syncState === "loading" ? "Syncing…" : "Initial Sync"}
+          </button>
+          <div className="tooltip-bubble tooltip-right">
+            <strong>Initial Sync</strong>
+            <span>Batch ingests inbox backlog and runs SI/BL verification pipeline</span>
+          </div>
+        </div>
+
+        <div className="tooltip-wrap">
+          <button
+            className="icon-button"
+            onClick={onRefresh}
+            type="button"
+            aria-label="Refresh overview"
+          >
+            <RefreshCw size={14} />
+          </button>
+          <div className="tooltip-bubble tooltip-right">
+            <strong>Refresh Dashboard</strong>
+            <span>Reloads latest metrics and email queue from database</span>
+          </div>
+        </div>
+
+        <div className="user-menu-wrap" ref={userMenuRef}>
+          <div className="tooltip-wrap">
+            <button
+              className="avatar-badge avatar-button"
+              type="button"
+              onClick={() => setUserMenuOpen((prev) => !prev)}
+              aria-label="User profile menu"
+            >
+              {isLoggedOut ? "?" : "JD"}
+            </button>
+            {!userMenuOpen && (
+              <div className="tooltip-bubble tooltip-right">
+                <strong>{isLoggedOut ? "Signed Out" : "John Doe"}</strong>
+                <span>{isLoggedOut ? "Click to sign in" : "john.doe@outlook.com · Manage account"}</span>
+              </div>
+            )}
+          </div>
+
+          {userMenuOpen && (
+            <div className="user-dropdown-menu" role="menu">
+              <div className="user-dropdown-header">
+                <div className="dropdown-avatar">{isLoggedOut ? "?" : "JD"}</div>
+                <div className="dropdown-user-info">
+                  <strong>{isLoggedOut ? "Signed Out" : "John Doe"}</strong>
+                  <span className="dropdown-email">{isLoggedOut ? "No active account" : "john.doe@outlook.com"}</span>
+                  <span className="dropdown-tenant">
+                    <span className="tenant-dot" />
+                    {isLoggedOut ? "Session closed" : "Connected to Outlook 365"}
+                  </span>
+                </div>
+              </div>
+
+              <div className="user-dropdown-body">
+                <div className="user-info-row">
+                  <span>Role:</span>
+                  <strong>Shipping Operator</strong>
+                </div>
+                <div className="user-info-row">
+                  <span>Mailbox:</span>
+                  <strong>inbox@holyship.outlook.com</strong>
+                </div>
+                <div className="user-info-row">
+                  <span>Organization:</span>
+                  <strong>HolyShip Global Ops</strong>
+                </div>
+              </div>
+
+              <div className="user-dropdown-footer">
+                {isLoggedOut ? (
+                  <button
+                    className="user-login-btn"
+                    type="button"
+                    onClick={() => {
+                      setIsLoggedOut(false);
+                      setUserMenuOpen(false);
+                    }}
+                  >
+                    <Mail size={14} />
+                    Sign in with Outlook
+                  </button>
+                ) : (
+                  <button
+                    className="user-logout-btn"
+                    type="button"
+                    onClick={() => {
+                      setIsLoggedOut(true);
+                      setTimeout(() => setUserMenuOpen(false), 600);
+                    }}
+                  >
+                    <LogOut size={14} />
+                    Log out (outlook.com)
+                  </button>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );
@@ -241,15 +361,15 @@ function OverviewPage({
 
   return (
     <section className="page-grid">
-      <div className="metric-grid-wrap">
-        <div className="metric-grid" aria-label="Operational summary">
+      <section className="overview-summary-panel" aria-label="Operational summary">
+        <div className="metric-grid overview-metric-grid">
           <MetricCard
             cardIndex={0}
-            icon={<MailCheck size={18} color="var(--color-black)" />}
+            icon={<MailCheck size={18} color="currentColor" />}
             label="Total Emails"
             value={summary?.total_emails ?? 0}
             trendText={`${summary?.processing_count ?? 0} processing`}
-            tone="neutral"
+            tone="attention"
           />
           <MetricCard
             cardIndex={1}
@@ -303,7 +423,7 @@ function OverviewPage({
             tone="neutral"
           />
         </div>
-      </div>
+      </section>
 
       <div className="overview-tri-grid">
         {/* Col 1: Processing Load */}
@@ -1257,9 +1377,9 @@ function HumanReviewPageView({
 
   return (
     <section className="page-grid">
-      <section className="metric-grid-wrap">
-        <div className="metric-grid" aria-label="Human Review analytics">
-          <MetricCard cardIndex={0} icon={<ShieldAlert size={18} color="var(--color-warn)" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="warn" />
+      <section className="overview-summary-panel" aria-label="Human Review analytics">
+        <div className="metric-grid human-review-metric-grid" aria-label="Human Review analytics">
+          <MetricCard cardIndex={0} icon={<ShieldAlert size={18} color="currentColor" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="attention" />
           <MetricCard cardIndex={1} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
           <MetricCard cardIndex={2} icon={<CircleCheck size={18} color="var(--color-success)" />} label="Resolved Today" value={analytics?.resolved_today_count ?? 0} trendText={analytics?.resolved_count ? String(analytics.resolved_count) + " resolved total" : "No resolved cases"} tone="good" />
           <MetricCard cardIndex={3} icon={<Archive size={18} color="var(--color-grey-700)" />} label="Dismissed" value={analytics?.dismissed_count ?? 0} trendText="Review decisions" tone="neutral" />
@@ -1541,11 +1661,7 @@ export default function App() {
     <div className="app-shell">
       <aside className="sidebar" aria-label="Primary navigation">
         <div className="brand">
-          <div className="brand-mark">h</div>
-          <div>
-            <strong>HolyShip</strong>
-            <span>Shipping Document Verification</span>
-          </div>
+          <img src="/holyship-logo.png" alt="HolyShip" className="brand-logo" />
         </div>
         <nav>
           <button className={cx(page === "overview" && "active")} onClick={() => navigate("overview")} type="button">
