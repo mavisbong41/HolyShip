@@ -15,7 +15,8 @@ function jsonResponse(payload: unknown, ok = true, status = 200): Response {
 }
 
 function setupFetch(overrides?: Partial<Record<string, unknown>>) {
-  const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+  const reviewDetail = overrides?.reviewDetail ?? demoHumanReview.items[0];
+  const fetchMock = vi.fn(async (input: RequestInfo | URL, init?: RequestInit) => {
     const url = String(input);
     if (url.includes("/summary")) {
       return jsonResponse(overrides?.summary ?? demoSummary);
@@ -25,6 +26,9 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     }
     if (url.includes("/emails/22222222-2222-4222-8222-222222222222")) {
       return jsonResponse(overrides?.detail ?? demoDetail);
+    }
+    if (url.includes("/human-review/99999999-9999-4999-8999-999999999999")) {
+      return jsonResponse(reviewDetail);
     }
     if (url.includes("/human-review")) {
       return jsonResponse(overrides?.humanReview ?? demoHumanReview);
@@ -43,6 +47,7 @@ beforeEach(() => {
 });
 
 afterEach(() => {
+  window.history.replaceState({}, "", "/");
   vi.useRealTimers();
   vi.unstubAllGlobals();
 });
@@ -132,7 +137,113 @@ describe("HolyShip dashboard", () => {
     await screen.findByText("Shipping document operations, at a glance.");
     await user.click(screen.getByRole("button", { name: "Human Review" }));
 
-    expect(await screen.findByText("No review cases")).toBeInTheDocument();
+    expect(await screen.findByText("No active review cases")).toBeInTheDocument();
+  });
+
+  it("opens a real email detail from an Outlook add-in deep link", async () => {
+    const fetchMock = setupFetch();
+    window.history.replaceState({}, "", "/?email=22222222-2222-4222-8222-222222222222");
+
+    render(<App />);
+
+    expect(await screen.findByRole("table", { name: "Seven-field SI and Draft BL comparison" })).toBeInTheDocument();
+    expect(screen.getAllByText("Please verify draft BL details").length).toBeGreaterThan(0);
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/emails/22222222-2222-4222-8222-222222222222"),
+      expect.anything(),
+    );
+  });
+
+  it("loads Human Review detail and sends reviewer corrections through the API", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Human Review" }));
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
+    expect(await screen.findByRole("table", { name: "Human Review seven-field comparison" })).toBeInTheDocument();
+
+    await user.type(screen.getByLabelText("Corrected value"), "Same as consignee");
+    await user.click(screen.getByRole("button", { name: "Save Correction" }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/human-review/99999999-9999-4999-8999-999999999999/overrides"),
+        expect.objectContaining({ method: "POST" }),
+      );
+    });
+  });
+
+  it("opens Human Review directly and keeps resolve and dismiss as distinct actions", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    window.history.replaceState({}, "", "/?review=99999999-9999-4999-8999-999999999999");
+
+    render(<App />);
+
+    expect(await screen.findByRole("table", { name: "Human Review seven-field comparison" })).toBeInTheDocument();
+    expect(screen.getByText(/original extraction remains immutable/i)).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Resolve & Recompare" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/human-review/99999999-9999-4999-8999-999999999999/resolve"),
+      expect.objectContaining({ method: "POST" }),
+    ));
+
+    await user.click(screen.getByRole("button", { name: "Dismiss Review" }));
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/human-review/99999999-9999-4999-8999-999999999999/dismiss"),
+      expect.objectContaining({ method: "POST" }),
+    ));
+  });
+
+  it("presents Awaiting Documents without Human Review controls", async () => {
+    const awaiting: ProductEmailDetail = {
+      ...demoDetail,
+      email: { ...demoDetail.email, processing_status: "AWAITING_DOCUMENTS", comparison_readiness: "AWAITING_DOCUMENTS", review_id: null },
+      comparison: null,
+      review: [],
+    };
+    setupFetch({ detail: awaiting });
+    window.history.replaceState({}, "", "/?email=22222222-2222-4222-8222-222222222222");
+
+    render(<App />);
+
+    expect((await screen.findAllByText("Awaiting Documents", { selector: "strong" })).length).toBeGreaterThan(0);
+    expect(screen.getByText(/required document has not arrived/i)).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: /open human review/i })).not.toBeInTheDocument();
+  });
+
+  it("presents technical failure with a real reprocess action", async () => {
+    const failed: ProductEmailDetail = {
+      ...demoDetail,
+      email: { ...demoDetail.email, processing_status: "FAILED", review_id: null },
+      comparison: null,
+      review: [],
+      timeline: [{ id: "failure", old_status: "EXTRACTING", new_status: "FAILED", reason_code: "DOCUMENT_FIELD_EXTRACTION_FAILED", created_at: "2026-09-21T10:25:00+08:00" }],
+    };
+    const fetchMock = setupFetch({ detail: failed });
+    window.history.replaceState({}, "", "/?email=22222222-2222-4222-8222-222222222222");
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+
+    render(<App />);
+    await user.click(await screen.findByRole("button", { name: "Retry / Reprocess" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/emails/22222222-2222-4222-8222-222222222222/reprocess"),
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(screen.queryByRole("button", { name: /open human review/i })).not.toBeInTheDocument();
+  });
+
+  it("shows the backend error for an invalid email deep link", async () => {
+    setupFetch();
+    window.history.replaceState({}, "", "/?email=not-a-real-email-id");
+
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Not found");
+    expect(screen.queryByRole("table", { name: "Seven-field SI and Draft BL comparison" })).not.toBeInTheDocument();
   });
 
   it("shows API errors without fabricating data", async () => {
