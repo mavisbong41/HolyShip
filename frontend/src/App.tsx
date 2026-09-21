@@ -1496,7 +1496,10 @@ function HumanReviewPageView({
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
   const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
 
+  const [showActionGuidance, setShowActionGuidance] = useState(false);
+
   useEffect(() => {
+    setShowActionGuidance(false);
     if (selected?.reviewer_name) {
       setReviewer(selected.reviewer_name);
     } else {
@@ -1872,14 +1875,31 @@ function HumanReviewPageView({
                   </strong>
                   <p className="callout-desc">{cleanExplanation}</p>
 
-                  <div className="callout-action-banner">
-                    <div className="action-banner-badge">ACTION REQUIRED</div>
-                    <p className="action-banner-text">
-                      <strong>{selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}:</strong>{" "}
-                      {selected.case_origin === "LEGACY"
-                        ? "Historical review record is read-only."
-                        : `Please review the ${selected.affected_fields?.length || selectedUnresolved} unresolved field(s) below. Click any field chip to edit, enter verified values from documents, and submit "Resolve & Recompare".`}
-                    </p>
+                  <div className="action-guidance-wrapper">
+                    <button
+                      type="button"
+                      className={cx("action-guidance-toggle-btn", showActionGuidance && "is-open")}
+                      onClick={() => setShowActionGuidance((prev) => !prev)}
+                      aria-expanded={showActionGuidance}
+                      title={showActionGuidance ? "Click vibrating icon to close action instructions" : "Click vibrating icon to view action instructions"}
+                    >
+                      <span className="vibrating-alert-icon" aria-hidden="true">
+                        <AlertTriangle size={16} />
+                      </span>
+                      <span className="action-guidance-badge">ACTION REQUIRED</span>
+                      <span className="action-guidance-chevron">{showActionGuidance ? "▲" : "▼"}</span>
+                    </button>
+
+                    {showActionGuidance && (
+                      <div className="action-guidance-expanded">
+                        <p className="action-guidance-text">
+                          <strong>{selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}:</strong>{" "}
+                          {selected.case_origin === "LEGACY"
+                            ? "Historical review record is read-only."
+                            : `Please review the ${selected.affected_fields?.length || selectedUnresolved} unresolved field(s) below. Click any field chip to edit, enter verified values from documents, and submit "Resolve & Recompare".`}
+                        </p>
+                      </div>
+                    )}
                   </div>
 
                   {selected.affected_fields?.length ? (
