@@ -430,6 +430,7 @@ def test_review_api_queue_supports_filters_and_sorting_without_argument_regressi
                     {"active_only": "true"},
                     {"sort": "priority"},
                     {"sort": "oldest"},
+                    {"sort": "age"},
                     {"sort": "newest"},
                 ):
                     filtered = client.get("/api/v1/human-review", params=query)
