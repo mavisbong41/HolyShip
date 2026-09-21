@@ -1295,7 +1295,7 @@ function HumanReviewPageView({
                   <StatusBadge value={review.status} />
                   <StatusBadge value={review.email?.processing_status} />
                   {review.case_origin === "LEGACY" ? <span className="badge badge-muted">Historical legacy case</span> : null}
-                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>
+                  <span className="subtle">{review.reviewer_name || "Unassigned"}</span>{review.claimed_at ? <span className="subtle">Claimed {formatDate(review.claimed_at)}</span> : null}
                   <span className="subtle">{review.case_origin === "LEGACY" ? "No action required" : review.affected_fields.length + " affected field(s)"}</span>
                   <span className="subtle">{formatDate(review.created_at)}</span>
                 </div>
@@ -1312,7 +1312,7 @@ function HumanReviewPageView({
               <p className="eyebrow">Human Review</p>
               <h2>{selected.email?.subject || "Review case"}</h2>
               <p>{selected.email?.sender || "Unknown sender"} · {formatDate(selected.created_at)}</p>
-              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span></div>
+              <div className="detail-badge-row"><StatusBadge value={selected.priority} /><StatusBadge value={selected.status} /><StatusBadge value={selected.email?.processing_status} /><span className="assignee">{selected.reviewer_name || "Unassigned"}</span>{selected.claimed_at ? <span className="subtle">Claimed {formatDate(selected.claimed_at)}</span> : null}</div>
             </div>
             <div className="review-callout">
               <AlertTriangle size={18} aria-hidden="true" />
