@@ -1,135 +1,208 @@
 # HolyShip
 
-### Multi-stage AI-assisted verification for shipping documents — from inbox to trusted SI–BL comparison.
+### Multi-stage AI-assisted shipping document verification — from inbox to trusted SI–BL comparison.
 
-HolyShip is an end-to-end shipping document verification platform built for operational teams that need to process email requests quickly **without sacrificing evidence, traceability, or human control**.
+HolyShip is an end-to-end verification workflow for shipping operations teams. It reads incoming emails, understands what the sender is asking for, checks whether the required documents are ready, validates Shipping Instruction (SI) and Bill of Lading (BL) attachments, extracts seven shipment-critical fields, compares them through layered verification, and sends only genuine exceptions to Human Review.
 
-Instead of treating document verification as a single AI prediction, HolyShip uses a **multi-stage verification pipeline**: email intent classification, comparison readiness, attachment retrieval, content-based document role validation, structured extraction, deterministic normalization, seven-field comparison, Human Review, and AI-assisted exception handling.
+The core idea is simple: **do not treat every shipping email as a one-shot AI problem**. HolyShip separates classification, readiness, document validation, extraction, normalization, comparison, AI assistance, and human review into clear stages. This makes the workflow easier to trust, explain, reprocess, and audit.
 
-> **HolyShip principle:** Automate what can be verified confidently. Escalate only what genuinely needs judgment. Keep every decision explainable and auditable.
+> **HolyShip principle:** Verify in stages. Automate what is certain. Wait when documents are genuinely pending. Escalate only what still needs judgment.
 
 ---
 
 ## Live Deployment
 
-- Dashboard: [https://holyship.onrender.com/](https://holyship.onrender.com/)
-- Backend API: [https://holyship-backend.onrender.com](https://holyship-backend.onrender.com)
+- **Dashboard:** https://holyship.onrender.com/
+- **Backend API:** https://holyship-backend.onrender.com
+- **API Docs:** https://holyship-backend.onrender.com/docs
 
 ---
 
-## 🚢 Why HolyShip Stands Out
+# Why HolyShip Stands Out
 
-### 1. Verification happens in stages — not in one black box
+## 1. Multi-stage verification, not a black-box answer
 
-HolyShip does not jump straight from an email to a final answer. Every comparison passes through dedicated verification gates:
+HolyShip does not jump straight from an email to “match” or “mismatch”.
 
 ```text
-Email Intent
+Incoming Email
+    ↓
+Intent Classification
     ↓
 Comparison Readiness
     ↓
 Attachment Retrieval
     ↓
-Document Type & SI/BL Role Validation
+Document Type & SI/BL Validation
     ↓
 Seven-Field Extraction
     ↓
 Canonical Mapping
     ↓
-Deterministic Normalization
+L0 Universal Normalization
+    ↓
+L1 Field-Specific Normalization
+    ↓
+Optional L2 Semantic Resolution
     ↓
 SI ↔ BL Comparison
     ↓
 Complete / Wait / Human Review
 ```
 
-This makes the workflow easier to trust, explain, debug, and audit.
+Each stage has a clear purpose and a clear failure or escalation path.
 
-### 2. HolyShip distinguishes a real mismatch from uncertainty
+That matters in shipping operations because a wrong “MATCH” can hide a real document discrepancy, while a wrong “MISMATCH” can create unnecessary manual work or shipment delay.
 
-Each canonical field receives one of three outcomes:
+---
 
-- `MATCH` — values are confidently equivalent;
-- `MISMATCH` — values are confidently different;
-- `UNRESOLVED` — evidence is not strong enough to decide safely.
+## 2. MATCH, MISMATCH, and UNRESOLVED are different outcomes
 
-A definite mismatch does **not** automatically become Human Review. If all seven fields are definite, HolyShip can complete the comparison and report the discrepancy immediately.
+Every canonical field ends in one of three states:
 
-### 3. Human Review is evidence-backed, not a dead-end queue
+- `MATCH` — the values are confidently equivalent
+- `MISMATCH` — the values are confidently different
+- `UNRESOLVED` — there is not enough evidence to decide safely
 
-When judgment is required, reviewers can see:
+A confirmed mismatch is **not automatically a Human Review case**.
 
-- the email context;
-- SI and BL source values;
-- raw and canonical values;
-- comparison evidence;
-- affected fields;
-- review reason and priority;
-- Original / Reviewed / Effective values;
-- immutable review history.
-
-Corrections are stored as overlays instead of overwriting the original extraction.
-
-### 4. AI assists the reviewer — the human stays in control
-
-The **HolyShip AI Review Assistant** can explain why a case is blocked, summarize evidence, and produce grounded field suggestions.
-
-Every actionable suggestion still requires an explicit reviewer decision:
+If all seven fields are definite, HolyShip completes the comparison and reports the mismatch directly.
 
 ```text
-AI explains
-    ↓
-AI proposes a structured suggestion
-    ↓
-Reviewer Accepts / Edits / Dismisses
-    ↓
-Override is stored separately
-    ↓
-Resolve & Recompare
-    ↓
-New auditable comparison result
+6 MATCH + 1 MISMATCH + 0 UNRESOLVED
+→ COMPLETED
 ```
 
-### 5. HolyShip works where the user already works
+Human Review is reserved for uncertainty and document exceptions that actually need a person.
 
-The platform provides two connected experiences:
+---
 
-- **Web Dashboard** — full operational monitoring, comparison details, Human Review, analytics, and AI Review.
-- **Outlook Add-in** — compact current-email verification directly inside Outlook, with deep links into the full Dashboard workflow.
+## 3. Content-based document validation
+
+HolyShip does not trust filenames alone.
+
+A file named `BL.pdf` is not automatically accepted as a Bill of Lading. The system inspects the document content and validates the SI/BL role before extraction and comparison.
+
+This allows HolyShip to distinguish between:
+
+- missing required documents
+- wrong document type
+- corrupted files
+- truly unreadable documents
+- ambiguous document roles
+- multiple candidate documents
+
+So the system can explain *why* a comparison cannot continue instead of returning a generic error.
+
+---
+
+## 4. Waiting is not the same as an exception
+
+HolyShip treats operational waiting as its own state.
+
+```text
+"Draft BL will follow later."
+→ AWAITING_DOCUMENTS
+```
+
+but:
+
+```text
+"Please compare the attached SI and BL."
+BL is missing
+→ MISSING_REQUIRED_ATTACHMENT
+→ Human Review
+```
+
+This keeps normal waiting out of the Human Review queue while still surfacing missing-document problems that require action.
+
+---
+
+## 5. Human Review preserves the original evidence
+
+When a reviewer corrects a field, HolyShip does not overwrite the original extraction.
+
+```text
+Original Extraction
+        ↓
+Human Review Override
+        ↓
+Effective Reviewed Value
+        ↓
+Resolve & Recompare
+        ↓
+New Comparison Version
+```
+
+The original machine output, the reviewer’s decision, and the new comparison remain traceable.
+
+---
+
+## 6. AI is used where it actually helps
+
+HolyShip does use AI/LLMs — but selectively.
+
+There are two main AI use cases:
+
+1. **Optional L2 semantic resolution**  
+   For difficult residual cases where deterministic L0/L1 rules intentionally stop at `UNRESOLVED`.
+
+2. **AI Review Assistant**  
+   Inside Human Review, where an LLM can explain why a case is blocked, summarize evidence, and suggest a structured field correction.
+
+The core verification pipeline remains functional without AI. AI adds semantic help around the difficult cases instead of becoming the only source of truth.
+
+---
+
+## 7. Dashboard + Outlook, one workflow
+
+HolyShip supports two connected experiences:
+
+- **Web Dashboard** — operational overview, email queue, discrepancies, Human Review, analytics, evidence, and re-comparison
+- **Outlook Add-in** — compact status for the email the user is already reading, with a deep link into the full case
+
+The same workflow semantics are shared across both surfaces.
 
 ---
 
 # 1. The Problem
 
-Shipping teams receive mixed inbox traffic every day: Shipping Instructions, draft Bills of Lading, invoice questions, document-check requests, operational messages, and spam.
+Shipping teams receive mixed inbox traffic every day:
 
-For SI–BL verification, staff often need to manually:
+- Shipping Instructions
+- draft Bills of Lading
+- invoice questions
+- document-check requests
+- operational messages
+- spam
 
-1. identify the actual request in an email;
-2. determine whether the required documents have arrived;
-3. identify which attachment is the SI and which is the draft BL;
-4. locate matching shipment fields across different layouts;
-5. normalize harmless formatting differences;
-6. identify real discrepancies;
-7. decide whether uncertain values need human attention;
-8. record the decision for audit purposes.
+For a single SI–BL verification request, staff may need to:
 
-HolyShip turns that workflow into one traceable system.
+1. understand the actual request in the email
+2. check whether the required documents have arrived
+3. identify which attachment is the SI and which is the BL
+4. extract matching shipment fields from different layouts
+5. normalize harmless formatting differences
+6. identify real discrepancies
+7. decide whether uncertain values need human attention
+8. keep a record of what was checked and changed
+
+HolyShip turns those steps into one traceable workflow.
 
 ---
 
-# 2. The HolyShip Solution
+# 2. End-to-End Workflow
 
 ```mermaid
 flowchart TD
     A[Incoming Email] --> B[Ingestion & Deduplication]
-    B --> C[5-Category Intent Classification]
+    B --> C[5-Category Classification]
 
-    C -->|Non-comparison email| D[Complete]
+    C -->|Non-comparison| D[Complete]
     C -->|Document comparison| E{Comparison Readiness}
 
     E -->|Documents expected later| F[Awaiting Documents]
-    E -->|Ready| G[Lazy Attachment Retrieval]
+    E -->|Ready| G[Attachment Retrieval]
     E -->|Needs attention| H[Human Review]
 
     G --> I[Document Materialization]
@@ -139,26 +212,40 @@ flowchart TD
     L --> M[L0 + L1 Comparison]
 
     M -->|All fields definite| N[Complete]
+    M -->|Hard semantic case| O[Optional L2 Semantic Resolver]
+    O -->|Resolved| N
+    O -->|Still uncertain| H
     M -->|Unresolved evidence| H
 
-    H --> O[Evidence-backed Review Workspace]
-    O --> P[AI Review Assistant]
-    P --> Q{Human Decision}
-    Q --> R[Override + Recompare]
-    R --> S[New Auditable Result]
+    H --> P[Evidence-backed Review Workspace]
+    P --> Q[AI Review Assistant]
+    Q --> R{Reviewer Decision}
+    R --> S[Override + Recompare]
+    S --> T[New Auditable Result]
 ```
 
 ---
 
-# 3. End-to-End Workflow
+# 3. Email Ingestion
 
-## Step 1 — Email Ingestion
+HolyShip ingests messages through a source abstraction so the verification pipeline does not depend on where an email came from.
 
-HolyShip ingests incoming messages through a source abstraction and persists them with idempotency protection.
+Supported source patterns include:
 
-## Step 2 — Five-Category Classification
+- static competition/demo bundle
+- HTTP source
+- incoming API ingestion
+- Microsoft Graph adapter integration
 
-Every email is classified into exactly one operational category:
+Each message is normalized into a common internal structure and assigned a content hash for safe deduplication and reprocessing.
+
+This allows the same downstream workflow to handle an initial backlog sync, repeated sync, or future live mailbox ingestion without changing comparison logic.
+
+---
+
+# 4. Five-Category Classification
+
+Every email is classified into one of five operational categories:
 
 - `document_comparison`
 - `new_si_request`
@@ -166,101 +253,129 @@ Every email is classified into exactly one operational category:
 - `general_message`
 - `spam`
 
-The classifier uses a staged decision flow so clear cases are processed immediately while ambiguous signals receive additional resolution.
+Classification uses weighted evidence from:
 
-## Step 3 — Comparison Readiness
+- body
+- subject
+- attachment metadata
 
-Only `document_comparison` emails continue into document verification.
+The email body receives the strongest weight because it usually contains the actual requested action.
 
-Readiness is represented explicitly as:
+HolyShip uses two stages:
+
+### Stage 1 — Fast path
+
+Clear emails are classified immediately when confidence and separation thresholds are met.
+
+### Stage 2 — Conflict resolution
+
+Mixed or conflicting signals receive a second pass with stronger emphasis on body intent.
+
+If the evidence is still insufficient, the workflow keeps the uncertainty visible rather than forcing a confident-looking answer.
+
+---
+
+# 5. Comparison Readiness
+
+Only `document_comparison` emails proceed into SI–BL verification.
+
+Readiness is stored explicitly as:
 
 - `READY_FOR_COMPARISON`
 - `AWAITING_DOCUMENTS`
 - `UNRESOLVED`
 
-This is important because **waiting for a future document is operationally different from a failed or blocked comparison**.
+This lets HolyShip distinguish a normal waiting state from an actual exception.
 
-## Step 4 — Lazy Attachment Retrieval
-
-HolyShip retrieves attachment bytes only when the email is confirmed as a comparison workflow that is ready to proceed.
-
-## Step 5 — Content-Based Document Validation
-
-Attachments are validated from their contents rather than trusted by filename alone.
-
-HolyShip can distinguish:
-
-- Shipping Instruction;
-- draft Bill of Lading;
-- wrong document type;
-- unreadable/corrupted document;
-- ambiguous document role.
-
-## Step 6 — Structured Extraction
-
-The system extracts seven canonical fields while preserving evidence such as raw label, raw value, canonical value, confidence, and source location.
-
-## Step 7 — Layered Comparison
-
-HolyShip compares the SI reference against the BL using deterministic normalization layers.
+Example:
 
 ```text
-Raw values
-   ↓
-L0 Universal Normalization
-   ↓
-L1 Field-Specific Normalization
-   ↓
-MATCH / MISMATCH / UNRESOLVED
+"We will send the draft BL later."
+→ AWAITING_DOCUMENTS
 ```
 
-An optional semantic layer can be integrated for carefully controlled cases without replacing the deterministic core.
+while:
 
-## Step 8 — Complete, Wait, or Review
-
-The workflow finishes in the state that best reflects the evidence:
-
-- **Completed** — all seven fields are definite;
-- **Waiting for Documents** — the email explicitly indicates required documents will arrive later;
-- **Needs Review** — business evidence remains unresolved;
-- **Processing Failed** — technical retry/reprocessing path.
+```text
+"Please compare the attached SI and BL."
+BL is absent
+→ MISSING_REQUIRED_ATTACHMENT
+→ Human Review
+```
 
 ---
 
-# 4. Seven Canonical Comparison Fields
+# 6. Attachment Retrieval and Document Validation
 
-HolyShip focuses the SI–BL verification workflow on seven shipment-critical fields:
+Attachments are retrieved only when the workflow is ready to proceed.
+
+This avoids unnecessary document parsing for non-comparison emails and emails that are still waiting on a required document.
+
+HolyShip then validates document roles from content rather than filename alone.
+
+Typical document-level reasons include:
+
+- `MISSING_REQUIRED_ATTACHMENT`
+- `WRONG_DOCUMENT_TYPE`
+- `CORRUPTED_ATTACHMENT`
+- `UNREADABLE_ATTACHMENT`
+- `MULTIPLE_CANDIDATES`
+- `DOCUMENT_ROLE_UNRESOLVED`
+
+A wrong document, missing document, unreadable scan, and infrastructure failure are treated as different problems.
+
+---
+
+# 7. Structured Extraction
+
+HolyShip extracts seven canonical shipping fields.
 
 | Field | Purpose |
-|---|---|
+| --- | --- |
 | `shipper` | Shipping party / exporter |
 | `consignee` | Receiving party |
 | `notify_party` | Notify party details |
 | `port_of_loading` | Origin port |
 | `port_of_discharge` | Destination port |
 | `container_count` | Number of containers |
-| `gross_weight_kg` | Gross shipment weight in kilograms |
+| `gross_weight_kg` | Gross shipment weight |
 
-The **SI is treated as the reference**, and the BL is checked against it.
+The **SI is treated as the reference document**, and the BL is checked against it.
+
+For every field, HolyShip keeps evidence such as:
+
+- raw label
+- raw value
+- canonical value
+- confidence
+- document/source provenance
+
+Supported readers include:
+
+- TXT / CSV
+- PDF
+- DOCX
+- XLSX
+- Tesseract OCR for scanned PDFs/images
 
 ---
 
-# 5. Intelligent Normalization
+# 8. Layered Comparison Architecture
 
-Real shipping documents rarely use perfectly identical formatting. HolyShip removes harmless variation while preserving meaningful differences.
+HolyShip does not compare raw strings directly.
 
 ## L0 — Universal normalization
 
-Examples:
+L0 removes harmless formatting differences such as:
 
-- Unicode normalization;
-- case normalization;
-- whitespace collapse;
-- safe punctuation cleanup.
+- Unicode variation
+- letter case
+- repeated whitespace
+- safe punctuation differences
 
-## L1 — Field-specific deterministic normalization
+## L1 — Field-specific normalization
 
-Examples include:
+Each field has rules that make sense for its data type.
 
 ### Container count
 
@@ -271,7 +386,7 @@ Examples include:
 3 x 40HC
 ```
 
-can be interpreted consistently when the count is unambiguous.
+can be normalized consistently when the meaning is unambiguous.
 
 ### Gross weight
 
@@ -281,25 +396,97 @@ can be interpreted consistently when the count is unambiguous.
 22 000 KGS
 ```
 
-can be normalized to a comparable numeric representation.
+can be converted into a comparable numeric form.
 
 ### Ports
 
-Port values use safe canonical formatting and configured alias handling.
+Ports use normalized formatting and controlled alias handling.
 
 ### Parties
 
-Shipper, consignee, and notify-party values use conservative entity normalization so formatting noise is removed without merging potentially different companies.
+Shipper, consignee, and notify-party values use conservative entity normalization so formatting noise can be removed without merging genuinely different companies.
 
 ---
 
-# 6. Human-in-the-Loop Verification
+## Optional L2 — Semantic resolution
 
-HolyShip treats Human Review as a first-class workflow rather than a fallback screen.
+Some cases are difficult to resolve with deterministic rules alone.
+
+When enabled, the L2 resolver can use an LLM/provider to evaluate carefully selected unresolved fields.
+
+L2 is deliberately optional:
+
+```text
+L0/L1 can run independently
+L2 only sees residual difficult cases
+L2 does not overwrite raw extraction
+L2 does not replace Human Review
+```
+
+This gives HolyShip a place to use semantic reasoning without making every comparison dependent on an external model.
+
+---
+
+# 9. Comparison Outcomes
+
+The final field-level outcomes are:
+
+```text
+MATCH
+MISMATCH
+UNRESOLVED
+```
+
+### Completed
+
+All seven fields are definite.
+
+Examples:
+
+```text
+7 MATCH
+→ COMPLETED
+```
+
+or:
+
+```text
+6 MATCH + 1 MISMATCH
++ 0 UNRESOLVED
+→ COMPLETED
+```
+
+### Waiting for Documents
+
+The sender has clearly indicated that the required document will arrive later.
+
+### Human Review
+
+A business/document exception still requires human action.
+
+### Processing Failed
+
+A technical problem should be retried or reprocessed instead of being treated as a business-review case.
+
+---
+
+# 10. Human Review
+
+Human Review is used for issues a person can meaningfully resolve.
+
+Typical reasons include:
+
+- `COMPARISON_UNRESOLVED`
+- `MISSING_REQUIRED_ATTACHMENT`
+- `WRONG_DOCUMENT_TYPE`
+- `UNREADABLE_ATTACHMENT`
+- `CORRUPTED_ATTACHMENT`
+- `MULTIPLE_CANDIDATES`
+- `DOCUMENT_ROLE_UNRESOLVED`
 
 ## Active Reviews
 
-The Active workspace contains current actionable review cases:
+The Active queue contains current actionable work:
 
 ```text
 case_origin = ACTIVE
@@ -308,66 +495,60 @@ status = OPEN or IN_REVIEW
 
 Reviewers can:
 
-- inspect evidence;
-- claim a case;
-- inspect affected fields;
-- compare original and effective values;
-- add field-level overrides;
-- Resolve & Recompare;
-- inspect the audit timeline.
+- inspect email and document evidence
+- inspect affected fields
+- claim a case
+- compare Original / Reviewed / Effective values
+- add field-level overrides
+- Resolve & Recompare
+- inspect audit history
 
 ## History
 
-Completed review activity is kept separately from the active work queue.
+Resolved, dismissed, and preserved legacy records live in History rather than the active queue.
 
-History includes:
-
-- legacy audit records;
-- resolved reviews;
-- dismissed reviews.
-
-This keeps the operational queue focused while preserving traceability.
-
-## Immutable Corrections
-
-HolyShip never edits the original automated extraction in place.
-
-```text
-Original Extraction
-        ↓
-Human Review Override
-        ↓
-Effective Reviewed Value
-        ↓
-New Comparison Version
-```
-
-That means both the machine result and the human decision remain auditable.
+This keeps current work focused without losing traceability.
 
 ---
 
-# 7. HolyShip AI Review Assistant
+# 11. AI Review Assistant
 
-The AI Review Assistant is purpose-built for shipping-document review rather than general chat.
+The AI Review Assistant sits inside Human Review and is designed for shipping-document review rather than open-ended chat.
 
-Reviewers can ask questions such as:
+A reviewer can ask:
 
 - Why does this case need review?
 - Which field should I inspect first?
 - Where did this value come from?
 - Why is this port unresolved?
-- Summarize this case.
+- Summarize the SI–BL differences.
 - Suggest a correction for the BL gross weight.
 
-The assistant returns one of three structured modes:
+The assistant responds in structured modes:
 
 - `EXPLANATION_ONLY`
 - `ACTIONABLE_SUGGESTION`
 - `INSUFFICIENT_EVIDENCE`
 
-## Grounded Suggestions
+Example flow:
 
-When evidence supports a correction, HolyShip can return a structured proposal:
+```text
+Reviewer asks a question
+        ↓
+LLM reads the current case evidence
+        ↓
+Explanation or structured suggestion
+        ↓
+Reviewer Accepts / Edits / Dismisses
+        ↓
+Approved override is stored
+        ↓
+Resolve & Recompare
+```
+
+An actionable suggestion is never applied silently.
+
+Example:
 
 ```json
 {
@@ -384,65 +565,109 @@ When evidence supports a correction, HolyShip can return a structured proposal:
 }
 ```
 
-The reviewer remains the decision-maker through **Accept**, **Edit Before Applying**, or **Dismiss Suggestion**.
+The Review Assistant is provider-based and can be configured with an LLM provider such as Gemini.
 
 ---
 
-# 8. Web Dashboard
+# 12. Where AI / LLM Is Used
 
-The Dashboard is the full HolyShip operational workspace.
+HolyShip intentionally does not put an LLM in every step.
 
-## Operational Overview
+| Area | Approach |
+| --- | --- |
+| Email classification | deterministic weighted evidence |
+| Readiness | deterministic workflow rules |
+| Document role validation | content-based validation |
+| Extraction | structured readers + OCR |
+| L0/L1 comparison | deterministic |
+| Hard residual semantic cases | optional L2 LLM resolver |
+| Human Review explanation | LLM-assisted |
+| Human Review suggestions | LLM-assisted + human-approved |
 
-At a glance, users can monitor:
+This is one of the main design choices in HolyShip: **use deterministic rules where repeatability matters, and use AI where semantic reasoning adds value.**
 
-- total processed emails;
-- completed workflows;
-- waiting-document cases;
-- active Human Review cases;
-- failed/retry-required processing;
-- persisted review analytics.
+---
+
+# 13. OCR and Scanned Documents
+
+Scanned PDFs and image-based documents are handled through Tesseract OCR.
+
+```text
+Scanned document
+      ↓
+OCR
+      ↓
+Structured extraction
+      ↓
+Normal comparison pipeline
+```
+
+HolyShip also separates two very different situations:
+
+```text
+OCR runtime unavailable
+→ technical processing issue
+→ Retry / Reprocess
+```
+
+versus:
+
+```text
+OCR available, but document still cannot be read reliably
+→ UNREADABLE_ATTACHMENT
+→ Human Review
+```
+
+This avoids blaming the document when the real problem is infrastructure.
+
+---
+
+# 14. Web Dashboard
+
+The Dashboard is the main operations workspace.
+
+## Overview
+
+The Overview shows:
+
+- total emails
+- completed workflows
+- emails with mismatch
+- open Human Review cases
+- Awaiting Documents
+- failed processing
+- currently processing items
 
 ## Email Queue
 
-Users can browse and filter processed messages with persisted backend truth rather than fabricated frontend values.
+Users can browse processed emails and filter by workflow state.
 
-## Email Detail
+## Discrepancies
 
-Each email can expose:
+Confirmed mismatch cases are surfaced separately from unresolved review cases.
 
-- classification;
-- processing status;
-- readiness;
-- attachments;
-- extracted fields;
-- SI–BL comparison;
-- mismatch / unresolved evidence;
-- related review state.
+## Human Review
 
-## Human Review Workspace
+The Human Review workspace includes:
 
-The review interface includes:
-
-- **Active Reviews / History** segmented views;
-- search and filters;
-- reviewer assignment;
-- deterministic priority;
-- human-readable explanations;
-- evidence panels;
-- Original / Reviewed / Effective values;
-- audit timeline;
-- AI Review Assistant.
+- Active Reviews / History
+- search and filters
+- reviewer assignment
+- reason and priority
+- source evidence
+- affected fields
+- Original / Reviewed / Effective values
+- audit timeline
+- AI Review Assistant
+- Resolve & Recompare
 
 ---
 
-# 9. Outlook Add-in
+# 15. Outlook Add-in
 
-HolyShip brings the same workflow directly into Outlook.
+HolyShip also provides an Outlook companion for the email currently open in the user’s inbox.
 
-The task pane shows the state of the currently opened email using the same terminology as the Dashboard.
-
-Supported user-facing states include:
+User-facing states include:
 
 - Not in HolyShip
 - Processing
@@ -451,109 +676,107 @@ Supported user-facing states include:
 - Needs Review
 - Processing Failed
 
-For comparison emails, the Add-in provides a compact seven-field summary and can show:
+For document-comparison emails, the Add-in can show:
 
-- Match / Mismatch / Unresolved totals;
-- review reason;
-- priority;
-- affected fields;
-- reviewer state;
-- user-friendly explanations;
-- deep links to the full Dashboard review.
+- Match / Mismatch / Unresolved totals
+- review reason
+- affected fields
+- priority
+- reviewer state
+- a deep link to the full Dashboard case
 
-This creates a smooth workflow from **email → verification → review** without forcing the user to search across separate systems.
+This creates a continuous workflow from **email → verification → review**.
 
 ---
 
-# 10. Human Review Analytics
+# 16. Human Review Analytics
 
 HolyShip turns persisted review data into operational insight.
 
-Analytics can include:
+The analytics layer can surface:
 
-- Open reviews;
-- In Review;
-- Resolved;
-- Dismissed;
-- Resolved Today;
-- Average Open Age;
-- Priority Distribution;
-- Review Reason Distribution;
-- Most Reviewed Fields;
-- Most Corrected Fields.
+- Open reviews
+- In Review
+- Resolved
+- Dismissed
+- Resolved Today
+- Average Open Age
+- Priority Distribution
+- Review Reason Distribution
+- Most Reviewed Fields
+- Most Corrected Fields
 
-The same persisted data that powers the workflow powers the analytics, keeping operational metrics traceable.
+The same persisted review data powers both the workflow and the analytics.
 
 ---
 
-# 11. User-Friendly Operational Language
+# 17. User-Friendly Operational Language
 
-HolyShip separates internal diagnostic codes from the wording shown to users.
-
-Examples:
+Internal reason codes are mapped to wording that operations users can act on.
 
 | Internal State | User-Facing Meaning |
-|---|---|
+| --- | --- |
 | `CLASSIFICATION_UNRESOLVED` | Email type unclear |
 | `COMPARISON_UNRESOLVED` | One or more document fields could not be verified |
 | `COMPARISON_MISMATCH` | The SI and BL contain different values |
 | `DOCUMENT_ROLE_UNRESOLVED` | Could not confidently identify the SI or BL |
 | `WRONG_DOCUMENT_TYPE` | The attached file is not the required document |
 | `MISSING_REQUIRED_ATTACHMENT` | A required shipping document is missing |
-| `UNREADABLE_ATTACHMENT` | The attached document could not be read reliably |
+| `UNREADABLE_ATTACHMENT` | The document could not be read reliably |
 | `AWAITING_DOCUMENTS` | Waiting for required documents |
 | `BLOCKED` | Needs attention before processing can continue |
 | `FAILED` | Processing failed — retry required |
 
-This keeps technical detail available for debugging while giving operational users concise next actions.
+Technical failures are kept separate from business-facing document exceptions.
 
 ---
 
-# 12. Architecture
+# 18. Architecture
 
 ```mermaid
 flowchart LR
 
-subgraph INPUT[Email & Integration]
+subgraph INPUT[Email Sources]
     STATIC[Static Bundle]
     HTTP[HTTP Source]
     INCOMING[Incoming API]
-    GRAPH[Microsoft Graph Adapter]
+    GRAPH[Microsoft Graph]
 end
 
 subgraph WORKFLOW[Workflow Engine]
     SOURCE[EmailSource]
     SYNC[Sync Service]
-    FSM[Processing State Machine]
+    FSM[Processing State]
 end
 
-subgraph INTENT[Intent Intelligence]
-    S1[Stage 1 Classifier]
-    S2[Stage 2 Resolver]
+subgraph INTENT[Intent]
+    S1[Stage 1 Classification]
+    S2[Stage 2 Resolution]
     READY[Comparison Readiness]
 end
 
-subgraph DOCS[Document Intelligence]
-    LAZY[Lazy Retrieval]
+subgraph DOCS[Document Processing]
+    RETRIEVE[Attachment Retrieval]
     ROUTER[Document Router]
     READERS[TXT / PDF / DOCX / XLSX / OCR]
     ROLE[SI / BL Validation]
     EXTRACT[Seven-Field Extraction]
 end
 
-subgraph VERIFY[Verification Engine]
+subgraph VERIFY[Verification]
     MAP[Canonical Mapping]
     L0[L0 Normalization]
     L1[L1 Field Rules]
+    L2[Optional LLM Semantic Resolver]
     RESULT[Match / Mismatch / Unresolved]
 end
 
-subgraph REVIEW[Human + AI Review]
+subgraph REVIEW[Human Review]
     QUEUE[Active Review Queue]
     AI[AI Review Assistant]
-    OVERRIDE[Immutable Override]
+    OVERRIDE[Field Override]
     RECOMPARE[Resolve & Recompare]
-    HISTORY[Audit History]
+    HISTORY[Review History]
 end
 
 subgraph EXPERIENCE[User Experience]
@@ -562,8 +785,13 @@ subgraph EXPERIENCE[User Experience]
 end
 
 INPUT --> SOURCE --> SYNC --> FSM --> S1 --> S2 --> READY
-READY --> LAZY --> ROUTER --> READERS --> ROLE --> EXTRACT --> MAP --> L0 --> L1 --> RESULT
-RESULT --> QUEUE --> AI --> OVERRIDE --> RECOMPARE --> RESULT
+READY --> RETRIEVE --> ROUTER --> READERS --> ROLE --> EXTRACT
+EXTRACT --> MAP --> L0 --> L1 --> RESULT
+RESULT --> L2
+L2 --> RESULT
+RESULT --> QUEUE
+QUEUE --> AI
+QUEUE --> OVERRIDE --> RECOMPARE --> RESULT
 QUEUE --> HISTORY
 RESULT --> DASH
 QUEUE --> DASH
@@ -572,7 +800,7 @@ DASH --> OUTLOOK
 
 ---
 
-# 13. Processing States
+# 19. Processing States
 
 HolyShip models workflow progress explicitly:
 
@@ -590,35 +818,63 @@ BLOCKED
 FAILED
 ```
 
-This state machine makes it clear whether an email is processing, waiting, complete, reviewable, or ready for technical retry.
+These states make it clear whether an email is:
+
+- still processing
+- waiting for a document
+- complete
+- blocked for Human Review
+- failed for technical reasons
+
+Important transitions are persisted as processing events for audit and debugging.
 
 ---
 
-# 14. Technical Stack
+# 20. Data and Audit Model
+
+HolyShip stores workflow state in PostgreSQL using SQLAlchemy and Alembic migrations.
+
+Main data areas include:
+
+| Area | Examples |
+| --- | --- |
+| Ingestion | email messages, attachments, processing events |
+| Classification | classification results |
+| Documents | materialized documents, extraction records |
+| Extraction | canonical extracted fields |
+| Comparison | comparison results, field comparisons |
+| Human Review | review cases, overrides, review events |
+| AI | semantic resolutions, structured suggestions |
+
+A key design choice is that reviewer overrides are stored separately from original extraction rows.
+
+---
+
+# 21. Technical Stack
 
 | Layer | Technology |
-|---|---|
-| Backend | Python 3.11, FastAPI |
-| Persistence | PostgreSQL, SQLAlchemy |
+| --- | --- |
+| Backend | Python, FastAPI |
+| Database | PostgreSQL |
+| ORM | SQLAlchemy |
 | Migrations | Alembic |
 | Dashboard | React, TypeScript, Vite |
 | Outlook Add-in | React, TypeScript, Office.js |
 | Document Readers | TXT, PDF, DOCX, XLSX |
-| OCR | Tesseract-compatible OCR path |
-| AI Review | Provider abstraction with structured safety validation |
+| OCR | Tesseract |
+| AI / LLM | optional L2 semantic resolver + AI Review Assistant |
 | Testing | Pytest, Vitest |
-| Quality Gates | Make targets, traceability checks, diff hygiene |
+| Deployment | Render |
 
 ---
 
-# 15. API Highlights
-
-Key product endpoints include:
+# 22. API Highlights
 
 ```text
 GET  /api/v1/summary
 GET  /api/v1/emails
 GET  /api/v1/emails/{email_id}
+
 GET  /api/v1/human-review
 GET  /api/v1/human-review/{review_id}
 GET  /api/v1/human-review-analytics
@@ -638,7 +894,7 @@ POST /api/v1/ingestion/email
 POST /api/v1/emails/{email_id}/reprocess
 ```
 
-Interactive API documentation is available through FastAPI at:
+Local API docs:
 
 ```text
 http://localhost:8000/docs
@@ -646,7 +902,7 @@ http://localhost:8000/docs
 
 ---
 
-# 16. Project Structure
+# 23. Project Structure
 
 ```text
 HolyShip/
@@ -681,7 +937,7 @@ HolyShip/
 
 ---
 
-# 17. Getting Started
+# 24. Getting Started
 
 ## Prerequisites
 
@@ -689,22 +945,9 @@ HolyShip/
 - PostgreSQL 16
 - Node.js 20+
 - npm
-- Tesseract OCR (optional for scanned image/PDF processing; when absent, scanned files cleanly report OCR unavailable for technical reprocessing)
+- Tesseract OCR for scanned PDF/image processing
 
-### Runtime Capabilities & Environment Design
-
-HolyShip separates its runtime subsystems cleanly:
-
-1. **Deterministic Core Verification (Default & Authoritative):**
-   Classification, document materialization, seven-field extraction, canonical mapping, and L0/L1 normalization operate deterministically without external LLM dependency.
-2. **OCR Engine (Scanned PDFs & Images):**
-   When `tesseract-ocr` is installed (included in `backend/Dockerfile`), scanned documents are read via OCR. When unavailable, HolyShip flags `OCR_BACKEND_UNAVAILABLE` as a technical retry condition rather than fabricating unreadable data or blocking human review unnecessarily.
-3. **AI Human Review Assistant:**
-   Assists human reviewers in the Dashboard by providing grounded natural-language explanations and structured field-correction suggestions. Reviewers remain in full control with explicit Accept / Edit / Dismiss actions.
-4. **Continuous Ingestion & Polling:**
-   Supports one-time initial backlog sync as well as continuous polling with exponential backoff and persistent deduplication checkpoints.
-
-## 1. Clone the repository
+## 1. Clone
 
 ```bash
 git clone <repository-url>
@@ -713,9 +956,25 @@ cd HolyShip
 
 ## 2. Configure environment
 
-Create `.env` from `.env.example` and configure the local PostgreSQL databases and dataset path.
+Create `.env` from `.env.example`.
 
-## 3. Create the Python environment
+At minimum:
+
+```env
+DATABASE_URL=
+ORGANIZER_BUNDLE_PATH=data/bundle
+```
+
+For the default demo flow:
+
+```env
+POLLING_SOURCE_TYPE=STATIC_BUNDLE
+CONTINUOUS_POLLING_ENABLED=false
+```
+
+Optional LLM / Review Assistant configuration is documented in `.env.example`.
+
+## 3. Python environment
 
 ### Windows
 
@@ -725,31 +984,31 @@ python -m venv .venv
 pip install -r backend\requirements.txt
 ```
 
-## 4. Apply database migrations
+## 4. Apply migrations
 
 ```bat
 python -m alembic upgrade head
 ```
 
-## 5. Start the backend
+## 5. Start backend
 
 ```bat
 python -m uvicorn backend.app.main:app --reload --port 8000
 ```
 
-Backend API:
+Backend:
 
 ```text
 http://localhost:8000
 ```
 
-Swagger / OpenAPI:
+Swagger:
 
 ```text
 http://localhost:8000/docs
 ```
 
-## 6. Start the Dashboard
+## 6. Start Dashboard
 
 ```bash
 cd frontend
@@ -763,7 +1022,7 @@ Dashboard:
 http://localhost:5173
 ```
 
-## 7. Start the Outlook Add-in
+## 7. Start Outlook Add-in
 
 ```bash
 cd outlook-addin
@@ -771,175 +1030,80 @@ npm install
 npm run dev
 ```
 
-Task pane development URL:
+Task pane:
 
 ```text
 https://localhost:3200/taskpane.html
 ```
 
-For full Office context, sideload the provided Outlook manifest and open the task pane inside Outlook.
+For full Office context, sideload the Outlook manifest and open the task pane inside Outlook.
 
 ---
 
-# 18. Quality & Validation
+# 25. Runtime Configuration
 
-HolyShip is backed by automated backend, UI, reliability, and traceability checks.
+## OCR
 
-Latest validated project state:
+Scanned documents require Tesseract OCR.
 
-| Validation | Result |
-|---|---:|
-| Backend test suite | **323 passed** |
-| PostgreSQL reliability suite | **14 passed** |
-| Dashboard tests | **16 / 16 passed** |
-| Outlook Add-in tests | **59 / 59 passed** |
-| Phase F traceability | **114 PASS · 0 FAIL · 0 TODO** |
-| TypeScript typecheck | **PASS** |
-| Production frontend builds | **PASS** |
-| `git diff --check` | **PASS** |
+### Windows
 
-## Clean End-to-End Replay
-
-A clean 520-email replay demonstrated the full workflow across classification, readiness, verification, waiting states, and Human Review:
-
-```text
-520 emails processed
-0 failed
-
-204 document-comparison workflows
-├─ 47 completed automatically
-│  ├─ 42 fully matched
-│  └─ 5 definite mismatches reported automatically
-├─ 91 correctly held in Waiting for Documents
-└─ 66 routed to evidence-backed Human Review
+```bat
+tesseract --version
 ```
 
-A particularly important result is that **definite mismatches can complete automatically** when all seven fields are known — HolyShip reports the discrepancy instead of creating unnecessary Human Review work.
+or:
 
----
-
-# 19. Key Engineering Decisions
-
-## Verification before automation
-
-HolyShip uses multiple independent checkpoints so each decision can be tied back to observable evidence.
-
-## Deterministic first
-
-Safe deterministic logic handles classification, normalization, extraction, and comparison wherever possible.
-
-## Explicit uncertainty
-
-When evidence is insufficient, HolyShip records `UNRESOLVED` rather than inventing certainty.
-
-## Content over filenames
-
-SI and BL roles are validated using document content, preventing misleading filenames from becoming trusted truth.
-
-## SI as the reference document
-
-The Shipping Instruction represents intended shipment information; the draft Bill of Lading is verified against it.
-
-## Immutable evidence
-
-Original extractions and historical comparison results remain preserved even after Human Review.
-
-## Human-approved AI
-
-AI can explain and suggest, while the reviewer controls whether an actionable change is applied.
-
-## Shared semantics across surfaces
-
-Dashboard and Outlook use the same operational status meanings and review language.
-
----
-
-# 20. Demo Flow
-
-A concise hackathon demo can show HolyShip in six moments.
-
-## 1 — Inbox Intelligence
-
-Open the Dashboard and run initial sync.
-
-Show how mixed email traffic is classified into the five operational categories.
-
-## 2 — Automatic SI–BL Verification
-
-Open a completed document-comparison email.
-
-Show:
-
-```text
-SI + BL identified
-→ seven fields extracted
-→ normalized comparison
-→ final Match / Mismatch result
+```bat
+where tesseract
 ```
 
-## 3 — Definite Mismatch Without Unnecessary Escalation
+### Container / Linux
 
-Open a comparison where container count or gross weight is definitely different.
+The backend deployment includes the Tesseract runtime for scanned-document processing.
 
-Show that HolyShip reports the mismatch while still completing the workflow.
+## AI / LLM
 
-## 4 — Evidence-Backed Human Review
+The deterministic comparison core can run with L2 disabled.
 
-Open an unresolved case.
+For Review Assistant demos, an LLM provider such as Gemini can be configured through environment variables.
 
-Show:
+A typical setup is:
 
-- reason for review;
-- affected fields;
-- source evidence;
-- Original / Reviewed / Effective values;
-- immutable audit timeline.
+```env
+AI_ESCALATION_ENABLED=false
 
-## 5 — AI Review Assistant
+AI_REVIEW_ENABLED=true
+AI_REVIEW_PROVIDER=gemini
+AI_REVIEW_MODEL=gemini-2.5-flash
+GEMINI_API_KEY=
+```
 
-Ask:
-
-> Why does this case need review?
-
-Then demonstrate a grounded suggestion and the human-controlled Accept / Edit / Dismiss workflow.
-
-## 6 — Outlook Companion
-
-Open the same shipping email in Outlook and show the compact HolyShip task pane with current status, seven-field summary, and deep link back to the Dashboard.
+API keys are never committed to the repository.
 
 ---
 
-# 21. Hackathon Highlights
+# 26. Validation
 
-HolyShip combines several ideas into one cohesive workflow:
+The latest validated backend state includes:
 
-- **multi-stage verification instead of one-shot prediction**;
-- **email intent intelligence** before document processing;
-- **readiness-aware workflow** that distinguishes waiting from exceptions;
-- **content-based SI / BL validation**;
-- **seven-field canonical verification**;
-- **deterministic normalization for shipping-specific values**;
-- **automatic handling of definite mismatches**;
-- **evidence-backed Human Review**;
-- **immutable corrections and recomparison**;
-- **AI-assisted explanation and suggestions with human approval**;
-- **operational analytics**;
-- **Web Dashboard + Outlook Add-in**;
-- **shared user-friendly language across both surfaces**;
-- **end-to-end auditability**.
+```text
+349 backend tests passed
+14 PostgreSQL reliability tests passed
+35 fast backend checks passed
+git diff --check passed
+```
 
-The result is more than a document comparator: **HolyShip is a verification workflow that decides what can be automated, what should wait, and what genuinely needs a human.**
+HolyShip also maintains frontend and Outlook Add-in test suites for their respective workflows.
 
 ---
 
-# 22. Latest Verified Dashboard Snapshot
+# 27. Current Demo Snapshot
 
-The current backend summary was verified from `GET /api/v1/summary` after the
-latest reprocessing and Human Review reconciliation. The response matches the
-current public evaluation expectation for this 520-email demo dataset:
+The current 520-email evaluation dataset produces:
 
-| Metric | Current value |
-|---|---:|
+| Metric | Value |
+| --- | ---: |
 | Total emails | 520 |
 | Completed | 409 |
 | Human Review open | 20 |
@@ -947,13 +1111,117 @@ current public evaluation expectation for this 520-email demo dataset:
 | Awaiting Documents | 91 |
 | Failed | 0 |
 
-These are observed data values, not hard-coded application constants. The
-Dashboard's Discrepancies workspace now uses the same metric-card typography as
-Human Review and opens the detail inspector only after a queue item is selected.
+```mermaid
+pie showData
+    title 520-email workflow outcome
+    "Completed" : 409
+    "Awaiting Documents" : 91
+    "Human Review" : 20
+```
+
+`Emails with mismatch` is an overlapping verification metric. A comparison can contain a confirmed mismatch and still be `COMPLETED` when all seven fields are definite.
+
+The main processing split is:
+
+```text
+520 emails
+├─ 409 completed
+├─ 91 waiting for documents
+├─ 20 active Human Review
+└─ 0 failed
+```
 
 ---
 
-# 23. Contributors
+# 28. Demo Flow
+
+A concise hackathon demo can show HolyShip in six moments.
+
+## 1 — Inbox Intelligence
+
+Run initial sync and show mixed email traffic being classified.
+
+## 2 — Automatic SI–BL Verification
+
+Open a completed comparison:
+
+```text
+SI + BL identified
+→ seven fields extracted
+→ normalized
+→ compared
+→ completed
+```
+
+## 3 — Definite Mismatch
+
+Open a comparison with a confirmed difference in container count, gross weight, or another canonical field.
+
+Show that HolyShip reports the discrepancy without sending it to Human Review when the evidence is already definite.
+
+## 4 — Evidence-Backed Human Review
+
+Open an unresolved or document-exception case.
+
+Show:
+
+- reason for review
+- affected fields
+- source evidence
+- Original / Reviewed / Effective values
+- audit history
+
+## 5 — AI Review Assistant
+
+Ask the assistant why the case needs review or request a structured suggestion.
+
+Show:
+
+```text
+Ask
+→ Explanation / Suggestion
+→ Accept / Edit / Dismiss
+→ Recompare
+```
+
+## 6 — Outlook Companion
+
+Open the same email in Outlook and show the compact HolyShip status plus a link back to the Dashboard.
+
+---
+
+# 29. Hackathon Highlights
+
+HolyShip combines several ideas in one workflow:
+
+- **multi-stage verification architecture**
+- **five-category email classification**
+- **readiness-aware processing**
+- **lazy attachment retrieval**
+- **content-based SI / BL validation**
+- **seven-field structured extraction**
+- **layered L0/L1 comparison**
+- **optional LLM-based semantic resolution**
+- **MATCH / MISMATCH / UNRESOLVED distinction**
+- **automatic completion of definite mismatches**
+- **Waiting for Documents as a real workflow state**
+- **evidence-backed Human Review**
+- **immutable field overrides**
+- **Resolve & Recompare**
+- **AI Review Assistant with human approval**
+- **OCR support for scanned documents**
+- **audit history**
+- **operational analytics**
+- **Web Dashboard + Outlook Add-in**
+- **shared status language across surfaces**
+
+The main idea is straightforward:
+
+> **Use deterministic checks where the answer should be repeatable, use AI where semantic reasoning helps, and keep a human in control when the system still cannot decide safely.**
+
+---
+
+# 30. Contributors
 
 - Wong Jia Hui
 - Bong Zi Shan
@@ -964,4 +1232,5 @@ Human Review and opens the detail inspector only after a queue item is selected.
 ---
 
 > ### HolyShip
+>
 > **Verify in stages. Explain the evidence. Automate with confidence.**
