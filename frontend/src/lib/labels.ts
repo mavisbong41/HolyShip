@@ -65,12 +65,11 @@ export const reasonLabels: Record<string, string> = {
   WRONG_DOCUMENT_TYPE: "Wrong document type",
   MISSING_REQUIRED_ATTACHMENT: "Required shipping document is missing",
   UNREADABLE_ATTACHMENT: "Document could not be read reliably",
+  UNSUPPORTED_ATTACHMENT: "Document format is unsupported",
+  CORRUPTED_ATTACHMENT: "Document could not be read",
   MULTIPLE_CANDIDATES: "More than one document may match",
   READINESS_UNRESOLVED: "Document readiness unclear",
-  MISSING_REQUIRED_ATTACHMENT: "Required document is missing",
-  WRONG_DOCUMENT_TYPE: "Document type does not match",
   DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
-  READINESS_UNRESOLVED: "Comparison readiness needs review",
   NOT_ACTIONABLE: "Not actionable",
 };
 
