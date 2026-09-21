@@ -139,3 +139,27 @@ def test_frontend_forwards_part1_review_filters_and_sort():
     assert 'appendParam(params, "review_status", filters.review_status)' in client
     assert 'appendParam(params, "comparison_state", filters.comparison_state)' in client
     assert 'appendParam(params, "sort", filters.sort)' in client
+
+
+def test_priority_is_deterministic_and_generalizable():
+    from backend.app.api.review_helper import compute_priority
+
+    base = SimpleNamespace(reason_code="COMPARISON_UNRESOLVED")
+    assert compute_priority(base, ["shipper", "consignee"]) == "HIGH"
+    assert compute_priority(base, ["gross_weight_kg"]) == "MEDIUM"
+    assert compute_priority(base, ["container_count"]) == "MEDIUM"
+    assert compute_priority(base, ["shipper"]) == "LOW"
+
+    document_issue = SimpleNamespace(reason_code="UNREADABLE_ATTACHMENT")
+    assert compute_priority(document_issue, []) == "HIGH"
+
+
+def test_part1_metric_contract_documents_units_and_populations():
+    from pathlib import Path
+
+    semantics = Path("docs/human_review_semantics.md").read_text(encoding="utf-8")
+    assert "email-level" in semantics
+    assert "review-case-level" in semantics
+    assert "ACTIVE" in semantics or "active" in semantics
+    assert "legacy" in semantics.lower()
+    assert "mismatch" in semantics.lower()
