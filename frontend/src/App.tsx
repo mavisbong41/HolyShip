@@ -272,9 +272,9 @@ function OverviewPage({
           <MetricCard
             cardIndex={3}
             icon={<AlertTriangle size={18} color="var(--color-danger)" />}
-            label="Mismatch"
+            label="Emails with Mismatch"
             value={summary?.mismatch_count ?? 0}
-            trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total`}
+            trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total emails`}
             trend="down"
             tone="bad"
           />
@@ -417,8 +417,8 @@ function OverviewPage({
                   <X size={13} />
                 </div>
                 <div className="alert-row-info">
-                  <strong>BL vs SI mismatch</strong>
-                  <p>Container no. or weight discrepancy</p>
+                  <strong>Emails with BL vs SI mismatch</strong>
+                  <p>At least one comparison field differs between the SI and BL</p>
                 </div>
               </div>
               <div className="alert-row-right">
@@ -465,8 +465,8 @@ function OverviewPage({
                   <AlertCircle size={13} />
                 </div>
                 <div className="alert-row-info">
-                  <strong>Unresolved fields</strong>
-                  <p>Requires manual review verification</p>
+                  <strong>Emails with unresolved fields</strong>
+                  <p>At least one comparison field could not be verified</p>
                 </div>
               </div>
               <div className="alert-row-right">
