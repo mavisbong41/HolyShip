@@ -29,7 +29,6 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
             open_ages.append(compute_age_minutes(c.created_at))
         elif c.status == "IN_REVIEW":
             analytics.in_review_count += 1
-            open_ages.append(compute_age_minutes(c.created_at))
         elif c.status == "RESOLVED":
             analytics.resolved_count += 1
             if c.resolved_at and c.resolved_at.date() == now.date():
