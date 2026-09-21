@@ -114,6 +114,26 @@ def test_sync_static_source_returns_report(client):
     assert data["total"] == 10
     assert data["classified"] == 7
     assert data["failed"] == 0
+    mock_svc_instance.sync.assert_called_once_with(MockSource.return_value, force=False)
+
+
+def test_sync_endpoint_propagates_force_true(client):
+    tc, mock_session = client
+
+    with patch("backend.app.api.router.SyncService") as MockSvc, \
+         patch("backend.app.api.router.StaticBundleSource") as MockSource:
+
+        mock_svc_instance = MagicMock()
+        MockSvc.return_value = mock_svc_instance
+        mock_svc_instance.sync.return_value = SyncReport(
+            total=10, ingested=10, skipped=0,
+            classified=9, human_review=1, failed=0,
+        )
+
+        resp = tc.post("/api/sync", json={"source": "static", "force": True})
+
+    assert resp.status_code == 200
+    mock_svc_instance.sync.assert_called_once_with(MockSource.return_value, force=True)
 
 
 def test_sync_http_source_requires_url(client):

@@ -200,6 +200,36 @@ def test_sync_reclassifies_changed_email(svc, session):
 
 
 # ---------------------------------------------------------------------------
+# Test — force=True reclassifies even unchanged emails
+# ---------------------------------------------------------------------------
+def test_sync_force_reclassifies_unchanged_email(svc, session):
+    email = _email(
+        "email_force",
+        "TO CONFIRM DOCS",
+        "Please compare the attached SI and draft BL. Check the details and confirm.",
+    )
+    source = ListSource([email])
+
+    report1 = svc.sync(source)
+    assert report1.classified == 1
+    assert report1.skipped == 0
+
+    # Without force, unchanged email is skipped
+    report2 = svc.sync(source, force=False)
+    assert report2.skipped == 1
+    assert report2.classified == 0
+
+    # With force=True, unchanged email is forced through classification
+    report3 = svc.sync(source, force=True)
+    assert report3.skipped == 0
+    assert report3.classified == 1
+    assert report3.total == 1
+
+    results = session.query(ClassificationResultRecord).all()
+    assert len(results) == 2  # run 1 and run 3
+
+
+# ---------------------------------------------------------------------------
 # Test 20 — one malformed email does not stop the whole sync
 # ---------------------------------------------------------------------------
 @pytest.mark.req("REL-06")
@@ -305,3 +335,4 @@ def test_sync_one_uses_same_classification_pipeline(svc, session):
     assert len(results) == 1
     assert results[0].category == "document_comparison"
     assert results[0].comparison_readiness == "READY_FOR_COMPARISON"
+
