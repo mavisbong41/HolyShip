@@ -214,6 +214,7 @@ export interface ProductReview {
   evidence: ProductEvidence[];
   comparison: ProductComparison | null;
   priority: "HIGH" | "MEDIUM" | "LOW";
+  presentation_title: string | null;
   human_explanation: string | null;
   affected_fields: string[];
   affected_area: string | null;
