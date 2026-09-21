@@ -1,5 +1,5 @@
 from datetime import datetime, timezone
-from sqlalchemy import select, func
+from sqlalchemy import select, func, case
 from sqlalchemy.orm import Session
 from backend.app.storage.models import (
     HumanReviewCaseRecord,
@@ -10,7 +10,6 @@ from backend.app.storage.models import (
 )
 from backend.app.api.product_schemas import HumanReviewAnalytics, HumanReviewReconciliation
 from backend.app.api.review_helper import compute_affected_fields, compute_priority, compute_age_minutes
-import json
 
 def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
     now = datetime.now(timezone.utc)
@@ -130,7 +129,10 @@ def get_human_review_reconciliation(session: Session) -> HumanReviewReconciliati
     unresolved_count = int(session.scalar(
         select(func.count()).select_from(latest_comparison).where(
             latest_comparison.c.rank == 1,
-            func.coalesce(func.jsonb_array_length(latest_comparison.c.unresolved_fields), 0) > 0,
+            case(
+                (latest_comparison.c.unresolved_fields.is_(None), 0),
+                else_=func.json_array_length(latest_comparison.c.unresolved_fields),
+            ) > 0,
         )
     ) or 0)
     return HumanReviewReconciliation(
