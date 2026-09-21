@@ -401,6 +401,44 @@ def test_review_api_mutations_return_real_persisted_case_detail(db_factory):
             app.dependency_overrides.pop(get_session, None)
 
 
+@pytest.mark.req("HR-07")
+def test_review_api_queue_supports_filters_and_sorting_without_argument_regression(db_factory):
+    with db_factory() as session:
+        _email, _comparison, case = _blocked_comparison(session, "review-queue")
+        session.commit()
+
+        def override_session():
+            yield session
+
+        app.dependency_overrides[get_session] = override_session
+        try:
+            with TestClient(app) as client:
+                response = client.get("/api/v1/human-review")
+                assert response.status_code == 200
+                assert response.json()["total"] == 1
+
+                claim = client.post(
+                    f"/api/v1/human-review/{case.id}/claim",
+                    json={"reviewer_name": "Queue Reviewer"},
+                )
+                assert claim.status_code == 200
+
+                for query in (
+                    {"reason": case.reason_code},
+                    {"reviewer": "Queue Reviewer"},
+                    {"search": "Compare SI and BL"},
+                    {"active_only": "true"},
+                    {"sort": "priority"},
+                    {"sort": "oldest"},
+                    {"sort": "newest"},
+                ):
+                    filtered = client.get("/api/v1/human-review", params=query)
+                    assert filtered.status_code == 200, query
+                    assert filtered.json()["total"] == 1, query
+        finally:
+            app.dependency_overrides.pop(get_session, None)
+
+
 @pytest.mark.req("HR-08")
 def test_human_review_schema_has_constraints_indexes_and_separate_audit_tables(db_factory):
     with db_factory() as session:

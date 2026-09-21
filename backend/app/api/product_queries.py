@@ -682,9 +682,14 @@ def list_processing_events(
 def list_human_reviews(
     session: Session,
     *,
-    status: str | None,
-    skip: int,
-    limit: int,
+    status: str | None = None,
+    reason: str | None = None,
+    reviewer: str | None = None,
+    search: str | None = None,
+    active_only: bool = True,
+    sort: str | None = None,
+    skip: int = 0,
+    limit: int = 100,
 ) -> HumanReviewPage:
     validate_page(skip=skip, limit=limit)
     statement = (
@@ -698,12 +703,25 @@ def list_human_reviews(
         )
         .order_by(HumanReviewCaseRecord.created_at.desc(), HumanReviewCaseRecord.id.desc())
     )
-    count_statement = select(func.count(HumanReviewCaseRecord.id))
     if status:
         statement = statement.where(HumanReviewCaseRecord.status == status)
-        count_statement = count_statement.where(HumanReviewCaseRecord.status == status)
-    rows = session.scalars(statement.offset(skip).limit(limit)).all()
-    total = int(session.scalar(count_statement) or 0)
+    if reason:
+        statement = statement.where(HumanReviewCaseRecord.reason_code == reason)
+    if reviewer:
+        statement = statement.where(HumanReviewCaseRecord.reviewer_name.ilike(f"%{reviewer}%"))
+    if active_only:
+        statement = statement.where(HumanReviewCaseRecord.case_origin == "ACTIVE")
+    if search:
+        pattern = f"%{search}%"
+        statement = statement.join(HumanReviewCaseRecord.email).where(
+            or_(
+                EmailMessageRecord.subject.ilike(pattern),
+                EmailMessageRecord.sender.ilike(pattern),
+                HumanReviewCaseRecord.reason_text.ilike(pattern),
+                HumanReviewCaseRecord.reviewer_name.ilike(pattern),
+            )
+        )
+    rows = session.scalars(statement).all()
     resolutions_by_email: dict[str, list[ProductResolution]] = defaultdict(list)
     email_ids = [row.email_id for row in rows]
     if email_ids:
@@ -773,8 +791,22 @@ def list_human_reviews(
             updated_at=row.updated_at,
             resolved_at=row.resolved_at,
         ))
-    # Add python side priority sorting if needed
-    return HumanReviewPage(items=items, total=total, skip=skip, limit=limit)
+    if sort == "priority":
+        priority_rank = {"HIGH": 0, "MEDIUM": 1, "LOW": 2}
+        items.sort(
+            key=lambda item: (
+                priority_rank.get(item.priority, 3),
+                -item.created_at.timestamp(),
+                str(item.id),
+            )
+        )
+    elif sort == "oldest":
+        items.sort(key=lambda item: (item.created_at, str(item.id)))
+    else:
+        # The default and explicit newest ordering are deterministic.
+        items.sort(key=lambda item: (item.created_at, str(item.id)), reverse=True)
+    total = len(items)
+    return HumanReviewPage(items=items[skip : skip + limit], total=total, skip=skip, limit=limit)
 
 
 def get_human_review(session: Session, review_id: UUID) -> ProductReview | None:
