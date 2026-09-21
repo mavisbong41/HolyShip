@@ -512,7 +512,7 @@ def product_human_review_queue(
     reviewer: str | None = Query(None, max_length=255),
     search: str | None = Query(None, min_length=1, max_length=200),
     active_only: bool = Query(True),
-    sort: Literal["priority", "oldest", "newest"] | None = Query(None),
+    sort: Literal["priority", "age", "oldest", "newest"] | None = Query(None),
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=500),
     session: Session = Depends(get_session),
