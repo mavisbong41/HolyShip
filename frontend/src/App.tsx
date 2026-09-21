@@ -948,7 +948,7 @@ function QueuePage({
 
   return (
     <section
-      className={cx("queue-layout", isFloating && "floating-layout", isResizing && "is-resizing")}
+      className={cx("queue-layout", isFloating && "floating-layout", isResizing && "is-resizing", !detail && "queue-layout-empty")}
       style={layoutStyle}
     >
       <div className="surface-panel queue-panel">
@@ -1767,7 +1767,7 @@ function HumanReviewPageView({
           <MetricCard cardIndex={4} totalCards={5} icon={<Clock size={18} color="var(--color-warn)" />} label="Avg Open Age" value={analytics?.average_open_age_minutes == null ? "—" : String(Math.round(analytics.average_open_age_minutes)) + "m"} trendText="Current open cases" tone="neutral" />
         </div>
       </section>
-      <section className={cx("queue-layout", isResizing && "is-resizing")} style={layoutStyle}>
+      <section className={cx("queue-layout", isResizing && "is-resizing", !selected && "queue-layout-empty")} style={layoutStyle}>
       <div className="surface-panel queue-panel">
         <div className="section-header">
           <div>
