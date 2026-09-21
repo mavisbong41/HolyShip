@@ -65,6 +65,14 @@ class HumanReviewService:
     ) -> HumanReviewCaseRecord | None:
         if email.processing_status != "BLOCKED" or reason_code not in ACTIONABLE_BLOCK_REASONS:
             return None
+        # Reprocessing may change the workflow identity (for example, a new
+        # comparison result).  Retire any older active case for this email
+        # before ensuring the case that represents the current issue.
+        self.reconcile_email(
+            email,
+            current_reason_code=reason_code,
+            current_source_comparison_id=source_comparison_id,
+        )
         workflow_identity = self._workflow_identity(email, reason_code, source_comparison_id)
         existing = self.session.scalar(
             select(HumanReviewCaseRecord).where(
@@ -106,6 +114,62 @@ class HumanReviewService:
             if case is None:
                 raise
         return case
+
+    def reconcile_email(
+        self,
+        email: EmailMessageRecord,
+        *,
+        current_reason_code: str | None = None,
+        current_source_comparison_id: UUID | None = None,
+    ) -> list[HumanReviewCaseRecord]:
+        """Close active cases that no longer represent the current result.
+
+        Cases are retained as history; only obsolete active workflow rows are
+        dismissed.  At most one active case is retained for the current
+        actionable issue, even when a reprocess creates a new workflow id.
+        """
+        active = self.session.scalars(
+            select(HumanReviewCaseRecord)
+            .where(
+                HumanReviewCaseRecord.email_id == email.id,
+                HumanReviewCaseRecord.case_origin == "ACTIVE",
+                HumanReviewCaseRecord.status.in_(ACTIVE_REVIEW_STATUSES),
+            )
+            .with_for_update()
+        ).all()
+        keep: HumanReviewCaseRecord | None = None
+        if email.processing_status == "BLOCKED" and current_reason_code in ACTIONABLE_BLOCK_REASONS:
+            candidates = [
+                case
+                for case in active
+                if case.reason_code == current_reason_code
+                and (
+                    current_source_comparison_id is None
+                    or case.source_comparison_id == current_source_comparison_id
+                )
+            ]
+            if candidates:
+                keep = sorted(candidates, key=lambda case: (case.created_at, str(case.id)))[0]
+
+        for case in active:
+            if keep is not None and case.id == keep.id:
+                continue
+            now = self._now()
+            case.status = "DISMISSED"
+            case.resolution = "AUTO_SUPERSEDED_BY_REPROCESS"
+            case.notes = (
+                f"{case.notes}\n" if case.notes else ""
+            ) + "Closed automatically because reprocessing changed the current actionable state."
+            case.resolved_at = now
+            case.updated_at = now
+            self._event(
+                case,
+                "CASE_DISMISSED",
+                actor_name="system",
+                details={"reason": "AUTO_SUPERSEDED_BY_REPROCESS"},
+            )
+        self.session.flush()
+        return active
 
     def claim(self, case_id: UUID, *, reviewer_name: str) -> HumanReviewCaseRecord:
         case = self._locked_case(case_id)

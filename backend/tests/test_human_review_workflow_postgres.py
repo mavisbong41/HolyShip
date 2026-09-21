@@ -4,6 +4,7 @@ from datetime import datetime, timezone
 import copy
 import hashlib
 import os
+import uuid
 
 import pytest
 from fastapi.testclient import TestClient
@@ -11,6 +12,7 @@ from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.api.deps import get_session
+from backend.app.api.product_queries import get_product_summary
 from backend.app.extraction.models import (
     CANONICAL_FIELDS,
     CanonicalField,
@@ -592,3 +594,95 @@ def test_legacy_not_counted_in_summary(db_factory):
         summary2 = get_product_summary(session)
         assert summary2.needs_review_count == 1
         assert summary2.human_review_open_count == 1
+
+
+def test_reprocess_reconciles_stale_reviews_and_summary_counts_distinct_emails(db_factory):
+    with db_factory() as session:
+        now = datetime.now(timezone.utc)
+
+        def add_email(external_id: str, status: str) -> EmailMessageRecord:
+            email = EmailMessageRecord(
+                id=uuid.uuid4(),
+                external_message_id=external_id,
+                source_type="INCOMING_API",
+                subject=external_id,
+                body=external_id,
+                content_hash=hashlib.sha256(external_id.encode()).hexdigest(),
+                processing_status=status,
+                created_at=now,
+            )
+            session.add(email)
+            session.flush()
+            return email
+
+        def add_case(email: EmailMessageRecord, *, workflow: str, comparison_id=None):
+            case = HumanReviewCaseRecord(
+                id=uuid.uuid4(),
+                email_id=email.id,
+                source_comparison_id=comparison_id,
+                reason_code="COMPARISON_UNRESOLVED",
+                reason_text="Comparison unresolved",
+                status="OPEN",
+                case_origin="ACTIVE",
+                workflow_identity=workflow,
+                created_at=now,
+            )
+            session.add(case)
+            session.flush()
+            return case
+
+        completed = add_email("reprocess-completed", "COMPLETED")
+        completed_case = add_case(completed, workflow="old-completed")
+        awaiting = add_email("reprocess-awaiting", "AWAITING_DOCUMENTS")
+        awaiting_case = add_case(awaiting, workflow="old-awaiting")
+        blocked = add_email("reprocess-blocked", "BLOCKED")
+        old_comparison = uuid.uuid4()
+        blocked_case = add_case(blocked, workflow="old-comparison", comparison_id=old_comparison)
+        duplicate_case = add_case(blocked, workflow="new-comparison", comparison_id=uuid.uuid4())
+        session.commit()
+
+        service = HumanReviewService(session)
+        service.reconcile_email(completed)
+        service.reconcile_email(awaiting)
+        service.reconcile_email(
+            blocked,
+            current_reason_code="COMPARISON_UNRESOLVED",
+            current_source_comparison_id=old_comparison,
+        )
+        session.commit()
+
+        session.refresh(completed_case)
+        session.refresh(awaiting_case)
+        session.refresh(blocked_case)
+        session.refresh(duplicate_case)
+        assert completed_case.status == "DISMISSED"
+        assert awaiting_case.status == "DISMISSED"
+        assert blocked_case.status == "OPEN"
+        assert duplicate_case.status == "DISMISSED"
+        assert session.scalar(
+            select(func.count(HumanReviewEventRecord.id)).where(
+                HumanReviewEventRecord.review_case_id == completed_case.id,
+                HumanReviewEventRecord.action == "CASE_DISMISSED",
+            )
+        ) == 1
+
+        summary = get_product_summary(session)
+        assert summary.human_review_open_count == 1
+
+        # A changed workflow identity supersedes the old active case without
+        # deleting its history, then creates exactly one current case.
+        replacement = service.ensure_actionable_case(
+            blocked,
+            reason_code="COMPARISON_UNRESOLVED",
+            source_comparison_id=uuid.uuid4(),
+        )
+        session.commit()
+        active_cases = session.scalars(
+            select(HumanReviewCaseRecord).where(
+                HumanReviewCaseRecord.email_id == blocked.id,
+                HumanReviewCaseRecord.status.in_(["OPEN", "IN_REVIEW"]),
+            )
+        ).all()
+        assert replacement is not None
+        assert len(active_cases) == 1
+        assert session.scalar(select(func.count(HumanReviewCaseRecord.id)).where(HumanReviewCaseRecord.email_id == blocked.id)) == 3
