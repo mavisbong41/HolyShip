@@ -1591,7 +1591,7 @@ function HumanReviewPageView({
   }, [selected?.id, selected?.reviewer_name, selected?.reason_code]);
 
   const [reviewPage, setReviewPage] = useState(0);
-  const pageSize = 20;
+  const pageSize = 5;
 
   useEffect(() => {
     setReviewPage(0);
