@@ -290,6 +290,8 @@ export interface QueueFilters {
   category?: ProductCategory | "";
   comparison_readiness?: ComparisonReadiness | "";
   needs_review?: "true" | "false" | "";
+  review_status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED" | "";
+  comparison_state?: "COMPLETED" | "BLOCKED" | "";
   has_mismatch?: "true" | "false" | "";
   search?: string;
   skip?: number;
