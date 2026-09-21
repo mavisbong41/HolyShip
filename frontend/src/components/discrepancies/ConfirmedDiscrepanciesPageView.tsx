@@ -184,7 +184,7 @@ export function ConfirmedDiscrepanciesPageView({
   return (
     <section className="page-grid discrepancies-page-grid">
       {/* 1. TOP METRIC SUMMARY CARDS (Matching Image 3 Human Review & Overview) */}
-      <section className="overview-summary-panel" aria-label="Discrepancy Analytics">
+      <section className={cx("overview-summary-panel", selected && "mobile-hide-when-detail-open")} aria-label="Discrepancy Analytics">
         <div className="metric-grid human-review-metric-grid" aria-label="Discrepancy analytics cards">
           <MetricCard
             cardIndex={0}

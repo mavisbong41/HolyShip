@@ -1783,7 +1783,7 @@ function HumanReviewPageView({
 
   return (
     <section className="page-grid">
-      <section className="overview-summary-panel" aria-label="Human Review analytics">
+      <section className={cx("overview-summary-panel", selected && "mobile-hide-when-detail-open")} aria-label="Human Review analytics">
         <div className="metric-grid human-review-metric-grid" aria-label="Human Review analytics">
           <MetricCard cardIndex={0} totalCards={5} icon={<ShieldAlert size={18} color="currentColor" />} label="Open" value={analytics?.open_count ?? 0} trendText="Active review cases" tone="attention" />
           <MetricCard cardIndex={1} totalCards={5} icon={<Clock size={18} color="var(--color-warn)" />} label="In Review" value={analytics?.in_review_count ?? 0} trendText="Currently claimed" tone="neutral" />
@@ -3391,6 +3391,15 @@ export default function App() {
       <aside className={cx("sidebar", mobileMenuOpen && "mobile-open")} aria-label="Primary navigation">
         <div className="brand">
           <img src="/holyship-logo.png" alt="HolyShip" className="brand-logo" />
+          <button
+            type="button"
+            className="sidebar-close-btn"
+            onClick={() => setMobileMenuOpen(false)}
+            aria-label="Close navigation menu"
+            title="Close navigation menu"
+          >
+            <X size={20} />
+          </button>
         </div>
         <nav>
           <button className={cx(page === "overview" && "active")} onClick={() => navigate("overview")} type="button">
