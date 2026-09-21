@@ -498,28 +498,28 @@ export function TaskPane({
 
     let mounted = true;
     let lastContextKey: string | null = null;
+    let aggressivePollTimer: ReturnType<typeof setInterval> | null = null;
 
-    const checkForContextChange = async (force = false) => {
+    const checkForContextChange = async () => {
       try {
         const context = await contextProvider.getContext();
         if (!mounted) return;
 
         const currentKey = contextIdentityKey(context);
-        if (!currentKey) {
-          return;
-        }
+        if (!currentKey) return;
 
         if (lastContextKey === null) {
+          // First read: record current key without triggering another resolve
           lastContextKey = currentKey;
           return;
         }
 
-        if (force || currentKey !== lastContextKey) {
+        if (currentKey !== lastContextKey) {
           lastContextKey = currentKey;
           void resolve();
         }
       } catch {
-        if (force) void resolve();
+        // ignore transient failures
       }
     };
 
@@ -530,11 +530,46 @@ export function TaskPane({
     let itemChangedRegistered = false;
 
     const onItemChanged = () => {
-      // Trigger context check immediately and with staggered retries
-      // because Office.js sometimes hydrates item properties with 100-300ms delay.
-      void checkForContextChange(true);
-      setTimeout(() => void checkForContextChange(true), 250);
-      setTimeout(() => void checkForContextChange(true), 600);
+      // In New Outlook, mailbox.item can take >1 second to hydrate after ItemChanged fires.
+      // Using force=true immediately reads stale data and poisons lastContextKey.
+      // Instead: poll aggressively every 200ms (up to 4 seconds) until the context
+      // genuinely changes, then resolve once with the correct email.
+      if (aggressivePollTimer !== null) {
+        clearInterval(aggressivePollTimer);
+        aggressivePollTimer = null;
+      }
+
+      const keyBeforeChange = lastContextKey;
+      let attempts = 0;
+      const maxAttempts = 20; // 20 × 200ms = 4 seconds
+
+      aggressivePollTimer = setInterval(async () => {
+        attempts++;
+        try {
+          const context = await contextProvider.getContext();
+          if (!mounted) {
+            if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
+            return;
+          }
+
+          const currentKey = contextIdentityKey(context);
+          if (currentKey && currentKey !== keyBeforeChange) {
+            // Context genuinely changed — update and resolve
+            lastContextKey = currentKey;
+            void resolve();
+            if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
+            return;
+          }
+        } catch {
+          // ignore
+        }
+
+        if (attempts >= maxAttempts) {
+          // Timed out — resolve anyway so pane doesn't stay stale forever
+          void resolve();
+          if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
+        }
+      }, 200);
     };
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
@@ -549,7 +584,7 @@ export function TaskPane({
       }
     }
 
-    // 2. Continuous interval check as universal fallback
+    // 2. Continuous interval check as universal fallback (covers hosts without ItemChanged)
     const interval = setInterval(() => {
       void checkForContextChange();
     }, 800);
@@ -557,6 +592,7 @@ export function TaskPane({
     return () => {
       mounted = false;
       clearInterval(interval);
+      if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
       if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
         try {
           mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
