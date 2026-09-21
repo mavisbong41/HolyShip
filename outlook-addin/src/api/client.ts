@@ -45,12 +45,15 @@ function appendParam(params: URLSearchParams, key: string, value: unknown): void
 export async function findEmailByMessageId(
   internetMessageId: string,
 ): Promise<ProductEmailDetail | null> {
+  const cleanId = internetMessageId.replace(/^<|>$/g, "").trim();
   const params = new URLSearchParams();
-  appendParam(params, "search", internetMessageId);
+  appendParam(params, "search", cleanId || internetMessageId);
   appendParam(params, "limit", 5);
   const page = await request<EmailQueuePage>(`/emails?${params.toString()}`);
   const match = page.items.find(
-    (item) => item.external_message_id === internetMessageId,
+    (item) =>
+      item.external_message_id === internetMessageId ||
+      item.external_message_id === cleanId,
   );
   if (!match) return null;
   return request<ProductEmailDetail>(`/emails/${match.id}`);
