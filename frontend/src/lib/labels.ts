@@ -51,14 +51,22 @@ export const fieldStatusLabels: Record<FieldStatus, string> = {
 };
 
 export const reviewStatusLabels: Record<string, string> = {
-  OPEN: "Open",
-  IN_REVIEW: "In Review",
-  RESOLVED: "Resolved",
-  DISMISSED: "Dismissed",
+  OPEN: "Needs Review",
+  IN_REVIEW: "Being Reviewed",
+  RESOLVED: "Review Completed",
+  DISMISSED: "Review Dismissed",
 };
 
 export const reasonLabels: Record<string, string> = {
-  COMPARISON_UNRESOLVED: "Comparison needs review",
+  COMPARISON_UNRESOLVED: "One or more document fields could not be verified",
+  COMPARISON_MISMATCH: "The SI and BL contain different values",
+  CLASSIFICATION_UNRESOLVED: "Email type unclear",
+  DOCUMENT_ROLE_UNRESOLVED: "Document role unclear",
+  WRONG_DOCUMENT_TYPE: "Wrong document type",
+  MISSING_REQUIRED_ATTACHMENT: "Required shipping document is missing",
+  UNREADABLE_ATTACHMENT: "Document could not be read reliably",
+  MULTIPLE_CANDIDATES: "More than one document may match",
+  READINESS_UNRESOLVED: "Document readiness unclear",
   MISSING_REQUIRED_ATTACHMENT: "Required document is missing",
   WRONG_DOCUMENT_TYPE: "Document type does not match",
   DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
