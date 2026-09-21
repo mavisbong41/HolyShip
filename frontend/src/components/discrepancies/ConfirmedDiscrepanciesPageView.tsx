@@ -585,16 +585,7 @@ export function ConfirmedDiscrepanciesPageView({
                 </div>
 
                 {/* Sub-nav Tab Buttons */}
-                <div
-                  className="detail-tabs-row"
-                  style={{
-                    display: "flex",
-                    gap: "6px",
-                    marginTop: "16px",
-                    borderBottom: "1px solid var(--color-grey-200)",
-                    paddingBottom: "0",
-                  }}
-                >
+                <div className="detail-tabs-row">
                   <button
                     type="button"
                     className={cx("detail-tab-btn", activeTab === "differences" && "active")}
@@ -635,26 +626,25 @@ export function ConfirmedDiscrepanciesPageView({
                         </div>
                       </div>
 
-                      <div className="discrepancy-diff-grid" style={{ display: "grid", gap: "10px" }}>
+                      <div className="discrepancy-diff-grid">
                         {selected.mismatched_fields_detail.map((diff) => (
                           <div
                             key={diff.field}
                             className="discrepancy-diff-card is-mismatch"
                           >
-                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
-                              <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                                <strong style={{ fontSize: "13.5px", color: "var(--color-black)" }}>
+                            <div className="diff-card-header-row">
+                              <div className="diff-card-field-info">
+                                <strong className="diff-field-name">
                                   {labelForField(diff.field)}
                                 </strong>
-                                <span className="badge badge-attention" style={{ fontSize: "10px" }}>
+                                <span className="badge badge-attention diff-reason-badge">
                                   {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
                                 </span>
                               </div>
-                              <div style={{ display: "flex", gap: "6px" }}>
+                              <div className="diff-card-actions-row">
                                 <button
                                   type="button"
                                   className="button-secondary"
-                                  style={{ fontSize: "11px", padding: "3px 8px" }}
                                   onClick={() =>
                                     openCorrectionModal("BL", String(diff.field), String(diff.bl.canonical ?? diff.bl.raw ?? ""))
                                   }
@@ -664,7 +654,6 @@ export function ConfirmedDiscrepanciesPageView({
                                 <button
                                   type="button"
                                   className="button-secondary"
-                                  style={{ fontSize: "11px", padding: "3px 8px" }}
                                   onClick={() =>
                                     openCorrectionModal("SI", String(diff.field), String(diff.si.canonical ?? diff.si.raw ?? ""))
                                   }
