@@ -41,6 +41,7 @@ import {
   runInitialSync,
   saveHumanReviewOverride,
 } from "./api/client";
+import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
 import type {
   EmailQueuePage,
   HumanReviewAnalytics,
@@ -1209,6 +1210,7 @@ function HumanReviewPageView({
   onOverride,
   onResolve,
   onDismiss,
+  onCaseUpdated,
 }: {
   reviews: HumanReviewPage | null;
   analytics: HumanReviewAnalytics | null;
@@ -1220,6 +1222,7 @@ function HumanReviewPageView({
   onOverride: (payload: { document_side: "SI" | "BL"; field: string; corrected_value: string; reviewer_name: string; note?: string }) => Promise<void>;
   onResolve: (reviewer: string, notes?: string) => Promise<void>;
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
+  onCaseUpdated?: (updated: ProductReview) => void;
 }) {
   const [statusFilter, setStatusFilter] = useState("ACTIVE");
   const [reasonFilter, setReasonFilter] = useState("");
@@ -1335,6 +1338,15 @@ function HumanReviewPageView({
               <AlertTriangle size={18} aria-hidden="true" />
               <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
             </div>
+
+            {selected.case_origin === "ACTIVE" ? (
+              <AIReviewPanel
+                review={selected}
+                reviewerName={reviewer}
+                onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
+              />
+            ) : null}
+
             <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
             <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>
             <div className="detail-section">
@@ -1623,6 +1635,7 @@ export default function App() {
             onOverride={(payload) => reviewMutation(() => saveHumanReviewOverride(selectedReview!.id, payload))}
             onResolve={(reviewer, notes) => reviewMutation(() => resolveHumanReview(selectedReview!.id, reviewer, notes))}
             onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
+            onCaseUpdated={(updated) => void refreshAfterReview(updated)}
           />
         ) : null}
       </main>

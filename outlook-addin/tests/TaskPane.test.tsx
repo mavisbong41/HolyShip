@@ -1,8 +1,10 @@
 import { render, screen, waitFor, within } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskPane } from "../src/components/TaskPane";
 import { FakeCurrentMailContextProvider } from "../src/office/FakeContextProvider";
 import type { ProductEmailDetail } from "../src/types/product";
+import * as clientModule from "../src/api/client";
 import { fixtures } from "./fixtures";
 
 // Mock the identity adapter module
@@ -189,6 +191,78 @@ describe("TaskPane", () => {
     render(<TaskPane contextProvider={provider} />);
     await waitFor(() => {
       expect(screen.getByText(/matched by subject text only/i)).toBeInTheDocument();
+    });
+  });
+
+  describe("AI Review Assistant Companion", () => {
+    it("renders AI Review Assistant section and chips when active review exists", async () => {
+      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "AI Review Assistant Companion" })).toBeInTheDocument();
+      });
+      expect(screen.getByText("AI Review Assistant")).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Why does this need review?" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: "Suggest field overrides" })).toBeInTheDocument();
+    });
+
+    it("queries AI assistant on chip click, displays explanation and actionable suggestion with deep link", async () => {
+      const mockAsk = vi.spyOn(clientModule, "askAIAssistant").mockResolvedValue({
+        message: "The container count in Draft BL differs from SI.",
+        mode: "ACTIONABLE_SUGGESTION",
+        suggestion_id: "sugg-out-1",
+        provider_name: "test-provider",
+        provider_model: "test-model",
+        suggestion: {
+          action: "FIELD_OVERRIDE",
+          document_side: "BL",
+          field: "container_count",
+          current_value: "4",
+          suggested_value: "2",
+          confidence: 0.95,
+          reason: "SI explicitly states 2 x 40'HC.",
+          evidence_refs: ["SI Page 1: 2 x 40'HC"],
+        },
+      });
+
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Suggest field overrides" })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: "Suggest field overrides" }));
+
+      expect(mockAsk).toHaveBeenCalledWith("review-001", "Suggest field overrides");
+
+      expect(await screen.findByText("The container count in Draft BL differs from SI.")).toBeInTheDocument();
+      expect(screen.getByText(/Proposed: BL · Container Count/i)).toBeInTheDocument();
+      expect(screen.getByText("95%")).toBeInTheDocument();
+      expect(screen.getByText("SI explicitly states 2 x 40'HC.")).toBeInTheDocument();
+      expect(screen.getByText("SI Page 1: 2 x 40'HC")).toBeInTheDocument();
+
+      const applyLink = screen.getByRole("link", { name: /Open Review & Apply in HolyShip/i });
+      expect(applyLink).toBeInTheDocument();
+      expect(applyLink.getAttribute("href")).toContain("review=review-001");
+    });
+
+    it("displays error notice gracefully when AI assistant call fails", async () => {
+      vi.spyOn(clientModule, "askAIAssistant").mockRejectedValue(new Error("AI service timeout"));
+
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("button", { name: "Why does this need review?" })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: "Why does this need review?" }));
+
+      expect(await screen.findByRole("alert")).toHaveTextContent("AI service timeout");
     });
   });
 });

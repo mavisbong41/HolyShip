@@ -232,6 +232,7 @@ export const demoHumanReview: HumanReviewPage = {
       semantic_style: "attention",
       age_minutes: 12,
       resolutions: [],
+      ai_suggestions: [],
       created_at: "2026-09-21T10:25:00+08:00",
     },
   ],

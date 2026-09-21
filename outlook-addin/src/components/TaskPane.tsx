@@ -1,20 +1,24 @@
 import {
   AlertCircle,
   AlertTriangle,
+  Bot,
   CheckCircle2,
   Clock,
   ExternalLink,
   FileSearch,
+  FileText,
   Info,
   RefreshCw,
+  ShieldCheck,
+  Sparkles,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { getEmailDetail, reprocessEmail } from "../api/client";
+import { askAIAssistant, getEmailDetail, reprocessEmail } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
-import { categoryLabels, displayLabel, formatDate, reasonLabels, statusLabels } from "../lib/labels";
+import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
-import type { ProductComparison, ProductEmailDetail, ProductEmailSummary } from "../types/product";
+import type { AIAssistantResponse, ProductComparison, ProductEmailDetail, ProductEmailSummary } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
@@ -264,6 +268,132 @@ function ComparisonSummaryStrip({
   );
 }
 
+function AICompanionSection({
+  reviewId,
+  reviewUrl,
+}: {
+  reviewId: string;
+  reviewUrl: string | null;
+}): React.ReactElement {
+  const [isAsking, setIsAsking] = useState(false);
+  const [response, setResponse] = useState<AIAssistantResponse | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+
+  const handleAsk = async (question: string) => {
+    setIsAsking(true);
+    setError(null);
+    setLastQuestion(question);
+    try {
+      const resp = await askAIAssistant(reviewId, question);
+      setResponse(resp);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "AI Assistant unavailable");
+    } finally {
+      setIsAsking(false);
+    }
+  };
+
+  const chips = [
+    "Why does this need review?",
+    "Suggest field overrides",
+    "Summarize case",
+  ];
+
+  return (
+    <section className="ai-companion-section" aria-label="AI Review Assistant Companion">
+      <div className="ai-companion-header">
+        <div className="ai-companion-title">
+          <Bot size={15} className="text-orange" aria-hidden="true" />
+          <strong>AI Review Assistant</strong>
+        </div>
+        <span className="badge badge-info">Evidence Grounded</span>
+      </div>
+
+      <div className="ai-chips-list" role="group" aria-label="Quick AI questions">
+        {chips.map((q) => (
+          <button
+            key={q}
+            type="button"
+            className="ai-chip-btn"
+            disabled={isAsking}
+            onClick={() => void handleAsk(q)}
+          >
+            <Sparkles size={11} aria-hidden="true" />
+            <span>{q}</span>
+          </button>
+        ))}
+      </div>
+
+      {isAsking && (
+        <div className="ai-companion-loading" role="status">
+          <RefreshCw size={12} className="spin-icon" aria-hidden="true" />
+          <span>Analyzing grounded case evidence…</span>
+        </div>
+      )}
+
+      {error && (
+        <div className="ai-companion-error" role="alert">
+          <AlertCircle size={13} aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {response && !isAsking && (
+        <div className="ai-companion-response">
+          {lastQuestion && <p className="ai-question-tag">Q: {lastQuestion}</p>}
+          <p className="ai-message-text">{response.message}</p>
+
+          {response.suggestion && (
+            <div className="ai-suggestion-mini-card">
+              <div className="ai-sugg-head">
+                <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+                  <ShieldCheck size={14} className="text-orange" aria-hidden="true" />
+                  <strong>
+                    Proposed: {response.suggestion.document_side} · {labelForField(response.suggestion.field)}
+                  </strong>
+                </div>
+                {response.suggestion.confidence != null && (
+                  <span className="badge badge-info">
+                    {Math.round(response.suggestion.confidence * 100)}%
+                  </span>
+                )}
+              </div>
+              <div className="ai-sugg-diff">
+                <span>Current: <code>{response.suggestion.current_value || "—"}</code></span>
+                <span> → </span>
+                <strong className="text-orange">Proposed: <code>{response.suggestion.suggested_value}</code></strong>
+              </div>
+              {response.suggestion.reason && (
+                <p className="ai-sugg-reason">{response.suggestion.reason}</p>
+              )}
+              {response.suggestion.evidence_refs && response.suggestion.evidence_refs.length > 0 && (
+                <div className="ai-sugg-evidence">
+                  {response.suggestion.evidence_refs.map((ref, idx) => (
+                    <span key={idx}><FileText size={10} aria-hidden="true" /> {ref}</span>
+                  ))}
+                </div>
+              )}
+              {reviewUrl && (
+                <a
+                  className="btn-primary"
+                  href={reviewUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ marginTop: 8, display: "inline-flex", width: "100%", justifyContent: "center" }}
+                >
+                  <ExternalLink size={12} aria-hidden="true" />
+                  Open Review & Apply in HolyShip
+                </a>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
 // ─── Main TaskPane ─────────────────────────────────────────────────
 
 export function TaskPane({
@@ -439,6 +569,8 @@ export function TaskPane({
                   <small>{activeReview.comparison?.unresolved_fields.length ?? state.detail.email.unresolved_count} affected field(s)</small>
                   {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
                 </section>
+
+                <AICompanionSection reviewId={activeReview.id} reviewUrl={reviewUrl} />
               </>
             )}
 

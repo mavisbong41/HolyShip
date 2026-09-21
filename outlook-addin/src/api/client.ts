@@ -1,4 +1,4 @@
-import type { EmailQueuePage, ProductEmailDetail } from "../types/product";
+import type { AIAssistantResponse, EmailQueuePage, ProductEmailDetail } from "../types/product";
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -65,6 +65,20 @@ export async function getEmailDetail(emailId: string): Promise<ProductEmailDetai
 
 export async function reprocessEmail(emailId: string): Promise<{ email_id: string; status: string }> {
   return request(`/emails/${emailId}/reprocess`, { method: "POST" });
+}
+
+/**
+ * Ask the HolyShip AI Review Assistant for grounded case reasoning.
+ */
+export async function askAIAssistant(
+  reviewId: string,
+  question: string,
+): Promise<AIAssistantResponse> {
+  return request<AIAssistantResponse>(`/human-review/${reviewId}/ai/ask`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ question }),
+  });
 }
 
 /**

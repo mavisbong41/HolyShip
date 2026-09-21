@@ -604,7 +604,11 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
         review=latest_review,
     )
     comparison = _comparison(comparison_record)
-    from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
+    from backend.app.storage.models import (
+        AISuggestionRecord,
+        HumanReviewEventRecord,
+        HumanReviewFieldOverrideRecord,
+    )
     review = []
     comparison = _comparison(comparison_record)
     for item in review_records:
@@ -619,6 +623,9 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
 
         raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == item.id)).all()
         actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
+
+        raw_suggestions = session.scalars(select(AISuggestionRecord).where(AISuggestionRecord.human_review_case_id == item.id)).all()
+        ai_suggestions = [review_action_helper._review_ai_suggestion(s) for s in sorted(raw_suggestions, key=lambda s: (s.created_at, str(s.id)))]
 
         review.append(ProductReview(
             id=item.id,
@@ -648,6 +655,7 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             overrides=overrides,
             actions=actions,
             resolutions=[_resolution(item_resolution) for item_resolution in resolutions if item_resolution.field_name == item.field_name] if item.field_name else [],
+            ai_suggestions=ai_suggestions,
             created_at=item.created_at,
             updated_at=item.updated_at,
             resolved_at=item.resolved_at,
@@ -801,12 +809,18 @@ def list_human_reviews(
         human_explanation = presentation.explanation
         age_minutes = review_helper.compute_age_minutes(row.created_at)
 
-        from backend.app.storage.models import HumanReviewFieldOverrideRecord, HumanReviewEventRecord
+        from backend.app.storage.models import (
+            AISuggestionRecord,
+            HumanReviewEventRecord,
+            HumanReviewFieldOverrideRecord,
+        )
         raw_overrides = session.scalars(select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == row.id)).all()
         overrides = [review_action_helper._review_override(r) for r in sorted(raw_overrides, key=lambda r: (r.created_at, str(r.id)))]
         raw_events = session.scalars(select(HumanReviewEventRecord).where(HumanReviewEventRecord.review_case_id == row.id)).all()
         actions = [review_action_helper._review_action(e) for e in sorted(raw_events, key=lambda e: (e.created_at, str(e.id)))]
         claimed_at = next((action.created_at for action in actions if action.action == "CASE_CLAIMED"), None)
+        raw_suggestions = session.scalars(select(AISuggestionRecord).where(AISuggestionRecord.human_review_case_id == row.id)).all()
+        ai_suggestions = [review_action_helper._review_ai_suggestion(s) for s in sorted(raw_suggestions, key=lambda s: (s.created_at, str(s.id)))]
 
         items.append(ProductReview(
             id=row.id,
@@ -838,6 +852,7 @@ def list_human_reviews(
             overrides=overrides,
             actions=actions,
             resolutions=resolutions_by_email.get(str(row.email_id), []),
+            ai_suggestions=ai_suggestions,
             created_at=row.created_at,
             updated_at=row.updated_at,
             resolved_at=row.resolved_at,

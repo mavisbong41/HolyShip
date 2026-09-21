@@ -244,6 +244,7 @@ class ProductReview(BaseModel):
     overrides: list["ProductReviewOverride"] = Field(default_factory=list)
     actions: list["ProductReviewAction"] = Field(default_factory=list)
     resolutions: list[ProductResolution] = Field(default_factory=list)
+    ai_suggestions: list["ProductAISuggestion"] = Field(default_factory=list)
     created_at: datetime
     updated_at: datetime | None = None
     resolved_at: datetime | None = None
@@ -260,7 +261,53 @@ class ProductReviewOverride(BaseModel):
     note: str | None = None
     active: bool
     supersedes_override_id: uuid.UUID | None = None
+    ai_suggestion_id: uuid.UUID | None = None
     created_at: datetime
+
+
+class ProductAISuggestion(BaseModel):
+    id: uuid.UUID
+    human_review_case_id: uuid.UUID
+    mode: str
+    message: str
+    document_side: str | None = None
+    field: str | None = None
+    current_value: str | None = None
+    suggested_value: str | None = None
+    confidence: float | None = None
+    reason: str | None = None
+    evidence_refs: list[str] = Field(default_factory=list)
+    provider_name: str
+    provider_model: str
+    status: str
+    created_at: datetime
+
+
+class AIAssistantAskIn(BaseModel):
+    question: str = Field(min_length=1, max_length=2000)
+
+
+class AIAssistantResponseOut(BaseModel):
+    message: str
+    mode: str
+    suggestion: Any | None = None
+    suggestion_id: uuid.UUID | None = None
+    provider_name: str
+    provider_model: str
+
+
+class AISuggestionAcceptIn(BaseModel):
+    reviewer_label: str = Field(min_length=1, max_length=255)
+
+
+class AISuggestionApplyEditedIn(BaseModel):
+    value: str = Field(min_length=1, max_length=1000)
+    reviewer_label: str = Field(min_length=1, max_length=255)
+    note: str | None = Field(default=None, max_length=4000)
+
+
+class AISuggestionDismissIn(BaseModel):
+    reviewer_label: str = Field(min_length=1, max_length=255)
 
 
 class ProductReviewAction(BaseModel):
