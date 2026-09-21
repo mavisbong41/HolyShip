@@ -173,7 +173,9 @@ def test_reconciliation_uses_email_level_latest_comparison_semantics():
     assert "partition_by=ComparisonResultRecord.email_id" in reconciliation
     assert "latest_comparison.c.rank == 1" in reconciliation
     assert "latest_comparison.c.mismatch_found.is_(True)" in reconciliation
-    assert "json_array_length(latest_comparison.c.unresolved_fields)" in reconciliation
+    assert "select(latest_comparison.c.unresolved_fields)" in reconciliation
+    assert "sum(1 for (fields,) in latest_unresolved_rows if fields)" in reconciliation
+    assert "json_array_length" not in reconciliation
     assert "jsonb_array_length" not in reconciliation
 
 
