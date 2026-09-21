@@ -266,7 +266,11 @@ def list_email_queue(
 
 def get_product_summary(session: Session) -> ProductSummary:
     classification, comparison, review = _queue_sources()
-    needs_review_value = _needs_review_expr(EmailMessageRecord, comparison, review)
+    needs_review_value = or_(
+        review.c.status.in_(["OPEN", "IN_REVIEW"]),
+        EmailMessageRecord.processing_status == "BLOCKED",
+        comparison.c.comparison_state == "BLOCKED",
+    )
     statement = (
         select(
             func.count(EmailMessageRecord.id).label("total"),
