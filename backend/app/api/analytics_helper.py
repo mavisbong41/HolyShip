@@ -59,9 +59,19 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
         analytics.average_open_age_minutes = sum(open_ages) / len(open_ages)
         
     # Correction insights
+    # Correction insights must use the same ACTIVE-case population as the
+    # headline Human Review metrics. Otherwise historical/legacy corrections
+    # silently leak into Part 1 analytics.
     overrides = session.scalars(
         select(HumanReviewFieldOverrideRecord)
-        .where(HumanReviewFieldOverrideRecord.active == True)
+        .join(
+            HumanReviewCaseRecord,
+            HumanReviewCaseRecord.id == HumanReviewFieldOverrideRecord.review_case_id,
+        )
+        .where(
+            HumanReviewFieldOverrideRecord.active.is_(True),
+            HumanReviewCaseRecord.case_origin == "ACTIVE",
+        )
     ).all()
     
     for ov in overrides:
@@ -71,11 +81,11 @@ def get_human_review_analytics(session: Session) -> HumanReviewAnalytics:
         extracted = session.get(ExtractedFieldRecord, ov.original_field_id)
         reason = "Manual source confirmation"
         if extracted:
-            if extracted.raw_value is None:
+            if extracted.raw_value_json is None:
                 reason = "Missing extraction"
             elif extracted.confidence is not None and extracted.confidence < 0.8:
                 reason = "OCR ambiguity"
-            elif extracted.raw_value == ov.corrected_value and extracted.canonical_value != ov.corrected_canonical_value:
+            elif extracted.raw_value_json == ov.corrected_value and extracted.canonical_value != ov.corrected_canonical_value:
                 reason = "Value normalization"
             elif f in ["shipper", "consignee", "notify_party"]:
                 reason = "Entity ambiguity"
