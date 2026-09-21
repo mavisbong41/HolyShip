@@ -24,7 +24,7 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
   COMPLETED: "Completed",
-  BLOCKED: "Needs Review",
+  BLOCKED: "Needs Attention",
   FAILED: "Processing Failed",
 };
 
