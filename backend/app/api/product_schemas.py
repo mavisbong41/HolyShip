@@ -324,6 +324,15 @@ class ProductIncomingOut(BaseModel):
     error: str | None = None
 
 
+class HumanReviewReconciliation(BaseModel):
+    total_emails: int = 0
+    processing_status_counts: dict[str, int] = Field(default_factory=dict)
+    active_review_status_counts: dict[str, int] = Field(default_factory=dict)
+    historical_review_status_counts: dict[str, int] = Field(default_factory=dict)
+    emails_with_mismatch: int = 0
+    emails_with_unresolved_fields: int = 0
+
+
 class HumanReviewAnalytics(BaseModel):
     open_count: int = 0
     in_review_count: int = 0
