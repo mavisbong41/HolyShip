@@ -24,14 +24,14 @@ export const statusLabels: Record<ProcessingStatus, string> = {
   EXTRACTING: "Extracting",
   COMPARING: "Comparing",
   COMPLETED: "Completed",
-  BLOCKED: "Needs Attention",
+  BLOCKED: "Needs Review",
   FAILED: "Processing Failed",
 };
 
 export const readinessLabels: Record<ComparisonReadiness, string> = {
   READY_FOR_COMPARISON: "Ready for Comparison",
-  AWAITING_DOCUMENTS: "Awaiting Documents",
-  UNRESOLVED: "Readiness Unresolved",
+  AWAITING_DOCUMENTS: "Waiting for Documents",
+  UNRESOLVED: "Document readiness unclear",
 };
 
 export const fieldLabels: Record<CanonicalField, string> = {
@@ -96,7 +96,8 @@ export function semanticTone(value: string): SemanticTone {
   return "neutral";
 }
 
-export function displayLabel(value: string): string {
+export function displayLabel(value?: string | null): string {
+  if (!value) return "—";
   if (value in statusLabels) return statusLabels[value as ProcessingStatus];
   if (value in categoryLabels) return categoryLabels[value as ProductCategory];
   if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];
@@ -107,7 +108,8 @@ export function displayLabel(value: string): string {
   return value.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-export function labelForField(field: string): string {
+export function labelForField(field?: string | null): string {
+  if (!field) return "—";
   return field in fieldLabels
     ? fieldLabels[field as CanonicalField]
     : field.replaceAll("_", " ").replace(/\b\w/g, (letter) => letter.toUpperCase());

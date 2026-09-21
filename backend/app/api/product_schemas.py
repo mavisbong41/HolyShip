@@ -185,15 +185,21 @@ class EmailQueuePage(BaseModel):
 
 
 class ProductSummary(BaseModel):
+    """Product-level summary metrics.
+
+    Metrics represent the current actionable queue state.
+    needs_review_count only counts active actionable human review cases (case_origin=ACTIVE and status in OPEN/IN_REVIEW).
+    Legacy historical review records do not increment these counts.
+    """
     total_emails: int
     status_counts: dict[str, int]
-    needs_review_count: int
+    needs_review_count: int = Field(description="Number of currently actionable ACTIVE review cases.")
     comparison_ready_count: int
     mismatch_count: int
     unresolved_count: int
     completed_count: int = 0
     awaiting_documents_count: int = 0
-    human_review_open_count: int = 0
+    human_review_open_count: int = Field(default=0, description="Number of currently actionable ACTIVE open review cases.")
     failed_count: int = 0
     processing_count: int = 0
 

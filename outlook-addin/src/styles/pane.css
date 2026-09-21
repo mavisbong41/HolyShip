@@ -717,6 +717,33 @@ button:disabled {
   line-height: 1.45;
 }
 
+.review-card-facts {
+  display: grid;
+  gap: 6px;
+  margin: 0;
+}
+
+.review-card-facts div {
+  display: grid;
+  gap: 2px;
+}
+
+.review-card-facts dt {
+  color: var(--color-grey-500);
+  font-size: 9.5px;
+  font-weight: 800;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.review-card-facts dd {
+  margin: 0;
+  color: var(--color-grey-900);
+  font-size: 11px;
+  font-weight: 650;
+  line-height: 1.4;
+}
+
 .review-card-compact .btn-primary {
   justify-self: start;
   margin-top: 3px;

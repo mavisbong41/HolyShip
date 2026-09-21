@@ -181,6 +181,19 @@ export const fixtures = {
     review_status: "IN_REVIEW",
     review_reason: "COMPARISON_UNRESOLVED",
   }, mismatchComparison),
+  historicalReview: makeDetail({
+    processing_status: "COMPLETED",
+    needs_review: false,
+    review_status: "RESOLVED",
+    review_reason: "COMPARISON_UNRESOLVED",
+  }, cleanComparison),
+  aiSuggestion: makeDetail({
+    processing_status: "BLOCKED",
+    needs_review: true,
+    review_id: "review-001",
+    review_status: "OPEN",
+    review_reason: "COMPARISON_UNRESOLVED",
+  }, mismatchComparison),
   failed: makeDetail({ processing_status: "FAILED" }, null),
   processing: makeDetail({ processing_status: "EXTRACTING" }, null),
   newSiRequest: makeDetail({
@@ -207,5 +220,45 @@ fixtures.blocked.review = [
     comparison: mismatchComparison,
     resolutions: [],
     created_at: "2024-05-01T09:02:00Z",
+  },
+];
+
+fixtures.historicalReview.review = [
+  {
+    id: "review-legacy-001",
+    email_id: "email-001",
+    email: fixtures.historicalReview.email,
+    document_id: null,
+    field: null,
+    reason_code: "COMPARISON_UNRESOLVED",
+    reason_text: "Legacy review imported from an older workflow.",
+    status: "RESOLVED",
+    case_origin: "LEGACY",
+    reviewer_name: "Jordan Lee",
+    confidence: 0.72,
+    evidence: [],
+    comparison: null,
+    resolutions: [],
+    created_at: "2024-05-01T09:02:00Z",
+  },
+];
+
+fixtures.aiSuggestion.review = fixtures.blocked.review.map((review) => ({
+  ...review,
+  status: "OPEN",
+}));
+
+fixtures.aiSuggestion.resolutions = [
+  {
+    attempted: true,
+    purpose: "human_review_assist",
+    field: "gross_weight_kg",
+    accepted: false,
+    confidence: 0.91,
+    reason: "Gross Weight may contain an OCR error.",
+    evidence: [],
+    provider_name: "mock",
+    model_name: "mock-model",
+    resolver_version: "test",
   },
 ];

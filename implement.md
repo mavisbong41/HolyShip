@@ -45,8 +45,8 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-21
-**Updated by:** UI/UX design unification
-**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Active Human Review and both official clients are green with a unified design language. Phase F root validation passes and the evaluation submission SHA remains `37B33169797C6AEF6B781FBCBF1BA99CB92D3A8D96AC184235EEDA167D2A4EAB`. No scoreboard POST was made.
+**Updated by:** Dashboard overview visual refinement
+**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Dashboard overview metric cards were visually refined into a softer Averis-orange card color progression without backend/API behavior changes. Latest validation in this task: Dashboard typecheck PASS.
 
 ---
 
@@ -789,6 +789,12 @@ When adding an environment variable:
 
 ## Tests & Validation
 
+### Dashboard overview visual refinement (2026-09-21)
+
+- Dashboard overview opened against the local backend at `http://localhost:5173/` with 520-email data visible.
+- Dashboard typecheck PASS: `npm --prefix frontend run typecheck`.
+- Production build and full frontend test suite were not rerun in this visual-only iteration.
+
 ### UI/UX design unification (2026-09-21)
 
 - Live visual QA used the real local `/api/v1` backend at `http://127.0.0.1:8000` and Dashboard at `http://127.0.0.1:5173`; overview, inbox selection, and detail hierarchy rendered correctly.
@@ -1107,6 +1113,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-21 — Dashboard overview card refinement
+
+- **Changed:** Reworked the Dashboard overview metric cards from ribbon-topped white cards into a softer Averis-orange color progression: first card warm orange, subsequent cards progressively lighter, no outer wrapper around the seven-card row.
+- **Why:** The prior overview felt visually rigid and overly template-like; the new treatment keeps work-dashboard density while making the first screen more harmonious.
+- **Files:** `frontend/src/App.tsx`, `frontend/src/styles/app.css`, `implement.md`.
+- **Validation:** `npm --prefix frontend run typecheck` passed; local Dashboard visual check used live 520-email backend data.
+- **Next:** User visual review; run full `npm --prefix frontend run check` before merging.
 
 ### 2026-09-21 — Dashboard / Outlook UI/UX unification
 

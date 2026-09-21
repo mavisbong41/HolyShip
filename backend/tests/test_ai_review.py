@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+import urllib.error
 import uuid
 from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
@@ -7,7 +9,14 @@ import pytest
 from pydantic import ValidationError
 from fastapi.testclient import TestClient
 
-from backend.app.ai_review.providers import DisabledProvider, HTTPProvider
+from backend.app.ai_review.providers import (
+    DisabledProvider,
+    GeminiProvider,
+    HTTPProvider,
+    MockAIReviewProvider,
+    OpenAIProvider,
+    get_ai_review_provider,
+)
 from backend.app.ai_review.safety import evaluate_safety_gate
 from backend.app.ai_review.schema import (
     AISuggestionPayload,
@@ -15,6 +24,7 @@ from backend.app.ai_review.schema import (
     ALLOWED_REVIEW_FIELDS,
 )
 from backend.app.ai_review.service import AIReviewService
+from backend.app.core.config import Settings
 from backend.app.main import app
 from backend.app.review.service import ReviewConflictError
 from backend.app.storage.models import (
@@ -167,33 +177,121 @@ def test_safety_gate_downgrades_when_case_blocked_or_missing_docs():
     assert downgraded_conf.suggestion is None
 
 
-def test_disabled_provider_deterministic_answers():
+def test_disabled_provider_no_hardcoded_fake_rules():
     provider = DisabledProvider()
     ctx = {
         "case_id": "11111111-1111-1111-1111-111111111111",
         "subject": "Booking Ref 12345",
-        "presentation_title": "Gross weight mismatch",
-        "human_explanation": "Draft BL has OCR error.",
-        "affected_fields": ["gross_weight_kg"],
-        "comparison": {
-            "state": "BLOCKED",
-            "fields": [
-                {
-                    "field": "gross_weight_kg",
-                    "status": "MISMATCH",
-                    "si_value": "22000 KG",
-                    "bl_value": "22,O00 KG",
-                }
-            ],
-        },
     }
-
     raw, name, model = provider.generate_review_response(ctx, "Why is this case blocked?")
-    assert "Gross weight mismatch" in raw
+    parsed = json.loads(raw)
+    assert parsed["mode"] == "INSUFFICIENT_EVIDENCE"
+    assert "disabled" in parsed["message"].lower()
+    assert parsed["suggestion"] is None
+    assert name == "disabled"
 
-    raw_sugg, _, _ = provider.generate_review_response(ctx, "Can you suggest a correction for gross weight?")
-    assert "ACTIONABLE_SUGGESTION" in raw_sugg
-    assert "22000" in raw_sugg
+
+def test_gemini_provider_api_call_and_error_handling():
+    provider = GeminiProvider(api_key="test_gemini_key", model="gemini-2.5-flash")
+    ctx = {"case_id": "123", "subject": "Test"}
+
+    # Test successful response formatting
+    mock_gemini_resp = {
+        "candidates": [
+            {
+                "content": {
+                    "parts": [
+                        {
+                            "text": json.dumps({
+                                "message": "Grounded explanation from Gemini.",
+                                "mode": "EXPLANATION_ONLY",
+                                "suggestion": None,
+                            })
+                        }
+                    ]
+                }
+            }
+        ]
+    }
+    mock_resp_obj = MagicMock()
+    mock_resp_obj.read.return_value = json.dumps(mock_gemini_resp).encode("utf-8")
+    mock_resp_obj.__enter__.return_value = mock_resp_obj
+
+    with patch("urllib.request.urlopen", return_value=mock_resp_obj) as mock_url:
+        raw, name, model = provider.generate_review_response(ctx, "Summarize case")
+        assert name == "gemini"
+        assert model == "gemini-2.5-flash"
+        assert "Grounded explanation from Gemini." in raw
+        assert mock_url.called
+
+    # Test real HTTP error handling (e.g. 401 Unauthorized from upstream)
+    mock_http_err = urllib.error.HTTPError(
+        url="https://gemini.test",
+        code=401,
+        msg="Unauthorized",
+        hdrs=None, # type: ignore
+        fp=MagicMock(read=lambda: b'{"error": "Invalid API key"}')
+    )
+    with patch("urllib.request.urlopen", side_effect=mock_http_err):
+        raw_err, _, _ = provider.generate_review_response(ctx, "Summarize case")
+        parsed_err = json.loads(raw_err)
+        assert parsed_err["mode"] == "INSUFFICIENT_EVIDENCE"
+        assert "HTTP 401" in parsed_err["message"]
+
+
+def test_openai_provider_api_call_and_error_handling():
+    provider = OpenAIProvider(api_key="test_openai_key", model="gpt-4o-mini")
+    ctx = {"case_id": "123", "subject": "Test"}
+
+    mock_openai_resp = {
+        "choices": [
+            {
+                "message": {
+                    "content": json.dumps({
+                        "message": "Grounded explanation from OpenAI.",
+                        "mode": "EXPLANATION_ONLY",
+                        "suggestion": None,
+                    })
+                }
+            }
+        ]
+    }
+    mock_resp_obj = MagicMock()
+    mock_resp_obj.read.return_value = json.dumps(mock_openai_resp).encode("utf-8")
+    mock_resp_obj.__enter__.return_value = mock_resp_obj
+
+    with patch("urllib.request.urlopen", return_value=mock_resp_obj) as mock_url:
+        raw, name, model = provider.generate_review_response(ctx, "Summarize case")
+        assert name == "openai"
+        assert model == "gpt-4o-mini"
+        assert "Grounded explanation from OpenAI." in raw
+        assert mock_url.called
+
+
+def test_provider_factory_resolution():
+    # 1. Disabled
+    p_dis = get_ai_review_provider(Settings(ai_review_enabled=False, ai_review_provider="disabled"))
+    assert isinstance(p_dis, DisabledProvider)
+
+    # 2. Gemini
+    p_gem = get_ai_review_provider(Settings(
+        ai_review_enabled=True,
+        ai_review_provider="gemini",
+        ai_review_api_key="gemini-key",
+        ai_review_model="gemini-2.5-flash",
+    ))
+    assert isinstance(p_gem, GeminiProvider)
+    assert p_gem.model == "gemini-2.5-flash"
+
+    # 3. OpenAI
+    p_oa = get_ai_review_provider(Settings(
+        ai_review_enabled=True,
+        ai_review_provider="openai",
+        ai_review_api_key="openai-key",
+        ai_review_model="gpt-4o-mini",
+    ))
+    assert isinstance(p_oa, OpenAIProvider)
+    assert p_oa.model == "gpt-4o-mini"
 
 
 def test_service_ask_and_events():
@@ -218,13 +316,32 @@ def test_service_ask_and_events():
         },
     }
 
+    mock_llm_payload = {
+        "message": "The BL gross weight appears to have an OCR error ('O' instead of '0'). Proposed correction is 22000 kg.",
+        "mode": "ACTIONABLE_SUGGESTION",
+        "suggestion": {
+            "action": "FIELD_OVERRIDE",
+            "document_side": "BL",
+            "field": "gross_weight_kg",
+            "current_value": "22,O00 KG",
+            "suggested_value": "22000",
+            "confidence": 0.95,
+            "reason": "Corrected likely OCR character confusion (O/0)",
+            "evidence_refs": ["Draft BL text: '22,O00 KG'"],
+        },
+    }
+
+    mock_provider = MockAIReviewProvider(response_json=mock_llm_payload, provider_name="gemini", model_name="gemini-2.5-flash")
+
     with patch("backend.app.ai_review.service.build_case_context", return_value=ctx):
-        svc = AIReviewService(session=mock_session, provider=DisabledProvider())
+        svc = AIReviewService(session=mock_session, provider=mock_provider)
         resp, suggestion, provider_name, provider_model = svc.ask(case_id, "Can you suggest the correct BL gross weight?")
         assert resp.mode == "ACTIONABLE_SUGGESTION"
         assert suggestion is not None
         assert suggestion.field == "gross_weight_kg"
         assert suggestion.suggested_value == "22000"
+        assert provider_name == "gemini"
+        assert provider_model == "gemini-2.5-flash"
 
         # Check recorded events
         assert mock_session.add.called
@@ -361,8 +478,8 @@ def test_api_routes_integration():
             mock_ask.return_value = (
                 AIStructuredResponse(message="Hello", mode="EXPLANATION_ONLY", suggestion=None),
                 None,
-                "disabled",
-                "deterministic_rule_v1",
+                "gemini",
+                "gemini-2.5-flash",
             )
             resp = client.post(f"/api/v1/human-review/{case_id}/ai/ask", json={"question": "Why is this blocked?"})
             assert resp.status_code == 200
@@ -375,4 +492,3 @@ def test_api_routes_integration():
         assert resp_empty.status_code == 422
 
     app.dependency_overrides.clear()
-

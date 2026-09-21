@@ -1,12 +1,43 @@
 from __future__ import annotations
 
 import json
-import re
+import os
 import urllib.error
+import urllib.parse
 import urllib.request
 from typing import Any, Protocol
 
 from backend.app.core.config import Settings
+
+SYSTEM_INSTRUCTION = """You are the HolyShip AI Review Assistant for Shipping Document Verification.
+Your mission is to explain shipping document verification discrepancies and suggest field corrections ONLY when firmly grounded in provided document evidence.
+
+CORE INVARIANTS:
+1. Grounding: You must base all explanations and suggestions strictly on the provided case context (email, Shipping Instruction (SI), Draft Bill of Lading (BL), and extracted fields). Do not invent or hallucinate data.
+2. Terminology: Use user-friendly, professional shipping terminology (Shipper, Consignee, Notify Party, Port of Loading, Port of Discharge, Container Count, Gross Weight KG).
+3. Modes:
+   - "ACTIONABLE_SUGGESTION": Use ONLY when there is clear evidence of an OCR error, character confusion (e.g. 'O' vs '0'), or direct evidence in the source document text that supports a concrete field override.
+   - "EXPLANATION_ONLY": Use when answering questions about why a case is blocked, explaining mismatches, summarizing the case, or when human judgment is needed.
+   - "INSUFFICIENT_EVIDENCE": Use when documents are missing, unreadable, or context is insufficient to answer.
+4. Allowed Actionable Fields (must be one of these 7 if suggestion is provided):
+   - "shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge", "container_count", "gross_weight_kg"
+5. Allowed Document Sides: "SI" or "BL"
+6. Output Format: You MUST output strictly valid JSON matching this schema:
+{
+  "message": "Clear explanation grounded in evidence.",
+  "mode": "EXPLANATION_ONLY" | "ACTIONABLE_SUGGESTION" | "INSUFFICIENT_EVIDENCE",
+  "suggestion": null | {
+    "action": "FIELD_OVERRIDE",
+    "document_side": "SI" | "BL",
+    "field": "shipper" | "consignee" | "notify_party" | "port_of_loading" | "port_of_discharge" | "container_count" | "gross_weight_kg",
+    "current_value": "string",
+    "suggested_value": "string",
+    "confidence": float between 0.0 and 1.0,
+    "reason": "Clear explanation of why this override is suggested",
+    "evidence_refs": ["Quote or reference from document"]
+  }
+}
+Do not include any prose or markdown fences outside the JSON object."""
 
 
 class AIReviewProvider(Protocol):
@@ -20,9 +51,9 @@ class AIReviewProvider(Protocol):
 
 
 class DisabledProvider:
-    """Deterministic, context-grounded provider used when external AI is disabled or offline."""
+    """Safe provider used when external AI is disabled or not configured."""
 
-    def __init__(self, provider_name: str = "disabled", model_name: str = "deterministic_rule_v1"):
+    def __init__(self, provider_name: str = "disabled", model_name: str = "none"):
         self.provider_name = provider_name
         self.model_name = model_name
 
@@ -31,124 +62,150 @@ class DisabledProvider:
         context: dict[str, Any],
         question: str,
     ) -> tuple[str, str, str]:
-        q_lower = question.lower().strip()
-        reason_title = context.get("presentation_title", "Needs review")
-        human_explanation = context.get("human_explanation", "")
-        affected = context.get("affected_fields", [])
-        comparison = context.get("comparison") or {}
-        fields = comparison.get("fields", [])
-
-        def _field_matches(name: str) -> bool:
-            if not name:
-                return False
-            vars_ = [
-                name,
-                name.replace("_", " "),
-                name.replace("_kg", ""),
-                name.replace("_kg", "").replace("_", " "),
-                "weight" if "weight" in name else "",
-                "container" if "container" in name else "",
-                "loading" if "loading" in name else "",
-                "discharge" if "discharge" in name else "",
-                "pol" if "loading" in name else "",
-                "pod" if "discharge" in name else "",
-            ]
-            return any(v and v in q_lower for v in vars_)
-
-        # Check for field specific inquiry or OCR suggestion
-        for f in fields:
-            fname = f.get("field")
-            if fname and _field_matches(fname):
-                si_val = str(f.get("si_value") or "")
-                bl_val = str(f.get("bl_value") or "")
-                status = f.get("status")
-
-                # Check for OCR character confusion like O vs 0 in gross weight or numbers
-                if fname == "gross_weight_kg" and status == "MISMATCH" and "suggest" in q_lower:
-                    cleaned_bl = bl_val.replace("O", "0").replace("o", "0")
-                    if cleaned_bl != bl_val:
-                        num_match = re.search(r"[\d,.]+", cleaned_bl)
-                        if num_match:
-                            suggested_clean = num_match.group(0).replace(",", "")
-                            payload = {
-                                "message": f"The BL gross weight appears to have an OCR error ('O' instead of '0'). Proposed correction is {suggested_clean} kg.",
-                                "mode": "ACTIONABLE_SUGGESTION",
-                                "suggestion": {
-                                    "action": "FIELD_OVERRIDE",
-                                    "document_side": "BL",
-                                    "field": "gross_weight_kg",
-                                    "current_value": bl_val,
-                                    "suggested_value": suggested_clean,
-                                    "confidence": 0.95,
-                                    "reason": "Corrected likely OCR character confusion (O/0)",
-                                    "evidence_refs": [f"Draft BL text: '{bl_val}'"],
-                                },
-                            }
-                            return json.dumps(payload), self.provider_name, self.model_name
-
-                # General field explanation
-                return json.dumps({
-                    "message": f"For {fname.replace('_', ' ').title()}: SI has '{si_val}' and Draft BL has '{bl_val}'. Status is {status}.",
-                    "mode": "EXPLANATION_ONLY",
-                    "suggestion": None,
-                }), self.provider_name, self.model_name
-
-        # Case-level question matching
-        if any(w in q_lower for w in ["why", "blocked", "review", "reason"]):
-            aff_text = f" Affected fields: {', '.join(affected)}." if affected else ""
-            msg = f"This case needs review because: {reason_title}. {human_explanation}{aff_text}"
-            return json.dumps({
-                "message": msg,
-                "mode": "EXPLANATION_ONLY",
-                "suggestion": None,
-            }), self.provider_name, self.model_name
-
-        if any(w in q_lower for w in ["summarize", "summary", "overview"]):
-            docs_summary = ", ".join(f"{d['role']} ({d['filename']})" for d in context.get("documents", [])) or "No documents"
-            state = comparison.get("state", context.get("processing_status", "UNKNOWN"))
-            msg = f"Case {context.get('case_id')[:8]}: Subject '{context.get('subject')}'. Status: {state}. Documents: {docs_summary}. {reason_title}."
-            return json.dumps({
-                "message": msg,
-                "mode": "EXPLANATION_ONLY",
-                "suggestion": None,
-            }), self.provider_name, self.model_name
-
-        if any(w in q_lower for w in ["which", "si", "bl", "document"]):
-            si_doc = context.get("si_document")
-            bl_doc = context.get("bl_document")
-            si_name = si_doc["filename"] if si_doc else "None"
-            bl_name = bl_doc["filename"] if bl_doc else "None"
-            msg = f"Shipping Instruction (SI): {si_name}. Draft Bill of Lading (BL): {bl_name}."
-            return json.dumps({
-                "message": msg,
-                "mode": "EXPLANATION_ONLY",
-                "suggestion": None,
-            }), self.provider_name, self.model_name
-
-        # Fallback general explanation
-        msg = f"{reason_title}: {human_explanation} You can check the 7 verified fields and documents in the review detail."
-        return json.dumps({
-            "message": msg,
-            "mode": "EXPLANATION_ONLY",
+        payload = {
+            "message": "AI Review Assistant is currently disabled in backend configuration. To enable live AI explanations and grounded suggestions, configure AI_REVIEW_ENABLED=true and a provider API key (e.g. Gemini, OpenAI, or HTTP endpoint) in your environment.",
+            "mode": "INSUFFICIENT_EVIDENCE",
             "suggestion": None,
-        }), self.provider_name, self.model_name
+        }
+        return json.dumps(payload), self.provider_name, self.model_name
 
 
-class HTTPProvider:
-    """Config-driven HTTP provider for external LLM API endpoints using standard urllib."""
+class MockAIReviewProvider:
+    """Configurable mock provider used for testing without live API network calls."""
 
     def __init__(
         self,
-        endpoint: str,
-        api_key: str | None,
-        model: str,
-        timeout_seconds: float = 10.0,
-        provider_name: str = "http",
+        response_json: str | dict[str, Any] | None = None,
+        provider_name: str = "mock",
+        model_name: str = "mock-model",
     ):
-        self.endpoint = endpoint
+        self.response_json = response_json
+        self.provider_name = provider_name
+        self.model_name = model_name
+
+    def generate_review_response(
+        self,
+        context: dict[str, Any],
+        question: str,
+    ) -> tuple[str, str, str]:
+        if self.response_json is None:
+            default_payload = {
+                "message": f"Mock response for question: {question}",
+                "mode": "EXPLANATION_ONLY",
+                "suggestion": None,
+            }
+            return json.dumps(default_payload), self.provider_name, self.model_name
+        if isinstance(self.response_json, dict):
+            return json.dumps(self.response_json), self.provider_name, self.model_name
+        return str(self.response_json), self.provider_name, self.model_name
+
+
+class GeminiProvider:
+    """Real API provider connecting to Google Gemini REST API."""
+
+    def __init__(
+        self,
+        api_key: str,
+        model: str = "gemini-2.5-flash",
+        endpoint: str | None = None,
+        timeout_seconds: float = 15.0,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+    ):
         self.api_key = api_key
-        self.model = model
+        self.model = model or "gemini-2.5-flash"
+        self.endpoint = endpoint
         self.timeout_seconds = timeout_seconds
+        self.temperature = temperature
+        self.max_tokens = max_tokens
+        self.provider_name = "gemini"
+
+    def _build_url(self) -> str:
+        if self.endpoint:
+            return self.endpoint
+        # Default Google Gemini REST API endpoint
+        base = "https://generativelanguage.googleapis.com/v1beta/models"
+        return f"{base}/{self.model}:generateContent?key={urllib.parse.quote(self.api_key)}"
+
+    def generate_review_response(
+        self,
+        context: dict[str, Any],
+        question: str,
+    ) -> tuple[str, str, str]:
+        user_prompt = f"CASE CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nUSER QUESTION: {question}"
+
+        payload = {
+            "systemInstruction": {
+                "parts": [{"text": SYSTEM_INSTRUCTION}]
+            },
+            "contents": [
+                {
+                    "role": "user",
+                    "parts": [{"text": user_prompt}]
+                }
+            ],
+            "generationConfig": {
+                "responseMimeType": "application/json",
+                "temperature": self.temperature,
+                "maxOutputTokens": self.max_tokens,
+            },
+        }
+
+        body_bytes = json.dumps(payload).encode("utf-8")
+        headers = {
+            "Content-Type": "application/json",
+            "x-goog-api-key": self.api_key,
+        }
+
+        url = self._build_url()
+        req = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
+
+        try:
+            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                resp_data = json.loads(resp.read().decode("utf-8"))
+                candidates = resp_data.get("candidates", [])
+                if candidates:
+                    parts = candidates[0].get("content", {}).get("parts", [])
+                    if parts and "text" in parts[0]:
+                        return parts[0]["text"], self.provider_name, self.model
+                return json.dumps(resp_data), self.provider_name, self.model
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            err_msg = f"Gemini API error (HTTP {exc.code}): {err_body[:300]}"
+            error_payload = {
+                "message": err_msg,
+                "mode": "INSUFFICIENT_EVIDENCE",
+                "suggestion": None,
+            }
+            return json.dumps(error_payload), self.provider_name, self.model
+        except Exception as exc:
+            error_payload = {
+                "message": f"Gemini API request failed: {str(exc)}",
+                "mode": "INSUFFICIENT_EVIDENCE",
+                "suggestion": None,
+            }
+            return json.dumps(error_payload), self.provider_name, self.model
+
+
+class OpenAIProvider:
+    """Real API provider connecting to OpenAI or OpenAI-compatible Chat Completions API."""
+
+    def __init__(
+        self,
+        api_key: str | None = None,
+        model: str = "gpt-4o-mini",
+        endpoint: str | None = None,
+        timeout_seconds: float = 15.0,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        provider_name: str = "openai",
+    ):
+        self.api_key = api_key
+        self.model = model or "gpt-4o-mini"
+        self.endpoint = endpoint or "https://api.openai.com/v1/chat/completions"
+        self.timeout_seconds = timeout_seconds
+        self.temperature = temperature
+        self.max_tokens = max_tokens
         self.provider_name = provider_name
 
     def generate_review_response(
@@ -156,72 +213,152 @@ class HTTPProvider:
         context: dict[str, Any],
         question: str,
     ) -> tuple[str, str, str]:
-        system_instruction = (
-            "You are the HolyShip AI Review Assistant. You explain shipping document verification cases grounded strictly in provided evidence. "
-            "You must return ONLY a JSON object with schema: "
-            "{"
-            "  \"message\": \"string\","
-            "  \"mode\": \"EXPLANATION_ONLY\" | \"ACTIONABLE_SUGGESTION\" | \"INSUFFICIENT_EVIDENCE\","
-            "  \"suggestion\": null or {"
-            "    \"action\": \"FIELD_OVERRIDE\","
-            "    \"document_side\": \"SI\" | \"BL\","
-            "    \"field\": \"shipper\"|\"consignee\"|\"notify_party\"|\"port_of_loading\"|\"port_of_discharge\"|\"container_count\"|\"gross_weight_kg\","
-            "    \"current_value\": \"string\","
-            "    \"suggested_value\": \"string\","
-            "    \"confidence\": float between 0.0 and 1.0,"
-            "    \"reason\": \"string\","
-            "    \"evidence_refs\": [\"string\"]"
-            "  }"
-            "}. "
-            "Do not include extra markdown fences or prose outside JSON."
-        )
-        user_prompt = f"Case Context:\n{json.dumps(context, indent=2)}\n\nQuestion: {question}"
+        user_prompt = f"CASE CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nUSER QUESTION: {question}"
 
-        payload = {
+        payload: dict[str, Any] = {
             "model": self.model,
             "messages": [
-                {"role": "system", "content": system_instruction},
+                {"role": "system", "content": SYSTEM_INSTRUCTION},
                 {"role": "user", "content": user_prompt},
             ],
-            "temperature": 0.0,
+            "response_format": {"type": "json_object"},
+            "temperature": self.temperature,
+            "max_tokens": self.max_tokens,
         }
-        body_bytes = json.dumps(payload).encode("utf-8")
 
+        body_bytes = json.dumps(payload).encode("utf-8")
         headers = {"Content-Type": "application/json"}
         if self.api_key:
             headers["Authorization"] = f"Bearer {self.api_key}"
 
         req = urllib.request.Request(self.endpoint, data=body_bytes, headers=headers, method="POST")
+
         try:
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                data = json.loads(resp.read().decode("utf-8"))
-                choices = data.get("choices", [])
+                resp_data = json.loads(resp.read().decode("utf-8"))
+                choices = resp_data.get("choices", [])
                 if choices and "message" in choices[0]:
                     content = choices[0]["message"].get("content", "")
                     return content, self.provider_name, self.model
-                return json.dumps(data), self.provider_name, self.model
-        except Exception:
-            # Fall back to safe insufficient evidence on timeout / failure
-            pass
+                return json.dumps(resp_data), self.provider_name, self.model
+        except urllib.error.HTTPError as exc:
+            err_body = exc.read().decode("utf-8", errors="replace")
+            err_msg = f"OpenAI API error (HTTP {exc.code}): {err_body[:300]}"
+            error_payload = {
+                "message": err_msg,
+                "mode": "INSUFFICIENT_EVIDENCE",
+                "suggestion": None,
+            }
+            return json.dumps(error_payload), self.provider_name, self.model
+        except Exception as exc:
+            error_payload = {
+                "message": f"OpenAI API request failed: {str(exc)}",
+                "mode": "INSUFFICIENT_EVIDENCE",
+                "suggestion": None,
+            }
+            return json.dumps(error_payload), self.provider_name, self.model
 
-        fallback = {
-            "message": "AI provider service is currently unavailable or timed out.",
-            "mode": "INSUFFICIENT_EVIDENCE",
-            "suggestion": None,
-        }
-        return json.dumps(fallback), self.provider_name, self.model
+
+class HTTPProvider(OpenAIProvider):
+    """Generic config-driven HTTP provider for external OpenAI-compatible endpoints."""
+
+    def __init__(
+        self,
+        endpoint: str,
+        api_key: str | None,
+        model: str,
+        timeout_seconds: float = 15.0,
+        temperature: float = 0.0,
+        max_tokens: int = 2048,
+        provider_name: str = "http",
+    ):
+        super().__init__(
+            api_key=api_key,
+            model=model,
+            endpoint=endpoint,
+            timeout_seconds=timeout_seconds,
+            temperature=temperature,
+            max_tokens=max_tokens,
+            provider_name=provider_name,
+        )
 
 
 def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
-    if not settings.ai_review_enabled or settings.ai_review_provider == "disabled":
+    """Factory resolving configured real API provider from settings and environment."""
+    provider_name = (settings.ai_review_provider or "").lower().strip()
+
+    # Check explicit disabled flag
+    if provider_name == "disabled" and not settings.ai_review_enabled:
         return DisabledProvider()
 
-    api_key_str = settings.ai_review_api_key.get_secret_value() if settings.ai_review_api_key else None
-    endpoint = settings.ai_review_endpoint or "http://localhost:8000/v1/chat/completions"
-    return HTTPProvider(
-        endpoint=endpoint,
-        api_key=api_key_str,
-        model=settings.ai_review_model,
-        timeout_seconds=settings.ai_review_timeout_seconds,
-        provider_name=settings.ai_review_provider,
-    )
+    # Extract available API keys
+    api_key_str: str | None = None
+    if settings.ai_review_api_key:
+        api_key_str = settings.ai_review_api_key.get_secret_value()
+    elif settings.gemini_api_key:
+        api_key_str = settings.gemini_api_key.get_secret_value()
+    elif settings.openai_api_key:
+        api_key_str = settings.openai_api_key.get_secret_value()
+    elif settings.ai_api_key:
+        api_key_str = settings.ai_api_key.get_secret_value()
+    else:
+        api_key_str = (
+            os.environ.get("GEMINI_API_KEY")
+            or os.environ.get("GOOGLE_API_KEY")
+            or os.environ.get("OPENAI_API_KEY")
+            or os.environ.get("AI_API_KEY")
+            or os.environ.get("AI_REVIEW_API_KEY")
+        )
+
+    model_name = settings.ai_review_model if settings.ai_review_model and settings.ai_review_model != "none" else (settings.ai_model if settings.ai_model != "none" else "")
+    endpoint = settings.ai_review_endpoint or settings.ai_endpoint
+
+    # Auto-resolve provider type if not explicitly set
+    if not provider_name or provider_name in ("auto", "none", "disabled"):
+        if endpoint and ("openai" in endpoint or "chat/completions" in endpoint):
+            provider_name = "openai"
+        elif "gemini" in model_name.lower() or os.environ.get("GEMINI_API_KEY") or os.environ.get("GOOGLE_API_KEY"):
+            provider_name = "gemini"
+        elif "gpt" in model_name.lower() or os.environ.get("OPENAI_API_KEY"):
+            provider_name = "openai"
+        elif api_key_str:
+            # Default to Gemini if API key available and no other provider specified
+            provider_name = "gemini"
+        else:
+            return DisabledProvider()
+
+    if provider_name == "gemini":
+        model = model_name or "gemini-2.5-flash"
+        return GeminiProvider(
+            api_key=api_key_str or "",
+            model=model,
+            endpoint=endpoint,
+            timeout_seconds=settings.ai_review_timeout_seconds,
+            temperature=settings.ai_review_temperature,
+            max_tokens=settings.ai_review_max_tokens,
+        )
+
+    if provider_name in ("openai", "azure_openai"):
+        model = model_name or "gpt-4o-mini"
+        return OpenAIProvider(
+            api_key=api_key_str,
+            model=model,
+            endpoint=endpoint or "https://api.openai.com/v1/chat/completions",
+            timeout_seconds=settings.ai_review_timeout_seconds,
+            temperature=settings.ai_review_temperature,
+            max_tokens=settings.ai_review_max_tokens,
+            provider_name=provider_name,
+        )
+
+    if provider_name in ("http", "http_json", "custom"):
+        return HTTPProvider(
+            endpoint=endpoint or "http://localhost:8000/v1/chat/completions",
+            api_key=api_key_str,
+            model=model_name or "default",
+            timeout_seconds=settings.ai_review_timeout_seconds,
+            temperature=settings.ai_review_temperature,
+            max_tokens=settings.ai_review_max_tokens,
+            provider_name=provider_name,
+        )
+
+    return DisabledProvider(provider_name=provider_name, model_name=model_name or "none")

@@ -24,10 +24,10 @@ The authoritative CSS variables are mirrored in `frontend/src/styles/tokens.css`
 | Pipeline complete | Completed | green |
 | Actionable business exception | Needs Review | review orange/brown `#8a4b16` / `#fff1df` |
 | Technical failure | Processing Failed | red |
-| Waiting for a required document | Awaiting Documents | blue `#216a8a` / `#e8f3f8` |
-| Review lifecycle | Open / In Review / Resolved / Dismissed | review / review / green / muted |
+| Waiting for a required document | Waiting for Documents | blue `#216a8a` / `#e8f3f8` |
+| Review lifecycle | Needs Review / Being Reviewed / Review Completed / Review Dismissed | review / review / green / muted |
 
-Processing state and review state are separate. For example, `Needs Review` and `In Review` may appear together. Awaiting Documents and Processing Failed never masquerade as Human Review.
+Processing state and review state are separate. For example, `Needs Review` and `Being Reviewed` may appear together. Waiting for Documents and Processing Failed never masquerade as Human Review.
 
 ## Shared patterns
 
@@ -36,9 +36,10 @@ Processing state and review state are separate. For example, `Needs Review` and 
 - Tables use scoped headers, visible row focus/selection, horizontal overflow, and explicit Match/Mismatch/Unresolved labels.
 - Loading uses skeletons or a labelled spinner. Empty and error states always include a title, explanation, and an action when recovery is possible.
 - Internal reason/event codes remain available as muted audit metadata while visible copy uses human-readable labels.
+- Dashboard and Outlook share the same semantic copy for `Completed`, `Waiting for Documents`, `Needs Review`, `Processing Failed`, `Match`, `Mismatch`, `Unresolved`, and Human Review lifecycle labels.
 
 ## Product responsibilities
 
 - Dashboard: overview, searchable inbox, full email/document detail, seven-field evidence, Human Review editing, resolve/recompare, dismiss, and complete timelines.
-- Outlook Add-in: current-email identity, processing/readiness state, compact comparison summary and field cards, active review context, retry, refresh, and deep links to the Dashboard.
+- Outlook Add-in: current-email identity, processing/readiness state, compact comparison summary and field cards, active or historical review context, compact AI explanation, retry, refresh, and deep links to the Dashboard.
 - Deep links remain `?email=<id>` and `?review=<id>`.

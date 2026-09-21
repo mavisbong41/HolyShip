@@ -64,9 +64,10 @@ class AIReviewService:
             parsed = json.loads(_clean_json_str(raw_text))
             structured = AIStructuredResponse.model_validate(parsed)
         except Exception:
+            clean_msg = raw_text.strip() if raw_text and raw_text.strip() else "AI explanation provided, but structured output was inconclusive."
             structured = AIStructuredResponse(
-                message="AI explanation provided, but structured output was inconclusive.",
-                mode="INSUFFICIENT_EVIDENCE",
+                message=clean_msg,
+                mode="EXPLANATION_ONLY" if clean_msg and not clean_msg.startswith("AI explanation") else "INSUFFICIENT_EVIDENCE",
                 suggestion=None,
             )
 

@@ -56,7 +56,7 @@ Summary processing cards must not be interpreted as an exhaustive partition when
 - Human Review priority, explanation, affected area, age, reviewer and claimed-at are persisted/derived from backend truth.
 - Original extraction and historical comparison evidence remain immutable; corrections are separate overrides.
 - Resolve & Recompare creates a new comparison result; dismiss remains a distinct audited decision.
-- Awaiting Documents and technical Failed remain outside actionable Human Review.
+- Waiting for Documents and technical Failed remain outside actionable Human Review.
 - ACTIVE OPEN/IN_REVIEW cases are actionable; LEGACY records are audit-only and read-only.
 - Queue filtering/sorting operates over the complete paginated review population.
 - Analytics and reconciliation use persisted records only and document their units/populations.

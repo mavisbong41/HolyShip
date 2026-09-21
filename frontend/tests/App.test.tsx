@@ -30,6 +30,9 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/human-review/99999999-9999-4999-8999-999999999999")) {
       return jsonResponse(reviewDetail);
     }
+    if (url.includes("/human-review/88888888-8888-4888-8888-888888888888")) {
+      return jsonResponse(reviewDetail);
+    }
     if (url.includes("/human-review")) {
       return jsonResponse(overrides?.humanReview ?? demoHumanReview);
     }
@@ -197,7 +200,7 @@ describe("HolyShip dashboard", () => {
     ));
   });
 
-  it("presents Awaiting Documents without Human Review controls", async () => {
+  it("presents Waiting for Documents without Human Review controls", async () => {
     const awaiting: ProductEmailDetail = {
       ...demoDetail,
       email: { ...demoDetail.email, processing_status: "AWAITING_DOCUMENTS", comparison_readiness: "AWAITING_DOCUMENTS", review_id: null },
@@ -209,7 +212,7 @@ describe("HolyShip dashboard", () => {
 
     render(<App />);
 
-    expect((await screen.findAllByText("Awaiting Documents", { selector: "strong" })).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Waiting for Documents", { selector: "strong" })).length).toBeGreaterThan(0);
     expect(screen.getByText(/required document has not arrived/i)).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: /open human review/i })).not.toBeInTheDocument();
   });
@@ -252,7 +255,151 @@ describe("HolyShip dashboard", () => {
       vi.fn(async () => jsonResponse({ detail: "database unavailable" }, false, 503)),
     );
     render(<App />);
-
     expect(await screen.findByRole("alert")).toHaveTextContent("database unavailable");
+  });
+
+  it("renders HumanReviewPageView with segmented view switch, defaults to active-only, and switches to History", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Human Review" }));
+
+    // Verify page renders without crash and shows review items
+    expect(await screen.findByText("Human Review Queue")).toBeInTheDocument();
+    const activeTab = screen.getByRole("tab", { name: "Active Reviews" });
+    const historyTab = screen.getByRole("tab", { name: "History" });
+    expect(activeTab).toBeInTheDocument();
+    expect(historyTab).toBeInTheDocument();
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
+    expect(historyTab).toHaveAttribute("aria-selected", "false");
+
+    // Initial fetch should request active_only=true
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("active_only=true"),
+        expect.anything(),
+      );
+    });
+
+    // Check count in Active view
+    expect(screen.getByText("1 active")).toBeInTheDocument();
+
+    // Switch to "History"
+    await user.click(historyTab);
+    expect(historyTab).toHaveAttribute("aria-selected", "true");
+    expect(activeTab).toHaveAttribute("aria-selected", "false");
+
+    // Toggled fetch should request active_only=false
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("active_only=false"),
+        expect.anything(),
+      );
+    });
+
+    // Switch back to active-only
+    await user.click(activeTab);
+    expect(activeTab).toHaveAttribute("aria-selected", "true");
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("active_only=true"),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("renders empty states matching active vs history view modes", async () => {
+    setupFetch({
+      humanReview: {
+        total: 0,
+        skip: 0,
+        limit: 50,
+        items: [],
+      },
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Human Review" }));
+
+    expect(await screen.findByText("No active review cases")).toBeInTheDocument();
+    expect(screen.getByText("0 active")).toBeInTheDocument();
+
+    // Switch to History
+    await user.click(screen.getByRole("tab", { name: "History" }));
+    expect(await screen.findByText("No review history")).toBeInTheDocument();
+    expect(screen.getByText("0 historical")).toBeInTheDocument();
+  });
+
+  it("renders historical review record with non-actionable semantics and View History button", async () => {
+    const legacyReview = {
+      ...demoHumanReview.items[0],
+      id: "88888888-8888-4888-8888-888888888888",
+      case_origin: "LEGACY" as const,
+      status: "OPEN",
+    };
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [legacyReview],
+      },
+      reviewDetail: legacyReview,
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    window.history.replaceState({}, "", "/?review=88888888-8888-4888-8888-888888888888");
+
+    render(<App />);
+
+    // Detail view for historical case automatically opens in History view mode
+    expect(await screen.findByText(/This record is retained for audit history and is read-only/i)).toBeInTheDocument();
+    expect(screen.getByRole("tab", { name: "History" })).toHaveAttribute("aria-selected", "true");
+    expect(screen.getByText("1 historical")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "View History" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Save Correction" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Start / Claim" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resolve & Recompare" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Dismiss Review" })).not.toBeInTheDocument();
+  });
+
+  it("ensures ACTIVE-origin RESOLVED and DISMISSED cases appear in History and not in Active Reviews", async () => {
+    const activeResolved = {
+      ...demoHumanReview.items[0],
+      id: "77777777-7777-4777-8777-777777777777",
+      case_origin: "ACTIVE" as const,
+      status: "RESOLVED",
+    };
+    const activeDismissed = {
+      ...demoHumanReview.items[0],
+      id: "66666666-6666-4666-8666-666666666666",
+      case_origin: "ACTIVE" as const,
+      status: "DISMISSED",
+    };
+    setupFetch({
+      humanReview: {
+        total: 2,
+        skip: 0,
+        limit: 50,
+        items: [activeResolved, activeDismissed],
+      },
+    });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Human Review" }));
+
+    // In Active view, 0 active cases should be visible
+    expect(await screen.findByText("No active review cases")).toBeInTheDocument();
+    expect(screen.getByText("0 active")).toBeInTheDocument();
+
+    // Switch to History
+    await user.click(screen.getByRole("tab", { name: "History" }));
+    expect(await screen.findByText("2 historical")).toBeInTheDocument();
+    expect(screen.queryByText("No review history")).not.toBeInTheDocument();
   });
 });
