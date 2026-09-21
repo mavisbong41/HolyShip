@@ -3924,18 +3924,6 @@ button:disabled {
     padding: 8px;
   }
 
-  .sidebar {
-    min-height: auto;
-  }
-
-  .sidebar nav {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-  }
-
-  .sidebar-footer {
-    display: none;
-  }
-
   .overview-header-bar,
   .overview-header-actions,
   .section-header,
@@ -4696,6 +4684,51 @@ button:disabled {
   .sidebar-close-btn:hover {
     background: var(--color-grey-200);
     color: var(--color-black);
+  }
+
+  /* Single-column full-width vertical nav items (1 line per item, no text truncation) */
+  .sidebar nav {
+    display: flex !important;
+    flex-direction: column !important;
+    grid-template-columns: none !important;
+    gap: 8px !important;
+    width: 100% !important;
+    padding: 8px 14px !important;
+    box-sizing: border-box !important;
+  }
+
+  .sidebar nav button {
+    display: flex !important;
+    flex-direction: row !important;
+    align-items: center !important;
+    justify-content: flex-start !important;
+    width: 100% !important;
+    height: 44px !important;
+    padding: 0 14px !important;
+    font-size: 14px !important;
+    font-weight: 600 !important;
+    border-radius: 8px !important;
+    white-space: nowrap !important;
+    text-align: left !important;
+    box-sizing: border-box !important;
+    gap: 12px !important;
+  }
+
+  .sidebar nav button svg {
+    flex-shrink: 0 !important;
+    width: 18px !important;
+    height: 18px !important;
+  }
+
+  .sidebar .sidebar-badge {
+    margin-left: auto !important;
+    flex-shrink: 0 !important;
+  }
+
+  .sidebar-footer {
+    display: block !important;
+    margin-top: auto !important;
+    padding: 14px 16px !important;
   }
 
   /* Overview Tri-Grid Stacking */
