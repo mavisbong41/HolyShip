@@ -705,6 +705,17 @@ For document-comparison emails, the Add-in can show:
 
 This creates a continuous workflow from **email → verification → review**.
 
+### Outlook Demo Account
+
+Use this dedicated demo account for the Outlook Add-in presentation:
+
+| Credential | Demo value |
+|---|---|
+| Username | `captain.holyship@outlook.com` |
+| Password | `captain12` |
+
+These credentials are for the demo account only and have also been submitted through the project Google Form.
+
 ---
 
 # 16. Human Review Analytics
