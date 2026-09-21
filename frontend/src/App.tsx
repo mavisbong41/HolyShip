@@ -124,7 +124,7 @@ function StatusBadge({
 function EmptyState({ title, body }: { title: string; body: string }) {
   return (
     <div className="empty-state">
-      <Archive aria-hidden="true" size={28} />
+      <Archive aria-hidden="true" size={16} />
       <h3>{title}</h3>
       <p>{body}</p>
     </div>
