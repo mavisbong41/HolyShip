@@ -49,3 +49,17 @@ Outlook must consume these API presentation fields or the same deterministic map
 | Emails with unresolved fields | latest persisted comparison per email | at least one persisted UNRESOLVED field | email | email-level |
 
 Summary processing cards must not be interpreted as an exhaustive partition when the operational Needs Review/Blocked attention bucket overlaps processing status. The reconciliation diagnostic is the source of truth for explaining persisted totals and overlap.
+
+
+## Part 1 completion checklist
+
+- Human Review priority, explanation, affected area, age, reviewer and claimed-at are persisted/derived from backend truth.
+- Original extraction and historical comparison evidence remain immutable; corrections are separate overrides.
+- Resolve & Recompare creates a new comparison result; dismiss remains a distinct audited decision.
+- Awaiting Documents and technical Failed remain outside actionable Human Review.
+- ACTIVE OPEN/IN_REVIEW cases are actionable; LEGACY records are audit-only and read-only.
+- Queue filtering/sorting operates over the complete paginated review population.
+- Analytics and reconciliation use persisted records only and document their units/populations.
+- User-facing presentation fields are centralized in `backend/app/api/presentation.py` for Dashboard/Outlook reuse.
+- Technical codes remain secondary audit metadata rather than primary product copy.
+- Part 1 does not add AI assistant behavior or evaluator/private-data dependencies.
