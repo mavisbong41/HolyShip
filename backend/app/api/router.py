@@ -154,6 +154,7 @@ def _build_sync_service(session: Session, settings: Settings) -> SyncService:
         ocr_timeout_seconds=settings.ocr_timeout_seconds,
         ocr_max_calls=settings.ocr_max_calls,
         ocr_max_concurrent_calls=settings.ocr_max_concurrent_calls,
+        ocr_tesseract_cmd=settings.ocr_tesseract_cmd,
         resolution_executor_factory=get_configured_resolution_executor_factory(settings),
     )
 

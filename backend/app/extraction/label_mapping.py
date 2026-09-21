@@ -18,9 +18,11 @@ from backend.app.extraction.models import (
 
 
 DEFAULT_LABEL_CONFIG = Path(__file__).with_name("field_labels.json")
-_TRAILING_SEPARATOR = re.compile(r"\s*[:：]\s*$")
+_TRAILING_SEPARATOR = re.compile(r"\s*[:：\?]+\s*$")
 _EXPLICIT_NON_GROSS = re.compile(r"(?:^|\b)(?:net|tare)\s+(?:weight|wt)(?:\b|\s*\()", re.IGNORECASE)
 _TO_THE_ORDER_OF = re.compile(r"^to\s+the\s+order\s+of(?:\s+.+)?$", re.IGNORECASE)
+_QUESTION_MARK_RUN = re.compile(r"\?+")
+_SYMBOL_NOISE = re.compile(r"[■□_]+")
 
 
 def normalize_label_for_lookup(raw_label: str) -> str:
@@ -28,7 +30,10 @@ def normalize_label_for_lookup(raw_label: str) -> str:
 
     normalized = unicodedata.normalize("NFKC", raw_label)
     normalized = _TRAILING_SEPARATOR.sub("", normalized)
+    normalized = _QUESTION_MARK_RUN.sub("", normalized)
+    normalized = _SYMBOL_NOISE.sub(" ", normalized)
     return " ".join(normalized.split()).casefold()
+
 
 
 @dataclass(frozen=True)
@@ -108,21 +113,20 @@ class LabelMapper:
         if self._is_explicit_non_gross_weight(normalized):
             return self._unresolved(raw_label, "NON_GROSS_WEIGHT_LABEL")
 
-        if _TO_THE_ORDER_OF.fullmatch(normalized):
-            if context is not None and context.is_negotiable_bl_consignee_context:
-                return LabelMappingResult(
-                    raw_label=raw_label,
-                    canonical_field=CanonicalField.CONSIGNEE,
-                    mapping_method=MappingMethod.CONTEXTUAL_BUSINESS_RULE,
-                    confidence=1.0,
-                    reason_code="NEGOTIABLE_BL_CONSIGNEE_ORDER_LABEL",
-                    evidence={
-                        "document_role": context.document_role,
-                        "section": context.section,
-                        "negotiable_bill_of_lading": True,
-                    },
-                )
-            return self._unresolved(raw_label, "CONTEXT_REQUIRED")
+        if self._is_negotiable_order_consignee(normalized, context):
+            return LabelMappingResult(
+                raw_label=raw_label,
+                canonical_field=CanonicalField.CONSIGNEE,
+                mapping_method=MappingMethod.CONTEXTUAL_BUSINESS_RULE,
+                confidence=1.0,
+                reason_code="NEGOTIABLE_BL_CONSIGNEE_ORDER_LABEL",
+                evidence={
+                    "document_role": context.document_role if context else None,
+                    "section": context.section if context else None,
+                    "negotiable_bill_of_lading": context.negotiable_bill_of_lading if context else None,
+                },
+            )
+
 
         candidates = self._candidates.get(normalized, [])
         fields = {candidate.canonical_field for candidate in candidates}
@@ -156,6 +160,17 @@ class LabelMapper:
             or "净重" in normalized
             or _EXPLICIT_NON_GROSS.search(normalized) is not None
         )
+
+    @staticmethod
+    def _is_negotiable_order_consignee(
+        normalized: str,
+        context: LabelMappingContext | None,
+    ) -> bool:
+        if context is None or not context.negotiable_bill_of_lading:
+            return False
+        if context.document_role != "DRAFT_BL" or context.section != "consignee":
+            return False
+        return _TO_THE_ORDER_OF.fullmatch(normalized) is not None
 
     @staticmethod
     def _unresolved(

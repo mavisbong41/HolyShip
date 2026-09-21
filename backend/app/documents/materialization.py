@@ -94,10 +94,12 @@ class DocumentMaterializationService:
         ocr_max_calls: int = 8,
         ocr_max_concurrent_calls: int = 2,
         ocr_shared_state: OcrSharedState | None = None,
+        ocr_tesseract_cmd: str | None = None,
     ):
         self.session = session
         self.reader = reader or CompositeDocumentReader(
             ocr_reader=OcrReader(
+                tesseract_cmd=ocr_tesseract_cmd,
                 timeout_seconds=ocr_timeout_seconds,
                 max_calls=ocr_max_calls,
                 max_concurrent_calls=ocr_max_concurrent_calls,

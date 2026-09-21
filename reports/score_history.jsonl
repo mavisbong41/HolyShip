@@ -1,1 +1,2 @@
 {"attempt": 1, "error": "POST http://localhost:8080/submit: connection refused (WinError 10061)", "phase": 0, "result": "unavailable"}
+{"error": "<urlopen error [WinError 10061] No connection could be made because the target machine actively refused it>", "result": "unavailable", "timestamp": "2026-09-21T13:41:03.924422+00:00"}

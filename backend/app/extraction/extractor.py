@@ -20,8 +20,10 @@ from backend.app.extraction.models import (
 
 
 EXTRACTOR_VERSION = "phase3-deterministic-v1"
-_LABEL_VALUE = re.compile(r"^(?P<label>[^:：]{1,160})\s*[:：]\s*(?P<value>.*)$")
-_TO_ORDER_VALUE = re.compile(r"^(?P<label>To\s+the\s+Order\s+of)(?:\s*[:：]\s*|\s+)(?P<value>.+)$", re.IGNORECASE)
+_LABEL_VALUE = re.compile(r"^(?P<label>[^:：\?]{1,160})\s*[:：\?]+\s*(?P<value>.*)$")
+_TO_ORDER_VALUE = re.compile(r"^(?P<label>To\s+the\s+Order\s+of(?:\s*\([^\)]*\))?)(?:\s*[:：\?]+\s*|\s+)(?P<value>.+)$", re.IGNORECASE)
+
+_PLACEHOLDER_VALUE = re.compile(r"^(?:N/?A|TBA|TBD|\?+|_+[A-Z0-9]*|to be advised|pending)$", re.IGNORECASE)
 _NUMBER_WITH_KG = re.compile(r"^([0-9][0-9,]*(?:\.[0-9]+)?)\s*(?:kg|kgs|kilograms?)?$", re.IGNORECASE)
 _CONTAINER_COMPOUND = re.compile(r"^([0-9]+)\s*(?:x|×)\s*(.+)$", re.IGNORECASE)
 _CONTAINER_SIMPLE = re.compile(r"^0*([0-9]+)(?:\s+containers?)?$", re.IGNORECASE)
@@ -309,6 +311,8 @@ class DeterministicDocumentExtractor:
 
     @staticmethod
     def _canonicalize(field_name: CanonicalField, raw_value: Any) -> tuple[Any, dict[str, Any]]:
+        if isinstance(raw_value, str) and _PLACEHOLDER_VALUE.fullmatch(raw_value.strip()):
+            return None, {"parse_reason": "PLACEHOLDER_VALUE"}
         if field_name == CanonicalField.CONTAINER_COUNT:
             return DeterministicDocumentExtractor._parse_container_count(raw_value)
         if field_name == CanonicalField.GROSS_WEIGHT_KG:

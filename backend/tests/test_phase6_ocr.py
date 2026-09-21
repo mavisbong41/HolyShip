@@ -143,3 +143,27 @@ def test_ocr_limit_and_cache_are_shared_across_worker_readers():
     assert state.provider_calls == 2
     assert state.cache_hits == 1
     assert cached.extraction_status == "EXTRACTED"
+
+
+def test_ocr_reader_failure_metadata_when_tesseract_unavailable():
+    reader = OcrReader(tesseract_cmd=None, auto_detect_tesseract=False)
+    assert not reader.is_available()
+
+    img_doc = reader.read(b"dummy image bytes", "scan.png", "fixture/scan.png")
+    assert img_doc.extraction_status == "FAILED"
+    assert img_doc.metadata.get("ocr_available") is False
+    assert img_doc.metadata.get("reason_code") == "OCR_BACKEND_UNAVAILABLE"
+
+    pdf_doc = reader.read(b"dummy pdf bytes", "scan.pdf", "fixture/scan.pdf")
+    assert pdf_doc.extraction_status == "FAILED"
+    assert pdf_doc.metadata.get("ocr_available") is False
+    assert pdf_doc.metadata.get("reason_code") == "OCR_BACKEND_UNAVAILABLE"
+
+
+def test_composite_reader_preserves_ocr_unavailable_metadata():
+    ocr_reader = OcrReader(tesseract_cmd=None, auto_detect_tesseract=False)
+    composite = CompositeDocumentReader(ocr_reader=ocr_reader)
+
+    doc = composite.read(b"image bytes", "scan.png", "fixture/scan.png")
+    assert doc.metadata.get("ocr_available") is False
+    assert doc.metadata.get("reason_code") == "OCR_BACKEND_UNAVAILABLE"

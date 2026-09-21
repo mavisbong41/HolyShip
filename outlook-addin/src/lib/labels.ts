@@ -71,6 +71,7 @@ export const reasonLabels: Record<string, string> = {
   DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
   READINESS_UNRESOLVED: "Document readiness unclear",
   NOT_ACTIONABLE: "Not actionable",
+  OCR_BACKEND_UNAVAILABLE: "Document processing unavailable",
 };
 
 export type SemanticTone = "neutral" | "good" | "warn" | "bad" | "attention" | "info" | "muted";

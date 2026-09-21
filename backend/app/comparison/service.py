@@ -207,6 +207,7 @@ class ComparisonService:
             {"confidence": l2_result.confidence},
         )
 
+
     def _resolve_semantically(
         self,
         field_name: CanonicalField,

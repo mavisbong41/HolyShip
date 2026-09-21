@@ -682,7 +682,20 @@ HolyShip/
 - PostgreSQL 16
 - Node.js 20+
 - npm
-- Tesseract OCR for scanned-document processing
+- Tesseract OCR (optional for scanned image/PDF processing; when absent, scanned files cleanly report OCR unavailable for technical reprocessing)
+
+### Runtime Capabilities & Environment Design
+
+HolyShip separates its runtime subsystems cleanly:
+
+1. **Deterministic Core Verification (Default & Authoritative):**
+   Classification, document materialization, seven-field extraction, canonical mapping, and L0/L1 normalization operate deterministically without external LLM dependency.
+2. **OCR Engine (Scanned PDFs & Images):**
+   When `tesseract-ocr` is installed (included in `backend/Dockerfile`), scanned documents are read via OCR. When unavailable, HolyShip flags `OCR_BACKEND_UNAVAILABLE` as a technical retry condition rather than fabricating unreadable data or blocking human review unnecessarily.
+3. **AI Human Review Assistant:**
+   Assists human reviewers in the Dashboard by providing grounded natural-language explanations and structured field-correction suggestions. Reviewers remain in full control with explicit Accept / Edit / Dismiss actions.
+4. **Continuous Ingestion & Polling:**
+   Supports one-time initial backlog sync as well as continuous polling with exponential backoff and persistent deduplication checkpoints.
 
 ## 1. Clone the repository
 

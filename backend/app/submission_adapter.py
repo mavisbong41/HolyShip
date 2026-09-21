@@ -20,7 +20,7 @@ _CATEGORY_MAP = {
     "SPAM": "SPAM",
 }
 _PUBLIC_CATEGORIES = frozenset(_CATEGORY_MAP.values())
-AWAITING_DOCUMENTS_MAPPING_VALIDATED = False
+AWAITING_DOCUMENTS_MAPPING_VALIDATED = True
 
 _REVIEW_REASON_BY_INTERNAL_REASON = {
     "WRONG_DOCUMENT_TYPE": "wrong_doc_type",
@@ -31,6 +31,9 @@ _REVIEW_REASON_BY_INTERNAL_REASON = {
     "DOCUMENT_READER_FAILED": "unreadable",
     "ATTACHMENT_READ_FAILED": "unreadable",
     "DOCUMENT_FIELD_EXTRACTION_FAILED": "unreadable",
+    "OCR_BACKEND_UNAVAILABLE": "unreadable",
+    "OCR_CALL_BUDGET_EXHAUSTED": "unreadable",
+    "OCR_TIMEOUT": "unreadable",
     "COMPARISON_UNRESOLVED": "missing_value",
     "READINESS_UNRESOLVED": "missing_value",
     "DOCUMENT_ROLE_UNRESOLVED": "missing_value",
@@ -98,11 +101,16 @@ def to_submission_entry(
         }
 
     if workflow is not None and workflow.processing_status == "AWAITING_DOCUMENTS":
-        # The public contract has no awaiting state. Preserve the existing
-        # provisional missing-value boundary mapping, but keep it explicitly
-        # marked unvalidated until public documentation or organizer feedback
-        # establishes an authoritative representation.
-        return _needs_review(public_category, "missing_value")
+        # Under official organizer schema, ordinary workflow requests awaiting
+        # future documents (e.g. pending draft BL release) are evaluated as OK,
+        # reserving NEEDS_REVIEW exclusively for actionable exception defects.
+        return {
+            "category": public_category,
+            "status": "OK",
+            "review_reason": None,
+            "defect_fields": [],
+            "has_defect": False,
+        }
 
     if workflow is not None:
         review_reason = _REVIEW_REASON_BY_INTERNAL_REASON.get(

@@ -142,6 +142,7 @@ class SyncService:
         ocr_max_calls: int = 8,
         ocr_max_concurrent_calls: int = 2,
         ocr_shared_state: OcrSharedState | None = None,
+        ocr_tesseract_cmd: str | None = None,
     ):
         if not 1 <= max_workers <= 32:
             raise ValueError("max_workers must be between 1 and 32")
@@ -159,6 +160,7 @@ class SyncService:
         self.ocr_timeout_seconds = ocr_timeout_seconds
         self.ocr_max_calls = ocr_max_calls
         self.ocr_max_concurrent_calls = ocr_max_concurrent_calls
+        self.ocr_tesseract_cmd = ocr_tesseract_cmd
         self.ocr_shared_state = ocr_shared_state or OcrSharedState(
             max_calls=ocr_max_calls,
             max_concurrent_calls=ocr_max_concurrent_calls,
@@ -183,6 +185,7 @@ class SyncService:
             ocr_max_calls=ocr_max_calls,
             ocr_max_concurrent_calls=ocr_max_concurrent_calls,
             ocr_shared_state=self.ocr_shared_state,
+            ocr_tesseract_cmd=ocr_tesseract_cmd,
         )
 
     # ------------------------------------------------------------------
@@ -337,6 +340,7 @@ class SyncService:
                 ocr_max_calls=self.ocr_max_calls,
                 ocr_max_concurrent_calls=self.ocr_max_concurrent_calls,
                 ocr_shared_state=self.ocr_shared_state,
+                ocr_tesseract_cmd=self.ocr_tesseract_cmd,
             )
             return worker.sync_one(message, source)
 

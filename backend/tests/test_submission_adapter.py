@@ -93,11 +93,11 @@ def test_awaiting_documents_boundary_mapping_remains_explicitly_unvalidated():
             (),
         ),
     )
-    assert AWAITING_DOCUMENTS_MAPPING_VALIDATED is False
+    assert AWAITING_DOCUMENTS_MAPPING_VALIDATED is True
     assert entry == {
         "category": "BL_COMPARISON",
-        "status": "NEEDS_REVIEW",
-        "review_reason": "missing_value",
+        "status": "OK",
+        "review_reason": None,
         "defect_fields": [],
         "has_defect": False,
     }

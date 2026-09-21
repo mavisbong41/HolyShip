@@ -3,15 +3,140 @@
   "ports": [
     {
       "canonical": "PORT KLANG",
-      "aliases": ["MYPKG", "MY PKG"],
+      "aliases": ["MYPKG", "MY PKG", "PORT KLANG, MALAYSIA"],
       "source_category": "UN/LOCODE",
       "source_url": "https://service.unece.org/trade/locode/my.htm"
     },
     {
       "canonical": "SINGAPORE",
-      "aliases": ["SGSIN", "SG SIN"],
+      "aliases": ["SGSIN", "SG SIN", "SINGAPORE, SINGAPORE"],
       "source_category": "UN/LOCODE",
       "source_url": "https://service.unece.org/trade/locode/sg.htm"
+    },
+    {
+      "canonical": "NHAVA SHEVA, INDIA",
+      "aliases": ["INNSA", "NHAVA SHEVA"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "MOMBASA, KENYA",
+      "aliases": ["KEMBA", "MOMBASA"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "CONAKRY, GUINEA",
+      "aliases": ["GNCKY", "CONAKRY"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "BUSAN, SOUTH KOREA",
+      "aliases": ["KRPUS", "BUSAN"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "BUATAN, INDONESIA",
+      "aliases": ["IDBUA", "BUATAN"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "FREMANTLE, AUSTRALIA",
+      "aliases": ["AUFRE", "FREMANTLE"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "SAVANNAH, US",
+      "aliases": ["USSAV", "SAVANNAH"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "PYEONGTAEK, SOUTH KOREA",
+      "aliases": ["KRPTK", "PYEONGTAEK"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "NANTONG, CHINA",
+      "aliases": ["CNNTG", "NANTONG"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "APAPA, NIGERIA",
+      "aliases": ["NGAPP", "APAPA"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "HOCHIMINH CITY, VIETNAM",
+      "aliases": ["VNSGN", "HOCHIMINH CITY", "HO CHI MINH CITY"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "KARACHI, PAKISTAN",
+      "aliases": ["PKKHI", "KARACHI"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "JEBEL ALI, UAE",
+      "aliases": ["AEJEA", "JEBEL ALI"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "GDANSK, POLAND",
+      "aliases": ["PLGDN", "GDANSK"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "CEBU, PHILIPPINES",
+      "aliases": ["PHCEB", "CEBU"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "ASHDOD, ISRAEL",
+      "aliases": ["ILASH", "ASHDOD"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "CALLAO, PERU",
+      "aliases": ["PECLL", "CALLAO"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "KOPER, SLOVENIA",
+      "aliases": ["SIKOP", "KOPER"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "VALPARAISO, CHILE",
+      "aliases": ["CLVAP", "VALPARAISO"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "AQABA, JORDAN",
+      "aliases": ["JOAQB", "AQABA"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "MERSIN, TURKEY",
+      "aliases": ["TRMER", "MERSIN"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "LONG BEACH, US",
+      "aliases": ["USLGB", "LONG BEACH"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "LE HAVRE, FRANCE",
+      "aliases": ["FRLEH", "LE HAVRE"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "TUTICORIN, INDIA",
+      "aliases": ["INTUT", "TUTICORIN"],
+      "source_category": "UN/LOCODE"
+    },
+    {
+      "canonical": "HOUSTON, US",
+      "aliases": ["USHOU", "HOUSTON"],
+      "source_category": "UN/LOCODE"
     }
   ]
 }

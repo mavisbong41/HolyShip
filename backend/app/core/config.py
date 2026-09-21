@@ -44,6 +44,7 @@ class Settings(BaseSettings):
     ai_review_confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     ai_review_max_tokens: int = Field(default=2048, ge=1, le=8192)
     ai_review_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    ocr_tesseract_cmd: str | None = None
     ocr_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
     ocr_max_calls: int = Field(default=8, ge=1, le=1000)
     ocr_max_concurrent_calls: int = Field(default=2, ge=1, le=16)

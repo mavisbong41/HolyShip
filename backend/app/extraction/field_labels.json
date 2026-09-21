@@ -2,39 +2,146 @@
   "version": "phase3-labels-v1",
   "fields": {
     "shipper": {
-      "exact_labels": ["Shipper", "SHIPPER/EXPORTER"],
-      "aliases": ["Shipper Name", "Shipper/Exporter", "Shipper (Principal or Seller)"],
-      "bilingual_labels": ["Shipper (Principal or Seller) (发货人)"]
+      "exact_labels": [
+        "Shipper",
+        "SHIPPER/EXPORTER",
+        "SHIPPER"
+      ],
+      "aliases": [
+        "Shipper Name",
+        "Shipper/Exporter",
+        "Shipper (Principal or Seller)",
+        "Seller",
+        "Exporter"
+      ],
+      "bilingual_labels": [
+        "Shipper (Principal or Seller) (发货人)",
+        "Shipper (发货人)",
+        "SHIPPER (发货人)",
+        "Shipper/Exporter (发货人)"
+      ]
     },
     "consignee": {
-      "exact_labels": ["Consignee", "CONSIGNEE (NON-NEGOTIABLE)"],
-      "aliases": ["Consignee Name", "Consignee (Non-Negotiable)"],
-      "bilingual_labels": ["Consignee (收货人)"]
+      "exact_labels": [
+        "Consignee",
+        "CONSIGNEE (NON-NEGOTIABLE)",
+        "CONSIGNEE"
+      ],
+      "aliases": [
+        "Consignee Name",
+        "Consignee (Non-Negotiable)",
+        "To the Order of",
+        "To the Order of (收货人)"
+      ],
+      "bilingual_labels": [
+        "Consignee (收货人)",
+        "Consignee (Non-Negotiable) (收货人)",
+        "CONSIGNEE (收货人)"
+      ]
     },
     "notify_party": {
-      "exact_labels": ["Notify Party", "NOTIFY PARTY/INTERMEDIATE CONSIGNEE"],
-      "aliases": ["Notify", "Notify Party Name", "Notify Party/Intermediate Consignee"],
-      "bilingual_labels": ["Notify Party (通知方)"]
+      "exact_labels": [
+        "Notify Party",
+        "NOTIFY PARTY/INTERMEDIATE CONSIGNEE",
+        "NOTIFY PARTY"
+      ],
+      "aliases": [
+        "Notify",
+        "Notify Party Name",
+        "Notify Party/Intermediate Consignee"
+      ],
+      "bilingual_labels": [
+        "Notify Party (通知方)",
+        "Notify (通知人)",
+        "Notify Party (通知人)",
+        "NOTIFY PARTY (通知人)",
+        "Notify Party/Intermediate Consignee (通知人)"
+      ]
     },
     "port_of_loading": {
-      "exact_labels": ["Port of Loading", "Port of Loading (POL)"],
-      "aliases": ["Load Port", "Loading Port", "POL"],
-      "bilingual_labels": ["Port of Loading (POL) (装货港)"]
+      "exact_labels": [
+        "Port of Loading",
+        "Port of Loading (POL)",
+        "PORT OF LOADING"
+      ],
+      "aliases": [
+        "Load Port",
+        "Loading Port",
+        "POL",
+        "PORT OF LOADING (POL)"
+      ],
+      "bilingual_labels": [
+        "Port of Loading (POL) (装货港)",
+        "Port of Loading (装货港)",
+        "PORT OF LOADING (装货港)",
+        "Load Port (装货港)",
+        "POL (装货港)"
+      ]
     },
     "port_of_discharge": {
-      "exact_labels": ["Port of Discharge", "Port of Discharge (POD)"],
-      "aliases": ["Discharge Port", "POD"],
-      "bilingual_labels": ["Port of Discharge (POD) (卸货港)"]
+      "exact_labels": [
+        "Port of Discharge",
+        "Port of Discharge (POD)",
+        "PORT OF DISCHARGE"
+      ],
+      "aliases": [
+        "Discharge Port",
+        "POD",
+        "PORT OF DISCHARGE (POD)"
+      ],
+      "bilingual_labels": [
+        "Port of Discharge (POD) (卸货港)",
+        "Port of Discharge (卸货港)",
+        "PORT OF DISCHARGE (卸货港)",
+        "Discharge Port (卸货港)",
+        "POD (卸货港)"
+      ]
     },
     "container_count": {
-      "exact_labels": ["Container Count"],
-      "aliases": ["No. of Containers", "Number of Containers", "Containers", "No. of Containers or Packages", "Total Containers"],
-      "bilingual_labels": ["Container Count (箱数)"]
+      "exact_labels": [
+        "Container Count",
+        "CONTAINER COUNT"
+      ],
+      "aliases": [
+        "No. of Containers",
+        "Number of Containers",
+        "Containers",
+        "No. of Containers or Packages",
+        "Total Containers"
+      ],
+      "bilingual_labels": [
+        "Container Count (箱数)",
+        "Total Containers (箱数)",
+        "No. of Containers (箱数)",
+        "No. of Containers or Packages (箱数)",
+        "Containers (箱数)"
+      ]
     },
     "gross_weight_kg": {
-      "exact_labels": ["Gross Weight"],
-      "aliases": ["Gross Wt", "Gross Wt (kgs)", "Gross Weight (KG)", "TOTAL Gross Wt (kgs)"],
-      "bilingual_labels": ["Gross Wt (kgs) (毛重 KGS)", "Gross Weight毛重(KGS)"]
+      "exact_labels": [
+        "Gross Weight",
+        "GROSS WEIGHT"
+      ],
+      "aliases": [
+        "Gross Wt",
+        "Gross Wt (kgs)",
+        "Gross Weight (KG)",
+        "Gross Weight (KGS)",
+        "TOTAL Gross Wt (kgs)",
+        "TOTAL GROSS WEIGHT",
+        "TOTAL Gross Weight (KG)",
+        "TOTAL Gross Weight (KGS)",
+        "Total Gross Weight",
+        "Total Gross Weight (KG)",
+        "Total Gross Weight (KGS)"
+      ],
+      "bilingual_labels": [
+        "Gross Wt (kgs) (毛重 KGS)",
+        "Gross Weight毛重(KGS)",
+        "GROSS WEIGHT (毛重 KGS)",
+        "Gross Weight毛重(KGS) (毛重 KGS)",
+        "Gross Weight (毛重 KGS)"
+      ]
     }
   },
   "explicit_non_gross_weight_labels": [

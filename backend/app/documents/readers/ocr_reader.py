@@ -221,23 +221,20 @@ class OcrReader(DocumentReader):
 
     def _read_image_ocr(self, content_bytes: bytes, filename: str, source_reference: str) -> UnifiedDocument:
         if not self.is_available():
-            return UnifiedDocument(
-                raw_text="",
-                pages=[],
-                tables=[],
-                format=DocumentFormat.IMAGE,
-                reader_used="OcrReader",
-                filename=filename,
-                source_reference=source_reference,
-                extraction_quality=0.0,
-                extraction_status="FAILED",
-                error_message="OCR engine (tesseract) is not installed or not found in PATH",
-                metadata={"ocr_available": False},
+            return self._failure(
+                filename,
+                source_reference,
+                "OCR engine (tesseract) is not installed or not found in PATH",
+                reason_code="OCR_BACKEND_UNAVAILABLE",
+                ocr_available=False,
             )
 
         try:
             import pytesseract
             from PIL import Image
+
+            if self.tesseract_cmd:
+                pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
 
             img = Image.open(io.BytesIO(content_bytes))
             text = pytesseract.image_to_string(img)
@@ -252,43 +249,33 @@ class OcrReader(DocumentReader):
                 source_reference=source_reference,
                 extraction_quality=0.85 if text.strip() else 0.0,
                 extraction_status="EXTRACTED" if text.strip() else "UNREADABLE",
-                metadata={"ocr_engine": "pytesseract"},
+                metadata={"ocr_engine": "pytesseract", "ocr_available": True},
             )
         except Exception as exc:
-            return UnifiedDocument(
-                raw_text="",
-                pages=[],
-                tables=[],
-                format=DocumentFormat.IMAGE,
-                reader_used="OcrReader",
-                filename=filename,
-                source_reference=source_reference,
-                extraction_quality=0.0,
-                extraction_status="FAILED",
-                error_message=f"OCR error: {exc}",
-                metadata={"error": str(exc)},
+            return self._failure(
+                filename,
+                source_reference,
+                f"OCR error: {exc}",
+                reason_code="OCR_ENGINE_FAILED",
             )
 
     def _read_pdf_ocr(self, content_bytes: bytes, filename: str, source_reference: str) -> UnifiedDocument:
         if not self.is_available():
-            return UnifiedDocument(
-                raw_text="",
-                pages=[],
-                tables=[],
-                format=DocumentFormat.SCANNED_PDF,
-                reader_used="OcrReader",
-                filename=filename,
-                source_reference=source_reference,
-                extraction_quality=0.0,
-                extraction_status="FAILED",
-                error_message="OCR engine (tesseract) is not installed or not found in PATH",
-                metadata={"ocr_available": False},
+            return self._failure(
+                filename,
+                source_reference,
+                "OCR engine (tesseract) is not installed or not found in PATH",
+                reason_code="OCR_BACKEND_UNAVAILABLE",
+                ocr_available=False,
             )
 
         try:
             import pypdf
             import pytesseract
             from PIL import Image
+
+            if self.tesseract_cmd:
+                pytesseract.pytesseract.tesseract_cmd = self.tesseract_cmd
 
             reader = pypdf.PdfReader(io.BytesIO(content_bytes))
             pages: list[DocumentPage] = []
@@ -317,19 +304,12 @@ class OcrReader(DocumentReader):
                 source_reference=source_reference,
                 extraction_quality=0.85 if combined.strip() else 0.0,
                 extraction_status="EXTRACTED" if combined.strip() else "UNREADABLE",
-                metadata={"ocr_pages": len(pages)},
+                metadata={"ocr_pages": len(pages), "ocr_available": True},
             )
         except Exception as exc:
-            return UnifiedDocument(
-                raw_text="",
-                pages=[],
-                tables=[],
-                format=DocumentFormat.SCANNED_PDF,
-                reader_used="OcrReader",
-                filename=filename,
-                source_reference=source_reference,
-                extraction_quality=0.0,
-                extraction_status="FAILED",
-                error_message=f"PDF OCR error: {exc}",
-                metadata={"error": str(exc)},
+            return self._failure(
+                filename,
+                source_reference,
+                f"PDF OCR error: {exc}",
+                reason_code="OCR_ENGINE_FAILED",
             )
