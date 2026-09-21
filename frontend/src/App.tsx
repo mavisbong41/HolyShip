@@ -1874,6 +1874,17 @@ function HumanReviewPageView({
                     {selected.case_origin === "LEGACY" ? "Historical review record" : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
                   </strong>
                   <p className="callout-desc">{cleanExplanation}</p>
+
+                  <div className="callout-action-banner">
+                    <div className="action-banner-badge">ACTION REQUIRED</div>
+                    <p className="action-banner-text">
+                      <strong>{selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}:</strong>{" "}
+                      {selected.case_origin === "LEGACY"
+                        ? "Historical review record is read-only."
+                        : `Please review the ${selected.affected_fields?.length || selectedUnresolved} unresolved field(s) below. Click any field chip to edit, enter verified values from documents, and submit "Resolve & Recompare".`}
+                    </p>
+                  </div>
+
                   {selected.affected_fields?.length ? (
                     <div className="callout-chips-row">
                       <span className="chips-title">Affected fields (click to edit):</span>
@@ -1895,7 +1906,6 @@ function HumanReviewPageView({
                             }}
                             title={`Click to edit ${labelForField(f)}`}
                           >
-                            <span className="chip-bullet">•</span>
                             {labelForField(f)}
                           </button>
                         ))}
@@ -1904,16 +1914,17 @@ function HumanReviewPageView({
                   ) : (
                     <p className="affected-fields-summary">Affected area: {selected.affected_area || "Review case"}</p>
                   )}
-                  <p className="suggested-action-summary">
-                    <strong>Suggested action:</strong> {selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}
-                  </p>
-                  <div className="callout-pipeline-meta">
-                    <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
-                    <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
-                    {selected.reason_code ? (
-                      <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
-                    ) : null}
-                  </div>
+
+                  <details className="callout-pipeline-details">
+                    <summary>System diagnostics (Trigger · Stage · Code)</summary>
+                    <div className="callout-pipeline-meta">
+                      <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
+                      <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
+                      {selected.reason_code ? (
+                        <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
+                      ) : null}
+                    </div>
+                  </details>
                 </div>
               </div>
 
@@ -1925,24 +1936,24 @@ function HumanReviewPageView({
                         <h3>Seven reviewed fields</h3>
                         <p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p>
                       </div>
-                      <span className="total-pill">{selectedUnresolved} unresolved</span>
+                      <span className="total-pill pill-unresolved">{selectedUnresolved} unresolved</span>
                     </div>
                     <div className="comparison-table-wrap">
                       <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
                         <colgroup>
-                          <col style={{ width: "22%", minWidth: "95px" }} />
-                          <col style={{ width: "31%", minWidth: "115px" }} />
-                          <col style={{ width: "26%", minWidth: "90px" }} />
-                          <col style={{ width: "13%", minWidth: "75px" }} />
-                          <col style={{ width: "8%", minWidth: "45px" }} />
+                          <col style={{ width: "21%", minWidth: "95px" }} />
+                          <col style={{ width: "28%", minWidth: "115px" }} />
+                          <col style={{ width: "26%", minWidth: "105px" }} />
+                          <col style={{ width: "15%", minWidth: "95px" }} />
+                          <col style={{ width: "10%", minWidth: "65px" }} />
                         </colgroup>
                         <thead>
                           <tr>
                             <th>Field</th>
                             <th>Shipping Instruction</th>
                             <th>Draft BL</th>
-                            <th>System result</th>
-                            <th>Action</th>
+                            <th style={{ textAlign: "center" }}>System result</th>
+                            <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
                           </tr>
                         </thead>
                         <tbody>
