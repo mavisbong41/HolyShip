@@ -88,6 +88,23 @@ export async function getHumanReviewQueue(filters: ReviewQueueFilters = {}): Pro
   return request<HumanReviewPage>(`/human-review?${params.toString()}`);
 }
 
+export async function getAllHumanReviews(filters: ReviewQueueFilters = {}): Promise<HumanReviewPage> {
+  const limit = 500;
+  let skip = 0;
+  let total = 0;
+  const items: HumanReviewPage["items"] = [];
+
+  do {
+    const page = await getHumanReviewQueue({ ...filters, skip, limit });
+    items.push(...page.items);
+    total = page.total;
+    skip += page.items.length;
+    if (page.items.length === 0) break;
+  } while (items.length < total);
+
+  return { items, total, skip: 0, limit: Math.max(items.length, 1) };
+}
+
 export async function getHumanReviewDetail(reviewId: string): Promise<ProductReview> {
   return request<ProductReview>(`/human-review/${reviewId}`);
 }
