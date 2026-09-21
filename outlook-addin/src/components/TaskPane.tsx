@@ -488,17 +488,20 @@ export function TaskPane({
     }
   }, [contextProvider]);
 
-  // Refresh / re-resolve current case
-  const refresh = useCallback(async () => {
-    await resolve();
-  }, [resolve]);
+
+  // Refresh: full page reload so Office.js re-initialises and binds to the
+  // email that is currently open in the reading pane.  This is the most reliable
+  // way to switch context in New Outlook where mailbox.item can lag.
+  const refresh = useCallback(() => {
+    window.location.reload();
+  }, []);
+
 
   useEffect(() => {
     void resolve();
 
     let mounted = true;
     let lastContextKey: string | null = null;
-    let aggressivePollTimer: ReturnType<typeof setInterval> | null = null;
 
     const checkForContextChange = async () => {
       try {
@@ -515,8 +518,8 @@ export function TaskPane({
         }
 
         if (currentKey !== lastContextKey) {
-          lastContextKey = currentKey;
-          void resolve();
+          // Email changed detected via polling — reload to pick up new context
+          window.location.reload();
         }
       } catch {
         // ignore transient failures
@@ -529,47 +532,12 @@ export function TaskPane({
     const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
     let itemChangedRegistered = false;
 
+    // When the user clicks a different email, reload the entire page.
+    // This is the most reliable approach for New Outlook where mailbox.item and
+    // getSelectedItemsAsync can both lag or return stale data.
+    // After reload, Office.js re-initialises and binds to the currently open email.
     const onItemChanged = () => {
-      // In New Outlook, mailbox.item can take >1 second to hydrate after ItemChanged fires.
-      // Using force=true immediately reads stale data and poisons lastContextKey.
-      // Instead: poll aggressively every 200ms (up to 4 seconds) until the context
-      // genuinely changes, then resolve once with the correct email.
-      if (aggressivePollTimer !== null) {
-        clearInterval(aggressivePollTimer);
-        aggressivePollTimer = null;
-      }
-
-      const keyBeforeChange = lastContextKey;
-      let attempts = 0;
-      const maxAttempts = 20; // 20 × 200ms = 4 seconds
-
-      aggressivePollTimer = setInterval(async () => {
-        attempts++;
-        try {
-          const context = await contextProvider.getContext();
-          if (!mounted) {
-            if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
-            return;
-          }
-
-          const currentKey = contextIdentityKey(context);
-          if (currentKey && currentKey !== keyBeforeChange) {
-            // Context genuinely changed — update and resolve
-            lastContextKey = currentKey;
-            void resolve();
-            if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
-            return;
-          }
-        } catch {
-          // ignore
-        }
-
-        if (attempts >= maxAttempts) {
-          // Timed out — resolve anyway so pane doesn't stay stale forever
-          void resolve();
-          if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
-        }
-      }, 200);
+      window.location.reload();
     };
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
@@ -584,7 +552,8 @@ export function TaskPane({
       }
     }
 
-    // 2. Continuous interval check as universal fallback (covers hosts without ItemChanged)
+    // 2. Polling fallback: if ItemChanged doesn't fire (e.g. taskpane not pinned),
+    //    detect the change via getSelectedItemsAsync / mailbox.item and reload.
     const interval = setInterval(() => {
       void checkForContextChange();
     }, 800);
@@ -592,7 +561,6 @@ export function TaskPane({
     return () => {
       mounted = false;
       clearInterval(interval);
-      if (aggressivePollTimer !== null) { clearInterval(aggressivePollTimer); aggressivePollTimer = null; }
       if (itemChangedRegistered && mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
         try {
           mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
