@@ -54,3 +54,61 @@ def test_processing_failure_is_not_review_copy():
     assert presentation.title == "Processing failed"
     assert presentation.suggested_action == "Retry / Reprocess"
     assert presentation.affected_area == "Processing"
+
+
+def test_record_summary_excludes_failed_and_legacy_open_from_human_review():
+    from backend.app.api.product_queries import _summary_from_record
+
+    email = SimpleNamespace(
+        id="email-id",
+        external_message_id="external-id",
+        source_type="TEST",
+        sender=None,
+        subject="Test",
+        received_at=None,
+        created_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        processing_status="FAILED",
+        attachments=[],
+    )
+    legacy_open = SimpleNamespace(
+        id="review-id",
+        case_origin="LEGACY",
+        status="OPEN",
+        reason_code="CLASSIFICATION_UNRESOLVED",
+    )
+    summary = _summary_from_record(
+        email,
+        classification=None,
+        comparison=None,
+        review=legacy_open,
+    )
+    assert summary.needs_review is False
+
+
+def test_record_summary_counts_active_in_review_as_actionable():
+    from backend.app.api.product_queries import _summary_from_record
+
+    email = SimpleNamespace(
+        id="email-id",
+        external_message_id="external-id",
+        source_type="TEST",
+        sender=None,
+        subject="Test",
+        received_at=None,
+        created_at=__import__("datetime").datetime.now(__import__("datetime").timezone.utc),
+        processing_status="COMPLETED",
+        attachments=[],
+    )
+    active_claimed = SimpleNamespace(
+        id="review-id",
+        case_origin="ACTIVE",
+        status="IN_REVIEW",
+        reason_code="COMPARISON_UNRESOLVED",
+    )
+    summary = _summary_from_record(
+        email,
+        classification=None,
+        comparison=None,
+        review=active_claimed,
+    )
+    assert summary.needs_review is True
