@@ -221,6 +221,9 @@ export interface ProductReview {
   affected_area: string | null;
   suggested_action: string | null;
   semantic_style: string | null;
+  canonical_reason?: string | null;
+  trigger?: string | null;
+  stage?: string | null;
   age_minutes: number;
   body?: string | null;
   documents?: ProductDocument[];

@@ -27,10 +27,7 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/emails/22222222-2222-4222-8222-222222222222")) {
       return jsonResponse(overrides?.detail ?? demoDetail);
     }
-    if (url.includes("/human-review/99999999-9999-4999-8999-999999999999")) {
-      return jsonResponse(reviewDetail);
-    }
-    if (url.includes("/human-review/88888888-8888-4888-8888-888888888888")) {
+    if (url.includes("/human-review/") && !url.includes("/human-review?")) {
       return jsonResponse(reviewDetail);
     }
     if (url.includes("/human-review")) {
@@ -402,4 +399,335 @@ describe("HolyShip dashboard", () => {
     expect(await screen.findByText("2 historical")).toBeInTheDocument();
     expect(screen.queryByText("No review history")).not.toBeInTheDocument();
   });
+
+  it("renders Document Exception panel without 7-field table or field editor for non-field reviews", async () => {
+    const wrongDocReview = {
+      ...demoHumanReview.items[0],
+      id: "55555555-5555-4555-8555-555555555555",
+      reason_code: "WRONG_DOCUMENT_TYPE",
+      reason_text: "Wrong Document Type",
+      presentation_title: "Wrong document type",
+      canonical_reason: "Wrong Document Type",
+      human_explanation: "The attached file does not appear to be the required shipping document.",
+      affected_fields: [],
+      affected_area: "Documents",
+      suggested_action: "Confirm the attached document",
+      comparison: null,
+      documents: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          attachment_id: "att-1",
+          filename: "email_503_SI.txt",
+          role: "SI",
+          format: "PLAIN_TEXT",
+          validation_outcome: "VALID",
+          routing_outcome: "SI_FOUND",
+        },
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          attachment_id: "att-2",
+          filename: "email_503_BL.txt",
+          role: "OTHER",
+          format: "PLAIN_TEXT",
+          validation_outcome: "WRONG_DOCUMENT_TYPE",
+          routing_outcome: "WRONG_DOCUMENT_TYPE",
+          role_evidence: {
+            summary: "Conflicting business-document marker(s): CERTIFICATE OF ORIGIN",
+          },
+        },
+      ],
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [wrongDocReview],
+      },
+      reviewDetail: wrongDocReview,
+    });
+    window.history.replaceState({}, "", "/?review=55555555-5555-4555-8555-555555555555");
+
+    render(<App />);
+
+    // Tab should say Document Exception
+    expect(await screen.findByRole("tab", { name: /Document Exception/i })).toBeInTheDocument();
+
+    // Should NOT render the 7-field comparison table or field editor
+    expect(screen.queryByRole("table", { name: "Human Review seven-field comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seven reviewed fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save a correction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Corrected value")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resolve & Recompare")).not.toBeInTheDocument();
+
+    // Top action button should be Dismiss Review
+    expect(screen.getAllByRole("button", { name: "Dismiss Review" }).length).toBeGreaterThan(0);
+
+    // Document Exception panel should be visible
+    expect(screen.getByText("Document role & validation exception")).toBeInTheDocument();
+    expect(screen.getByText("Standard Operational Procedure (SOP):")).toBeInTheDocument();
+    expect(screen.getByText(/Confirm the invalid attachment:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Determine the operational next step:/i)).toBeInTheDocument();
+    expect(screen.getByText("email_503_BL.txt")).toBeInTheDocument();
+    expect(screen.getByText("Conflicting business-document marker(s): CERTIFICATE OF ORIGIN")).toBeInTheDocument();
+    expect(screen.getByText("Document Resolution")).toBeInTheDocument();
+    expect(screen.getByText(/Obtain the correct Shipping Instruction or Draft Bill of Lading/i)).toBeInTheDocument();
+    expect(screen.getByText("Quick presets:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "NOT_ACTIONABLE" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "WRONG_DOCUMENT_TYPE" })).not.toBeInTheDocument();
+
+    // Dismiss Review is secondary
+    const dismissButtons = screen.getAllByRole("button", { name: "Dismiss Review" });
+    expect(dismissButtons.length).toBeGreaterThan(0);
+    dismissButtons.forEach((btn) => {
+      expect(btn.className).toContain("button-secondary");
+    });
+  });
+
+  it("renders field-level workspace with Seven Reviewed Fields and non-mutating overrides for Missing Required Value", async () => {
+    const missingValueReview = {
+      ...demoHumanReview.items[0],
+      id: "77777777-7777-4777-8777-777777777777",
+      reason_code: "MISSING_REQUIRED_VALUE",
+      reason_text: "Gross weight is missing from Draft BL.",
+      presentation_title: "Missing Required Value",
+      canonical_reason: "Missing Required Value",
+      human_explanation: "The SI and BL evidence was not sufficient to determine one or more required field values confidently.",
+      affected_fields: ["gross_weight_kg"],
+      affected_area: "Document fields",
+      suggested_action: "Review unresolved fields",
+      comparison: {
+        ...demoDetail.comparison!,
+        mismatch_found: false,
+        mismatched_fields: [],
+        unresolved_fields: ["gross_weight_kg"],
+        fields: demoDetail.comparison!.fields.map((f) =>
+          f.field === "gross_weight_kg"
+            ? { ...f, status: "UNRESOLVED" as const, bl: { raw: null, canonical: null, normalized: null } }
+            : { ...f, status: "MATCH" as const }
+        ),
+      },
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [missingValueReview],
+      },
+      reviewDetail: missingValueReview,
+    });
+    window.history.replaceState({}, "", "/?review=77777777-7777-4777-8777-777777777777");
+
+    render(<App />);
+
+    // Renders Comparison & Overrides tab
+    expect(await screen.findByRole("tab", { name: /Comparison & Overrides/i })).toBeInTheDocument();
+
+    // Renders Header Title & Description
+    expect(screen.getAllByText("Missing Required Value").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("The SI and BL evidence was not sufficient to determine one or more required field values confidently.").length).toBeGreaterThan(0);
+
+    // Renders Seven Reviewed Fields table
+    expect(screen.getByText("Seven reviewed fields")).toBeInTheDocument();
+    expect(screen.getByRole("table", { name: "Human Review seven-field comparison" })).toBeInTheDocument();
+
+    // Shows only actually affected field chip (gross_weight_kg), NOT matched fields (e.g. shipper)
+    expect(screen.getByRole("button", { name: "Gross Weight" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Shipper" })).not.toBeInTheDocument();
+
+    // Shows unresolved count
+    expect(screen.getByText("1 unresolved")).toBeInTheDocument();
+
+    // Preserves original and effective values
+    expect(screen.getAllByText("Original SI").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Original BL").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Effective:/).length).toBeGreaterThan(0);
+
+    // Save correction section
+    expect(screen.getByText("Save a correction")).toBeInTheDocument();
+    expect(screen.getByText("The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Save Correction" })).toBeInTheDocument();
+
+    // Primary action is Resolve & Recompare
+    expect(screen.getByRole("button", { name: "Resolve & Recompare" })).toBeInTheDocument();
+
+    // Dismissal remains in Danger Zone / secondary
+    expect(screen.getByText("Danger Zone")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "NOT_ACTIONABLE" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "MISSING_REQUIRED_VALUE" })).not.toBeInTheDocument();
+  });
+
+  it("renders Document Exception workspace with technical OCR evidence and dedicated SOP for Unreadable Document", async () => {
+    const unreadableDocReview = {
+      ...demoHumanReview.items[0],
+      id: "88888888-8888-4888-8888-888888888888",
+      reason_code: "UNREADABLE_ATTACHMENT",
+      reason_text: "Unreadable Document",
+      presentation_title: "Unreadable Document",
+      canonical_reason: "Unreadable Document",
+      human_explanation: "The attached document could not be read reliably.",
+      affected_fields: [],
+      affected_area: "Documents",
+      suggested_action: "Inspect document readability",
+      comparison: null,
+      documents: [
+        {
+          id: "44444444-4444-4444-8444-444444444444",
+          attachment_id: "att-514",
+          filename: "email_514_SI.pdf",
+          role: "UNKNOWN",
+          format: "PDF",
+          validation_outcome: "INCONCLUSIVE",
+          routing_outcome: "UNREADABLE_ATTACHMENT",
+          failure_reason: "OCR engine (tesseract) is not installed or not found in PATH",
+        },
+      ],
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [unreadableDocReview],
+      },
+      reviewDetail: unreadableDocReview,
+    });
+    window.history.replaceState({}, "", "/?review=88888888-8888-4888-8888-888888888888");
+
+    render(<App />);
+
+    // Renders Document Exception tab
+    expect(await screen.findByRole("tab", { name: /Document Exception/i })).toBeInTheDocument();
+
+    // Does NOT render 7-field table or field correction form
+    expect(screen.queryByRole("table", { name: "Human Review seven-field comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seven reviewed fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save a correction")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resolve & Recompare")).not.toBeInTheDocument();
+
+    // Header title and description
+    expect(screen.getAllByText("Unreadable Document").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("The attached document could not be read reliably.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Affected area:\s*Documents/i).length).toBeGreaterThan(0);
+
+    // Displays actual OCR/parser evidence separated into user-facing summary and technical detail
+    expect(screen.getByText("email_514_SI.pdf")).toBeInTheDocument();
+    expect(screen.getByText("Document content could not be extracted reliably.")).toBeInTheDocument();
+    expect(screen.getByText("OCR engine (tesseract) is not installed or not found in PATH")).toBeInTheDocument();
+
+    // Renders readability-specific SOP
+    expect(screen.getByText(/Inspect the affected document:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Review processing evidence:/i)).toBeInTheDocument();
+    expect(screen.getByText(/Determine the next step:/i)).toBeInTheDocument();
+
+    // Readability resolution area with Retry/Reprocess action
+    expect(screen.getByText("Document Readability Resolution")).toBeInTheDocument();
+    expect(screen.getByText(/Obtain a clearer, machine-readable digital document/i)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Retry / Reprocess Email" })).toBeInTheDocument();
+
+    // Dismiss Review is secondary with standard presets (no UNREADABLE_DOCUMENT preset)
+    expect(screen.getByRole("button", { name: "NOT_ACTIONABLE" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "UNREADABLE_ATTACHMENT" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "UNREADABLE_DOCUMENT" })).not.toBeInTheDocument();
+    const dismissButtons = screen.getAllByRole("button", { name: "Dismiss Review" });
+    expect(dismissButtons.length).toBeGreaterThan(0);
+    dismissButtons.forEach((btn) => {
+      expect(btn.className).toContain("button-secondary");
+    });
+  });
+
+  it("renders Document Exception workspace with Missing Document Resolution for MISSING_REQUIRED_ATTACHMENT", async () => {
+    const missingDocReview = {
+      ...demoHumanReview.items[0],
+      id: "66666666-6666-4666-8666-666666666666",
+      reason_code: "MISSING_REQUIRED_ATTACHMENT",
+      reason_text: "Missing Attachment",
+      presentation_title: "Missing Attachment",
+      canonical_reason: "Missing Attachment",
+      human_explanation: "A required shipping document is not available for comparison.",
+      affected_fields: [],
+      affected_area: "Documents",
+      suggested_action: "Request or provide the missing document",
+      comparison: null,
+      documents: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          attachment_id: "att-509",
+          filename: "email_509_SI.txt",
+          role: "SI",
+          format: "PLAIN_TEXT",
+          validation_outcome: "VALID",
+          routing_outcome: "SI_FOUND",
+        },
+      ],
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [missingDocReview],
+      },
+      reviewDetail: missingDocReview,
+    });
+    window.history.replaceState({}, "", "/?review=66666666-6666-4666-8666-666666666666");
+
+    render(<App />);
+
+    // Document Exception workspace is rendered
+    expect(await screen.findByRole("tab", { name: /Document Exception/i })).toBeInTheDocument();
+    expect(screen.getByText("Missing required document exception")).toBeInTheDocument();
+
+    // Seven Reviewed Fields is not rendered
+    expect(screen.queryByRole("table", { name: "Human Review seven-field comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seven reviewed fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save a correction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Corrected value")).not.toBeInTheDocument();
+
+    // Resolve & Recompare is not shown
+    expect(screen.queryByText("Resolve & Recompare")).not.toBeInTheDocument();
+
+    // review reason is Missing Attachment
+    expect(screen.getAllByText("Missing Attachment").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("A required shipping document is not available for comparison.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Affected area:\s*Documents/i).length).toBeGreaterThan(0);
+
+    // existing attachment evidence remains visible
+    expect(screen.getByText("email_509_SI.txt")).toBeInTheDocument();
+    expect(screen.getByText("Role: SI")).toBeInTheDocument();
+    expect(screen.getByText("Validation: VALID")).toBeInTheDocument();
+    expect(screen.getByText("Router: SI FOUND")).toBeInTheDocument();
+
+    // missing Draft BL clearly identified as unresolved document requirement
+    expect(screen.getByText(/Unresolved Requirement: Draft BL/i)).toBeInTheDocument();
+
+    // guidance tells the reviewer to obtain the missing required document
+    expect(screen.getByText("Missing Document Resolution")).toBeInTheDocument();
+    expect(screen.getByText(/Recommended Action:/i)).toBeInTheDocument();
+    expect(screen.getByText("Request or provide the missing document")).toBeInTheDocument();
+    expect(screen.getByText(/Obtain the missing Draft BL from the sender/i)).toBeInTheDocument();
+
+    // SOP wording updated
+    expect(screen.getByText(/Confirm that the required SI or Draft BL is genuinely missing/i)).toBeInTheDocument();
+    expect(screen.getByText(/Obtain the missing shipping document before comparison can continue/i)).toBeInTheDocument();
+
+    // unsupported automatic follow-up behavior is not promised
+    expect(screen.queryByText(/new verification case will be created automatically/i)).not.toBeInTheDocument();
+
+    // MISSING_ATTACHMENT is not offered as a dismiss reason preset
+    expect(screen.queryByRole("button", { name: "MISSING_ATTACHMENT" })).not.toBeInTheDocument();
+
+    // Dismiss Review is secondary
+    const dismissButtons = screen.getAllByRole("button", { name: "Dismiss Review" });
+    expect(dismissButtons.length).toBeGreaterThan(0);
+    dismissButtons.forEach((btn) => {
+      expect(btn.className).toContain("button-secondary");
+    });
+  });
 });
+

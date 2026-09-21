@@ -244,6 +244,9 @@ class ProductReview(BaseModel):
     affected_area: str | None = None
     suggested_action: str | None = None
     semantic_style: str | None = None
+    canonical_reason: str | None = None
+    trigger: str | None = None
+    stage: str | None = None
     age_minutes: int = 0
     body: str | None = None
     documents: list[ProductDocument] = Field(default_factory=list)

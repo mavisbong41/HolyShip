@@ -67,7 +67,7 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
   appendParam(params, "has_mismatch", filters.has_mismatch);
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "skip", filters.skip ?? 0);
-  appendParam(params, "limit", filters.limit ?? 25);
+  appendParam(params, "limit", filters.limit ?? 20);
   return request<EmailQueuePage>(`/emails?${params.toString()}`);
 }
 
