@@ -599,6 +599,7 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
             evidence=item.evidence.get('evidence', []) if item.evidence else [],
             comparison=comparison,
             priority=priority,
+            presentation_title=presentation.title,
             human_explanation=human_explanation,
             affected_fields=aff_fields,
             affected_area=presentation.affected_area,
