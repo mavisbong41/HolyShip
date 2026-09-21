@@ -1458,7 +1458,8 @@ function EmailDetailContent({
 function getReviewActionGuidance(
   review: ProductReview,
   isFieldLevel: boolean,
-  unresolvedCount: number
+  unresolvedCount: number,
+  affectedFieldCount?: number
 ): { actionTitle: string; instruction: string } {
   if (review.case_origin === "LEGACY") {
     return {
@@ -1468,7 +1469,7 @@ function getReviewActionGuidance(
   }
 
   if (isFieldLevel) {
-    const count = review.affected_fields?.length || unresolvedCount || 1;
+    const count = affectedFieldCount ?? (review.affected_fields?.length || unresolvedCount || 1);
     const isMismatch = review.reason_code === "COMPARISON_MISMATCH";
     return {
       actionTitle: isMismatch ? "Review mismatched fields" : (review.suggested_action || "Review unresolved fields"),
@@ -1482,7 +1483,7 @@ function getReviewActionGuidance(
       return {
         actionTitle: "Confirm attached shipping documents",
         instruction:
-          "The attached document failed validation and is not a valid Shipping Instruction or Draft Bill of Lading (e.g. Commercial Invoice or Packing List). Review attached files under 'Email & Documents'. Dismiss this review case as NOT_ACTIONABLE / WRONG_DOCUMENT_TYPE, or request the sender to submit the correct SI / Draft BL.",
+          "The attached file does not appear to be the required shipping document. Verify the document role and obtain the valid Shipping Instruction or Draft BL from the sender.",
       };
     case "MISSING_REQUIRED_ATTACHMENT":
     case "MISSING_ATTACHMENT":
@@ -1498,7 +1499,7 @@ function getReviewActionGuidance(
       return {
         actionTitle: "Inspect document readability",
         instruction:
-          "The attached document could not be reliably parsed or read via OCR (e.g. low-resolution scan or unsupported format). Inspect the file in 'Email & Documents', request a clear digital PDF from the customer, or dismiss the case.",
+          "The attached document could not be read reliably. Inspect the source file and OCR diagnostics under 'Email & Documents', obtain a clear machine-readable digital document, or reprocess.",
       };
     case "DOCUMENT_ROLE_UNRESOLVED":
       return {
@@ -1536,6 +1537,7 @@ function HumanReviewPageView({
   onOverride,
   onResolve,
   onDismiss,
+  onReprocess,
 }: {
   reviews: HumanReviewPage | null;
   analytics: HumanReviewAnalytics | null;
@@ -1549,6 +1551,7 @@ function HumanReviewPageView({
   onOverride: (payload: { document_side: "SI" | "BL"; field: string; corrected_value: string; reviewer_name: string; note?: string }) => Promise<void>;
   onResolve: (reviewer: string, notes?: string) => Promise<void>;
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
+  onReprocess?: (emailId: string) => void | Promise<void>;
 }) {
   const [activeStatusFilter, setActiveStatusFilter] = useState("ACTIVE");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL_HISTORY");
@@ -1575,13 +1578,7 @@ function HumanReviewPageView({
     }
 
     if (selected?.reason_code) {
-      if (selected.reason_code === "WRONG_DOCUMENT_TYPE") {
-        setDismissReason("WRONG_DOCUMENT_TYPE");
-      } else if (selected.reason_code === "MISSING_REQUIRED_ATTACHMENT" || selected.reason_code === "MISSING_ATTACHMENT") {
-        setDismissReason("NOT_ACTIONABLE");
-      } else if (selected.reason_code === "UNREADABLE_ATTACHMENT" || selected.reason_code === "CORRUPTED_ATTACHMENT") {
-        setDismissReason("UNREADABLE_DOCUMENT");
-      } else if (selected.reason_code === "CLASSIFICATION_UNRESOLVED") {
+      if (selected.reason_code === "CLASSIFICATION_UNRESOLVED") {
         setDismissReason("INCORRECT_ROUTING");
       } else {
         setDismissReason("NOT_ACTIONABLE");
@@ -1718,6 +1715,19 @@ function HumanReviewPageView({
      selected.reason_code === "READINESS_UNRESOLVED")
   );
 
+  const isWrongDocumentType = Boolean(
+    selected &&
+    (selected.reason_code === "WRONG_DOCUMENT_TYPE" ||
+     selected.reason_code === "MULTIPLE_CANDIDATES")
+  );
+
+  const isUnreadableDocument = Boolean(
+    selected &&
+    (selected.reason_code === "UNREADABLE_ATTACHMENT" ||
+     selected.reason_code === "CORRUPTED_ATTACHMENT" ||
+     selected.reason_code === "UNSUPPORTED_ATTACHMENT")
+  );
+
   const docs = selected?.documents ?? [];
   const hasSI = docs.some(
     (d) => d.role === "SI" && (d.validation_outcome === "VALID" || !d.validation_outcome)
@@ -1742,8 +1752,24 @@ function HumanReviewPageView({
      selected.reason_code === "MISSING_REQUIRED_VALUE")
   );
 
+  const isMissingRequiredValue = Boolean(
+    selected &&
+    isFieldLevel &&
+    (selected.reason_code === "MISSING_REQUIRED_VALUE" ||
+     selected.reason_code === "COMPARISON_UNRESOLVED")
+  );
+
+  const actuallyAffectedFields = (
+    selected?.affected_fields && selected.affected_fields.length > 0
+      ? selected.affected_fields
+      : canonicalFields
+  ).filter((f) => {
+    const compared = selected?.comparison?.fields.find((item) => item.field === f);
+    return !compared || compared.status !== "MATCH";
+  });
+
   const guidance = selected
-    ? getReviewActionGuidance(selected, isFieldLevel, selectedUnresolved)
+    ? getReviewActionGuidance(selected, isFieldLevel, selectedUnresolved, actuallyAffectedFields.length)
     : { actionTitle: "Review unresolved fields", instruction: "" };
 
   // Total count in current view mode population
@@ -2017,21 +2043,12 @@ function HumanReviewPageView({
                         >
                           {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
                         </button>
-                      ) : isMissingAttachment ? (
+                      ) : (
                         <button
                           className="button-secondary btn-compact"
                           type="button"
                           disabled={actionState === "loading" || selected.status === "DISMISSED"}
                           onClick={() => void onDismiss(reviewer, dismissReason || "NOT_ACTIONABLE", note)}
-                        >
-                          {actionState === "loading" ? "Dismissing…" : selected.status === "DISMISSED" ? "Dismissed" : "Dismiss Review"}
-                        </button>
-                      ) : (
-                        <button
-                          className="button-danger-secondary btn-compact"
-                          type="button"
-                          disabled={actionState === "loading" || selected.status === "DISMISSED"}
-                          onClick={() => void onDismiss(reviewer, dismissReason || selected.reason_code, note)}
                         >
                           {actionState === "loading" ? "Dismissing…" : selected.status === "DISMISSED" ? "Dismissed" : "Dismiss Review"}
                         </button>
@@ -2097,12 +2114,24 @@ function HumanReviewPageView({
                   <strong className="callout-title">
                     {selected.case_origin === "LEGACY"
                       ? "Historical review record"
+                      : isMissingRequiredValue
+                      ? "Missing Required Value"
+                      : isWrongDocumentType
+                      ? "Wrong Document Type"
+                      : isUnreadableDocument
+                      ? "Unreadable Document"
                       : isMissingAttachment
                       ? "Missing Attachment"
                       : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
                   </strong>
                   <p className="callout-desc">
-                    {isMissingAttachment
+                    {isMissingRequiredValue
+                      ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
+                      : isWrongDocumentType
+                      ? "The attached file does not appear to be the required shipping document."
+                      : isUnreadableDocument
+                      ? "The attached document could not be read reliably."
+                      : isMissingAttachment
                       ? (cleanExplanation || "A required shipping document is not available for comparison.")
                       : cleanExplanation}
                   </p>
@@ -2131,11 +2160,11 @@ function HumanReviewPageView({
                     )}
                   </div>
 
-                  {isFieldLevel && selected.affected_fields?.length ? (
+                  {isFieldLevel && actuallyAffectedFields.length ? (
                     <div className="callout-chips-row">
                       <span className="chips-title">Affected fields (click to edit):</span>
                       <div className="chips-container">
-                        {selected.affected_fields.map((f) => (
+                        {actuallyAffectedFields.map((f) => (
                           <button
                             key={f}
                             type="button"
@@ -2158,7 +2187,9 @@ function HumanReviewPageView({
                       </div>
                     </div>
                   ) : (
-                    <p className="affected-fields-summary">Affected area: {selected.affected_area || (isFieldLevel ? "Document fields" : "Documents")}</p>
+                    <p className="affected-fields-summary">
+                      Affected area: {isMissingAttachment || isWrongDocumentType || isUnreadableDocument ? "Documents" : (selected.affected_area || (isFieldLevel ? "Document fields" : "Documents"))}
+                    </p>
                   )}
 
                   <details className="callout-pipeline-details">
@@ -2180,22 +2211,58 @@ function HumanReviewPageView({
                     <div className="detail-section document-exception-panel">
                       <div className="section-heading-row">
                         <div>
-                          <h3>{isMissingAttachment ? "Missing required document exception" : "Document role & validation exception"}</h3>
+                          <h3>
+                            {isMissingAttachment
+                              ? "Missing required document exception"
+                              : isWrongDocumentType
+                              ? "Document role & validation exception"
+                              : isUnreadableDocument
+                              ? "Document readability & parsing exception"
+                              : "Document role & validation exception"}
+                          </h3>
                           <p>
                             {isMissingAttachment
                               ? "Automated comparison was halted because a required shipping document (Shipping Instruction or Draft Bill of Lading) is missing."
+                              : isWrongDocumentType
+                              ? "Automated comparison was halted before field extraction because valid Shipping Instruction (SI) and Draft Bill of Lading (BL) documents could not be established."
+                              : isUnreadableDocument
+                              ? "Automated comparison was halted because the attached document could not be reliably parsed or read."
                               : "Automated comparison was halted before field extraction because valid Shipping Instruction (SI) and Draft Bill of Lading (BL) documents could not be established."}
                           </p>
                         </div>
-                        <span className="badge badge-bad">{isMissingAttachment ? "Missing Attachment" : displayLabel(selected.reason_code)}</span>
+                        <span className="badge badge-bad">
+                          {isMissingAttachment
+                            ? "Missing Attachment"
+                            : isWrongDocumentType
+                            ? "Wrong Document Type"
+                            : isUnreadableDocument
+                            ? "Unreadable Document"
+                            : displayLabel(selected.reason_code)}
+                        </span>
                       </div>
 
                       <div className="document-exception-alert-box">
                         <div className="exception-alert-header">
                           <AlertCircle size={20} className="exception-alert-icon" />
                           <div>
-                            <strong>{isMissingAttachment ? "Document Status: Missing Attachment" : `Validation Outcome: ${selected.canonical_reason || displayLabel(selected.reason_code)}`}</strong>
-                            <p>{isMissingAttachment ? "A required shipping document is not available for comparison." : cleanExplanation}</p>
+                            <strong>
+                              {isMissingAttachment
+                                ? "Document Status: Missing Attachment"
+                                : isWrongDocumentType
+                                ? "Document Status: Wrong Document Type"
+                                : isUnreadableDocument
+                                ? "Document Status: Unreadable Document"
+                                : `Validation Outcome: ${selected.canonical_reason || displayLabel(selected.reason_code)}`}
+                            </strong>
+                            <p>
+                              {isMissingAttachment
+                                ? "A required shipping document is not available for comparison."
+                                : isWrongDocumentType
+                                ? "The attached file does not appear to be the required shipping document."
+                                : isUnreadableDocument
+                                ? "The attached document could not be read reliably."
+                                : cleanExplanation}
+                            </p>
                           </div>
                         </div>
 
@@ -2211,6 +2278,30 @@ function HumanReviewPageView({
                               </li>
                               <li>
                                 <strong>Determine next action:</strong> Obtain the missing shipping document before comparison can continue. Dismiss the review only if the case is not actionable, incorrectly routed, duplicated, or otherwise does not require further verification.
+                              </li>
+                            </ol>
+                          ) : isWrongDocumentType ? (
+                            <ol className="sop-steps-list">
+                              <li>
+                                <strong>Confirm the invalid attachment:</strong> Verify that the file identified by HolyShip is not a valid Shipping Instruction or Draft Bill of Lading. Review the detected document role and supporting evidence.
+                              </li>
+                              <li>
+                                <strong>Inspect email context:</strong> Review the email body and attachments under &quot;Email &amp; Documents&quot; to determine whether the sender intended to provide the required SI or Draft BL.
+                              </li>
+                              <li>
+                                <strong>Determine the operational next step:</strong> The correct shipping document is required before automated comparison can proceed. Keep the review open while follow-up is required. Dismiss the review only when the case itself should no longer be actionable, such as incorrect routing or duplication.
+                              </li>
+                            </ol>
+                          ) : isUnreadableDocument ? (
+                            <ol className="sop-steps-list">
+                              <li>
+                                <strong>Inspect the affected document:</strong> Open the attachment under &quot;Email &amp; Documents&quot; and determine whether the content is visually readable.
+                              </li>
+                              <li>
+                                <strong>Review processing evidence:</strong> Check the available OCR / parsing diagnostic information to understand why automated extraction could not proceed.
+                              </li>
+                              <li>
+                                <strong>Determine the next step:</strong> If the document itself is unclear, damaged, or unreadable, obtain a clearer source document before comparison continues. If the diagnostic evidence indicates a system-side processing issue, follow the application&apos;s existing retry/reprocess workflow if one is already available.
                               </li>
                             </ol>
                           ) : (
@@ -2249,6 +2340,12 @@ function HumanReviewPageView({
                                 doc.role_evidence && typeof doc.role_evidence === "object" && "summary" in doc.role_evidence
                                   ? String((doc.role_evidence as { summary?: string }).summary || "")
                                   : null;
+                              const technicalDetail =
+                                doc.failure_reason ||
+                                (doc.role_evidence && typeof doc.role_evidence === "object" && "summary" in doc.role_evidence
+                                  ? String((doc.role_evidence as { summary?: string }).summary || "")
+                                  : null);
+
                               return (
                                 <div className="attachment-row document-card" key={doc.id}>
                                   <FileText size={20} className="doc-icon" />
@@ -2274,7 +2371,16 @@ function HumanReviewPageView({
                                         <span className="badge badge-muted">Router: {doc.routing_outcome === "SI_FOUND" ? "SI FOUND" : doc.routing_outcome === "BL_FOUND" ? "BL FOUND" : displayLabel(doc.routing_outcome)}</span>
                                       ) : null}
                                     </div>
-                                    {evidenceSummary ? (
+                                    {isUnreadableDocument ? (
+                                      <div className="doc-evidence-block">
+                                        <div className="doc-evidence-summary">Document content could not be extracted reliably.</div>
+                                        {technicalDetail ? (
+                                          <div className="doc-evidence-technical">
+                                            <strong>Technical details:</strong> <code>{technicalDetail}</code>
+                                          </div>
+                                        ) : null}
+                                      </div>
+                                    ) : evidenceSummary ? (
                                       <small className="doc-evidence-hint">{evidenceSummary}</small>
                                     ) : null}
                                   </div>
@@ -2390,13 +2496,199 @@ function HumanReviewPageView({
                               </div>
                             </div>
                           </div>
+                        ) : isWrongDocumentType ? (
+                          <div className="detail-section document-resolution-section" style={{ marginTop: "24px" }}>
+                            <div className="document-resolution-box">
+                              <div className="document-resolution-header">
+                                <div className="dismiss-zone-title-row">
+                                  <span className="dismiss-tag" style={{ background: "#e0f2fe", color: "#0369a1" }}>Operational Resolution</span>
+                                  <strong className="document-resolution-title">Document Resolution</strong>
+                                </div>
+                                <p className="document-resolution-desc">
+                                  Automated comparison was halted because the attached file does not appear to be the required shipping document.
+                                </p>
+                              </div>
+
+                              <div className="document-next-step-card">
+                                <AlertCircle size={18} className="next-step-icon" />
+                                <div>
+                                  <div style={{ marginBottom: "2px" }}>
+                                    <strong>Recommended Action:</strong> Obtain valid shipping documents
+                                  </div>
+                                  <p className="next-step-instruction">
+                                    <strong>Required next step:</strong> Obtain the correct Shipping Instruction or Draft Bill of Lading before comparison can continue.
+                                  </p>
+                                  <p className="next-step-hint">
+                                    This review case remains open while awaiting the required document. Dismiss only if verification is no longer needed.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="dismiss-zone secondary-dismiss-zone" id="dismiss-zone-box">
+                                <div className="dismiss-zone-header">
+                                  <div className="dismiss-zone-title-row">
+                                    <span className="dismiss-tag secondary-tag">Secondary Action</span>
+                                    <strong className="dismiss-title">Dismiss Review</strong>
+                                  </div>
+                                  <p className="dismiss-subtitle">
+                                    Dismiss the review only if the case is not actionable, incorrectly routed, duplicated, or otherwise does not require further verification. Dismissing records an audited resolution in the review history.
+                                  </p>
+                                </div>
+                                <div className="dismiss-form-grid">
+                                  <label>
+                                    Dismiss reason
+                                    <input
+                                      aria-label="Dismiss reason"
+                                      value={dismissReason}
+                                      onChange={(event) => setDismissReason(event.target.value)}
+                                      placeholder="e.g. NOT_ACTIONABLE"
+                                    />
+                                  </label>
+                                  <button
+                                    className="button-secondary btn-dismiss-secondary"
+                                    type="button"
+                                    disabled={actionState === "loading" || !dismissReason.trim()}
+                                    onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                                  >
+                                    {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                                  </button>
+                                </div>
+                                <label style={{ marginTop: "6px" }}>
+                                  Resolution Note (Optional)
+                                  <input
+                                    aria-label="Dismiss note"
+                                    value={note}
+                                    onChange={(event) => setNote(event.target.value)}
+                                    placeholder="e.g. Sender attached packing list instead of draft BL"
+                                  />
+                                </label>
+                                <div className="dismiss-presets">
+                                  <span className="dismiss-presets-label">Quick presets:</span>
+                                  {[
+                                    "NOT_ACTIONABLE",
+                                    "INCORRECT_ROUTING",
+                                    "DUPLICATE_CASE",
+                                    "COMMERCIAL_SETTLEMENT",
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                      onClick={() => setDismissReason(preset)}
+                                    >
+                                      {preset}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
+                        ) : isUnreadableDocument ? (
+                          <div className="detail-section readability-resolution-section" style={{ marginTop: "24px" }}>
+                            <div className="readability-resolution-box">
+                              <div className="readability-resolution-header">
+                                <div className="dismiss-zone-title-row">
+                                  <span className="dismiss-tag" style={{ background: "#fef3c7", color: "#92400e" }}>Readability Resolution</span>
+                                  <strong className="readability-resolution-title">Document Readability Resolution</strong>
+                                </div>
+                                <p className="readability-resolution-desc">
+                                  HolyShip could not reliably extract the document content. Inspect the source file and processing evidence before deciding how to proceed.
+                                </p>
+                              </div>
+
+                              <div className="readability-next-step-card">
+                                <AlertCircle size={18} className="next-step-icon" />
+                                <div style={{ flex: 1 }}>
+                                  <div style={{ marginBottom: "2px" }}>
+                                    <strong>Recommended Action:</strong> Inspect document and retry processing
+                                  </div>
+                                  <p className="next-step-instruction">
+                                    <strong>Required next step:</strong> Obtain a clearer, machine-readable digital document, or reprocess if diagnostic indicates a transient issue.
+                                  </p>
+                                  <p className="next-step-hint">
+                                    This review case remains open while investigating document readability. Dismiss only if verification is no longer needed.
+                                  </p>
+                                  {onReprocess && (selected.email?.id || selected.email_id) ? (
+                                    <div style={{ marginTop: "10px" }}>
+                                      <button
+                                        type="button"
+                                        className="button-primary btn-compact"
+                                        disabled={actionState === "loading"}
+                                        onClick={() => void onReprocess((selected.email?.id || selected.email_id)!)}
+                                      >
+                                        Retry / Reprocess Email
+                                      </button>
+                                    </div>
+                                  ) : null}
+                                </div>
+                              </div>
+
+                              <div className="dismiss-zone secondary-dismiss-zone" id="dismiss-zone-box">
+                                <div className="dismiss-zone-header">
+                                  <div className="dismiss-zone-title-row">
+                                    <span className="dismiss-tag secondary-tag">Secondary Action</span>
+                                    <strong className="dismiss-title">Dismiss Review</strong>
+                                  </div>
+                                  <p className="dismiss-subtitle">
+                                    Dismiss the review only if the case is not actionable, incorrectly routed, duplicated, or otherwise does not require further verification. Dismissing records an audited resolution in the review history.
+                                  </p>
+                                </div>
+                                <div className="dismiss-form-grid">
+                                  <label>
+                                    Dismiss reason
+                                    <input
+                                      aria-label="Dismiss reason"
+                                      value={dismissReason}
+                                      onChange={(event) => setDismissReason(event.target.value)}
+                                      placeholder="e.g. NOT_ACTIONABLE"
+                                    />
+                                  </label>
+                                  <button
+                                    className="button-secondary btn-dismiss-secondary"
+                                    type="button"
+                                    disabled={actionState === "loading" || !dismissReason.trim()}
+                                    onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                                  >
+                                    {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                                  </button>
+                                </div>
+                                <label style={{ marginTop: "6px" }}>
+                                  Resolution Note (Optional)
+                                  <input
+                                    aria-label="Dismiss note"
+                                    value={note}
+                                    onChange={(event) => setNote(event.target.value)}
+                                    placeholder="e.g. Low resolution scan cannot be read"
+                                  />
+                                </label>
+                                <div className="dismiss-presets">
+                                  <span className="dismiss-presets-label">Quick presets:</span>
+                                  {[
+                                    "NOT_ACTIONABLE",
+                                    "INCORRECT_ROUTING",
+                                    "DUPLICATE_CASE",
+                                    "COMMERCIAL_SETTLEMENT",
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                      onClick={() => setDismissReason(preset)}
+                                    >
+                                      {preset}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
+                            </div>
+                          </div>
                         ) : (
                           <div className="detail-section dismiss-section" style={{ marginTop: "24px" }}>
-                            <div id="dismiss-zone-box" className="dismiss-zone">
+                            <div id="dismiss-zone-box" className="dismiss-zone secondary-dismiss-zone">
                               <div className="dismiss-zone-header">
                                 <div className="dismiss-zone-title-row">
-                                  <span className="dismiss-tag">Resolution Action</span>
-                                  <strong className="dismiss-title">Dismiss &amp; Record Operational Decision</strong>
+                                  <span className="dismiss-tag secondary-tag">Secondary Action</span>
+                                  <strong className="dismiss-title">Dismiss Review</strong>
                                 </div>
                                 <p className="dismiss-subtitle">
                                   Dismissing records an audited resolution in the review history. Closed cases remain available in History for compliance.
@@ -2409,11 +2701,11 @@ function HumanReviewPageView({
                                     aria-label="Dismiss reason"
                                     value={dismissReason}
                                     onChange={(event) => setDismissReason(event.target.value)}
-                                    placeholder="e.g. WRONG_DOCUMENT_TYPE"
+                                    placeholder="e.g. NOT_ACTIONABLE"
                                   />
                                 </label>
                                 <button
-                                  className="button-danger-secondary"
+                                  className="button-secondary btn-dismiss-secondary"
                                   type="button"
                                   disabled={actionState === "loading" || !dismissReason.trim()}
                                   onClick={() => void onDismiss(reviewer, dismissReason, note)}
@@ -2427,13 +2719,12 @@ function HumanReviewPageView({
                                   aria-label="Dismiss note"
                                   value={note}
                                   onChange={(event) => setNote(event.target.value)}
-                                  placeholder="e.g. Attached file is a Certificate of Origin, requested customer to re-send Draft BL"
+                                  placeholder="e.g. Booking cancelled or not actionable"
                                 />
                               </label>
                               <div className="dismiss-presets">
                                 <span className="dismiss-presets-label">Quick presets:</span>
                                 {[
-                                  "WRONG_DOCUMENT_TYPE",
                                   "NOT_ACTIONABLE",
                                   "INCORRECT_ROUTING",
                                   "DUPLICATE_CASE",
@@ -2536,7 +2827,10 @@ function HumanReviewPageView({
                                       {selected.case_origin === "ACTIVE" ? (
                                         <button
                                           type="button"
-                                          className="row-edit-action-btn"
+                                          className={cx(
+                                            "row-edit-action-btn",
+                                            compared?.status === "MATCH" ? "is-matched" : "is-unresolved"
+                                          )}
                                           title={`Quick edit ${labelForField(name)}`}
                                           onClick={() => {
                                             setField(name);
@@ -2636,7 +2930,7 @@ function HumanReviewPageView({
                             </label>
                           </div>
                           <p id="correction-help" className="form-help">
-                            The saved correction becomes the effective value only when Resolve & Recompare succeeds.
+                            The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
                           </p>
                           <div className="editor-button-row">
                             <button
@@ -3062,6 +3356,7 @@ export default function App() {
             onOverride={(payload) => reviewMutation(() => saveHumanReviewOverride(selectedReview!.id, payload))}
             onResolve={(reviewer, notes) => reviewMutation(() => resolveHumanReview(selectedReview!.id, reviewer, notes))}
             onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
+            onReprocess={(emailId) => void reprocess(emailId)}
           />
         ) : null}
       </main>
