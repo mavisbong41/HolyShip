@@ -472,5 +472,95 @@ describe("HolyShip dashboard", () => {
     expect(screen.getByText("Quick presets:")).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "WRONG_DOCUMENT_TYPE" })).toBeInTheDocument();
   });
+
+  it("renders Document Exception workspace with Missing Document Resolution for MISSING_REQUIRED_ATTACHMENT", async () => {
+    const missingDocReview = {
+      ...demoHumanReview.items[0],
+      id: "66666666-6666-4666-8666-666666666666",
+      reason_code: "MISSING_REQUIRED_ATTACHMENT",
+      reason_text: "Missing Attachment",
+      presentation_title: "Missing Attachment",
+      canonical_reason: "Missing Attachment",
+      human_explanation: "A required shipping document is not available for comparison.",
+      affected_fields: [],
+      affected_area: "Documents",
+      suggested_action: "Request or provide the missing document",
+      comparison: null,
+      documents: [
+        {
+          id: "33333333-3333-4333-8333-333333333333",
+          attachment_id: "att-509",
+          filename: "email_509_SI.txt",
+          role: "SI",
+          format: "PLAIN_TEXT",
+          validation_outcome: "VALID",
+          routing_outcome: "SI_FOUND",
+        },
+      ],
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [missingDocReview],
+      },
+      reviewDetail: missingDocReview,
+    });
+    window.history.replaceState({}, "", "/?review=66666666-6666-4666-8666-666666666666");
+
+    render(<App />);
+
+    // Document Exception workspace is rendered
+    expect(await screen.findByRole("tab", { name: /Document Exception/i })).toBeInTheDocument();
+    expect(screen.getByText("Missing required document exception")).toBeInTheDocument();
+
+    // Seven Reviewed Fields is not rendered
+    expect(screen.queryByRole("table", { name: "Human Review seven-field comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seven reviewed fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save a correction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Corrected value")).not.toBeInTheDocument();
+
+    // Resolve & Recompare is not shown
+    expect(screen.queryByText("Resolve & Recompare")).not.toBeInTheDocument();
+
+    // review reason is Missing Attachment
+    expect(screen.getAllByText("Missing Attachment").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("A required shipping document is not available for comparison.").length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Affected area:\s*Documents/i).length).toBeGreaterThan(0);
+
+    // existing attachment evidence remains visible
+    expect(screen.getByText("email_509_SI.txt")).toBeInTheDocument();
+    expect(screen.getByText("Role: SI")).toBeInTheDocument();
+    expect(screen.getByText("Validation: VALID")).toBeInTheDocument();
+    expect(screen.getByText("Router: SI FOUND")).toBeInTheDocument();
+
+    // missing Draft BL clearly identified as unresolved document requirement
+    expect(screen.getByText(/Unresolved Requirement: Draft BL/i)).toBeInTheDocument();
+
+    // guidance tells the reviewer to obtain the missing required document
+    expect(screen.getByText("Missing Document Resolution")).toBeInTheDocument();
+    expect(screen.getByText(/Recommended Action:/i)).toBeInTheDocument();
+    expect(screen.getByText("Request or provide the missing document")).toBeInTheDocument();
+    expect(screen.getByText(/Obtain the missing Draft BL from the sender/i)).toBeInTheDocument();
+
+    // SOP wording updated
+    expect(screen.getByText(/Confirm that the required SI or Draft BL is genuinely missing/i)).toBeInTheDocument();
+    expect(screen.getByText(/Obtain the missing shipping document before comparison can continue/i)).toBeInTheDocument();
+
+    // unsupported automatic follow-up behavior is not promised
+    expect(screen.queryByText(/new verification case will be created automatically/i)).not.toBeInTheDocument();
+
+    // MISSING_ATTACHMENT is not offered as a dismiss reason preset
+    expect(screen.queryByRole("button", { name: "MISSING_ATTACHMENT" })).not.toBeInTheDocument();
+
+    // Dismiss Review is secondary
+    const dismissButtons = screen.getAllByRole("button", { name: "Dismiss Review" });
+    expect(dismissButtons.length).toBeGreaterThan(0);
+    dismissButtons.forEach((btn) => {
+      expect(btn.className).toContain("button-secondary");
+    });
+  });
 });
 

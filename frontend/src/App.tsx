@@ -1485,11 +1485,12 @@ function getReviewActionGuidance(
           "The attached document failed validation and is not a valid Shipping Instruction or Draft Bill of Lading (e.g. Commercial Invoice or Packing List). Review attached files under 'Email & Documents'. Dismiss this review case as NOT_ACTIONABLE / WRONG_DOCUMENT_TYPE, or request the sender to submit the correct SI / Draft BL.",
       };
     case "MISSING_REQUIRED_ATTACHMENT":
+    case "MISSING_ATTACHMENT":
     case "READINESS_UNRESOLVED":
       return {
-        actionTitle: "Provide or request required document",
+        actionTitle: "Request or provide the missing document",
         instruction:
-          "A required shipping document (Draft BL or SI) was not attached to the email. Inspect the email thread under 'Email & Documents' or follow up with the sender to obtain the missing document, or dismiss as NOT_ACTIONABLE.",
+          "The required Shipping Instruction or Draft Bill of Lading is missing. Review the available evidence and obtain the missing document from the sender before comparison can continue.",
       };
     case "UNREADABLE_ATTACHMENT":
     case "CORRUPTED_ATTACHMENT":
@@ -1576,8 +1577,8 @@ function HumanReviewPageView({
     if (selected?.reason_code) {
       if (selected.reason_code === "WRONG_DOCUMENT_TYPE") {
         setDismissReason("WRONG_DOCUMENT_TYPE");
-      } else if (selected.reason_code === "MISSING_REQUIRED_ATTACHMENT") {
-        setDismissReason("MISSING_ATTACHMENT");
+      } else if (selected.reason_code === "MISSING_REQUIRED_ATTACHMENT" || selected.reason_code === "MISSING_ATTACHMENT") {
+        setDismissReason("NOT_ACTIONABLE");
       } else if (selected.reason_code === "UNREADABLE_ATTACHMENT" || selected.reason_code === "CORRUPTED_ATTACHMENT") {
         setDismissReason("UNREADABLE_DOCUMENT");
       } else if (selected.reason_code === "CLASSIFICATION_UNRESOLVED") {
@@ -1699,6 +1700,7 @@ function HumanReviewPageView({
   const nonFieldReasonCodes = new Set([
     "WRONG_DOCUMENT_TYPE",
     "MISSING_REQUIRED_ATTACHMENT",
+    "MISSING_ATTACHMENT",
     "UNREADABLE_ATTACHMENT",
     "UNSUPPORTED_ATTACHMENT",
     "CORRUPTED_ATTACHMENT",
@@ -1708,6 +1710,27 @@ function HumanReviewPageView({
     "CLASSIFICATION_UNRESOLVED",
     "STAGE2_UNRESOLVED",
   ]);
+
+  const isMissingAttachment = Boolean(
+    selected &&
+    (selected.reason_code === "MISSING_REQUIRED_ATTACHMENT" ||
+     selected.reason_code === "MISSING_ATTACHMENT" ||
+     selected.reason_code === "READINESS_UNRESOLVED")
+  );
+
+  const docs = selected?.documents ?? [];
+  const hasSI = docs.some(
+    (d) => d.role === "SI" && (d.validation_outcome === "VALID" || !d.validation_outcome)
+  );
+  const hasBL = docs.some(
+    (d) => (d.role === "BL" || d.role === "DRAFT_BL") && (d.validation_outcome === "VALID" || !d.validation_outcome)
+  );
+
+  const missingDocName = !hasSI && !hasBL
+    ? "Shipping Instruction (SI) and Draft Bill of Lading (BL)"
+    : !hasBL
+    ? "Draft BL"
+    : "Shipping Instruction (SI)";
 
   const isFieldLevel = Boolean(
     selected &&
@@ -1994,6 +2017,15 @@ function HumanReviewPageView({
                         >
                           {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
                         </button>
+                      ) : isMissingAttachment ? (
+                        <button
+                          className="button-secondary btn-compact"
+                          type="button"
+                          disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                          onClick={() => void onDismiss(reviewer, dismissReason || "NOT_ACTIONABLE", note)}
+                        >
+                          {actionState === "loading" ? "Dismissing…" : selected.status === "DISMISSED" ? "Dismissed" : "Dismiss Review"}
+                        </button>
                       ) : (
                         <button
                           className="button-danger-secondary btn-compact"
@@ -2063,9 +2095,17 @@ function HumanReviewPageView({
                 <AlertTriangle size={18} aria-hidden="true" />
                 <div className="callout-body">
                   <strong className="callout-title">
-                    {selected.case_origin === "LEGACY" ? "Historical review record" : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
+                    {selected.case_origin === "LEGACY"
+                      ? "Historical review record"
+                      : isMissingAttachment
+                      ? "Missing Attachment"
+                      : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
                   </strong>
-                  <p className="callout-desc">{cleanExplanation}</p>
+                  <p className="callout-desc">
+                    {isMissingAttachment
+                      ? (cleanExplanation || "A required shipping document is not available for comparison.")
+                      : cleanExplanation}
+                  </p>
 
                   <div className="action-guidance-wrapper">
                     <button
@@ -2140,36 +2180,52 @@ function HumanReviewPageView({
                     <div className="detail-section document-exception-panel">
                       <div className="section-heading-row">
                         <div>
-                          <h3>Document role & validation exception</h3>
+                          <h3>{isMissingAttachment ? "Missing required document exception" : "Document role & validation exception"}</h3>
                           <p>
-                            Automated comparison was halted before field extraction because valid Shipping Instruction (SI) and Draft Bill of Lading (BL) documents could not be established.
+                            {isMissingAttachment
+                              ? "Automated comparison was halted because a required shipping document (Shipping Instruction or Draft Bill of Lading) is missing."
+                              : "Automated comparison was halted before field extraction because valid Shipping Instruction (SI) and Draft Bill of Lading (BL) documents could not be established."}
                           </p>
                         </div>
-                        <span className="badge badge-bad">{displayLabel(selected.reason_code)}</span>
+                        <span className="badge badge-bad">{isMissingAttachment ? "Missing Attachment" : displayLabel(selected.reason_code)}</span>
                       </div>
 
                       <div className="document-exception-alert-box">
                         <div className="exception-alert-header">
                           <AlertCircle size={20} className="exception-alert-icon" />
                           <div>
-                            <strong>Validation Outcome: {selected.canonical_reason || displayLabel(selected.reason_code)}</strong>
-                            <p>{cleanExplanation}</p>
+                            <strong>{isMissingAttachment ? "Document Status: Missing Attachment" : `Validation Outcome: ${selected.canonical_reason || displayLabel(selected.reason_code)}`}</strong>
+                            <p>{isMissingAttachment ? "A required shipping document is not available for comparison." : cleanExplanation}</p>
                           </div>
                         </div>
 
                         <div className="exception-sop-guide">
                           <span className="sop-guide-title">Standard Operational Procedure (SOP):</span>
-                          <ol className="sop-steps-list">
-                            <li>
-                              <strong>Verify attached files:</strong> Check whether the sender mistakenly attached an unrelated document (e.g. Commercial Invoice, Packing List) instead of a draft B/L or SI.
-                            </li>
-                            <li>
-                              <strong>Inspect email body:</strong> Review the message context in the <em>Email & Documents</em> tab to check for customer notes, instructions, or booking numbers.
-                            </li>
-                            <li>
-                              <strong>Record auditable decision:</strong> Dismiss this review case with the appropriate reason code below, or request the customer to supply the correct document.
-                            </li>
-                          </ol>
+                          {isMissingAttachment ? (
+                            <ol className="sop-steps-list">
+                              <li>
+                                <strong>Verify attached files:</strong> Confirm that the required SI or Draft BL is genuinely missing and was not misclassified.
+                              </li>
+                              <li>
+                                <strong>Inspect email context:</strong> Review the email body and received attachments under &quot;Email &amp; Documents&quot;.
+                              </li>
+                              <li>
+                                <strong>Determine next action:</strong> Obtain the missing shipping document before comparison can continue. Dismiss the review only if the case is not actionable, incorrectly routed, duplicated, or otherwise does not require further verification.
+                              </li>
+                            </ol>
+                          ) : (
+                            <ol className="sop-steps-list">
+                              <li>
+                                <strong>Verify attached files:</strong> Check whether the sender mistakenly attached an unrelated document (e.g. Commercial Invoice, Packing List) instead of a draft B/L or SI.
+                              </li>
+                              <li>
+                                <strong>Inspect email body:</strong> Review the message context in the <em>Email &amp; Documents</em> tab to check for customer notes, instructions, or booking numbers.
+                              </li>
+                              <li>
+                                <strong>Record auditable decision:</strong> Dismiss this review case with the appropriate reason code below, or request the customer to supply the correct document.
+                              </li>
+                            </ol>
+                          )}
                         </div>
                       </div>
 
@@ -2182,7 +2238,7 @@ function HumanReviewPageView({
                             onClick={() => setDetailTab("context")}
                           >
                             <Mail size={13} />
-                            <span>Open Email & Documents Tab</span>
+                            <span>Open Email &amp; Documents Tab</span>
                           </button>
                         </div>
 
@@ -2199,7 +2255,7 @@ function HumanReviewPageView({
                                   <div className="doc-info">
                                     <strong className="doc-name">{doc.filename}</strong>
                                     <div className="doc-badges">
-                                      <span className="badge badge-info">Role: {displayLabel(doc.role)}</span>
+                                      <span className="badge badge-info">Role: {doc.role === "SI" || doc.role === "BL" ? doc.role : displayLabel(doc.role)}</span>
                                       <span
                                         className={cx(
                                           "badge",
@@ -2212,10 +2268,10 @@ function HumanReviewPageView({
                                             : "badge-warn"
                                         )}
                                       >
-                                        Validation: {displayLabel(doc.validation_outcome)}
+                                        Validation: {doc.validation_outcome === "VALID" || doc.validation_outcome === "INVALID" ? doc.validation_outcome : displayLabel(doc.validation_outcome)}
                                       </span>
                                       {doc.routing_outcome ? (
-                                        <span className="badge badge-muted">Router: {displayLabel(doc.routing_outcome)}</span>
+                                        <span className="badge badge-muted">Router: {doc.routing_outcome === "SI_FOUND" ? "SI FOUND" : doc.routing_outcome === "BL_FOUND" ? "BL FOUND" : displayLabel(doc.routing_outcome)}</span>
                                       ) : null}
                                     </div>
                                     {evidenceSummary ? (
@@ -2229,69 +2285,173 @@ function HumanReviewPageView({
                         ) : (
                           <EmptyState title="No attachments found" body="The email contained no attached documents to extract or compare." />
                         )}
+
+                        {isMissingAttachment && (
+                          <div className="unresolved-requirement-box">
+                            <AlertCircle size={18} className="unresolved-req-icon" />
+                            <div>
+                              <div className="unresolved-req-title-row">
+                                <strong>Unresolved Requirement: {missingDocName}</strong>
+                                <span className="badge badge-bad">MISSING</span>
+                              </div>
+                              <p>
+                                {missingDocName} is required for comparison but was not provided in this email or its attachments.
+                              </p>
+                            </div>
+                          </div>
+                        )}
                       </div>
 
                       {selected.case_origin === "ACTIVE" ? (
-                        <div className="detail-section dismiss-section" style={{ marginTop: "24px" }}>
-                          <div id="dismiss-zone-box" className="dismiss-zone">
-                            <div className="dismiss-zone-header">
-                              <div className="dismiss-zone-title-row">
-                                <span className="dismiss-tag">Resolution Action</span>
-                                <strong className="dismiss-title">Dismiss & Record Operational Decision</strong>
+                        isMissingAttachment ? (
+                          <div className="detail-section missing-resolution-section" style={{ marginTop: "24px" }}>
+                            <div className="missing-resolution-box">
+                              <div className="missing-resolution-header">
+                                <div className="dismiss-zone-title-row">
+                                  <span className="dismiss-tag" style={{ background: "#e0f2fe", color: "#0369a1" }}>Operational Resolution</span>
+                                  <strong className="missing-resolution-title">Missing Document Resolution</strong>
+                                </div>
+                                <p className="missing-resolution-desc">
+                                  The required Shipping Instruction or Draft Bill of Lading is missing. Review the available evidence and determine the appropriate operational next step.
+                                </p>
                               </div>
-                              <p className="dismiss-subtitle">
-                                Dismissing records an audited resolution in the review history. If the customer subsequently emails valid documents, a new verification case will be created automatically.
-                              </p>
-                            </div>
-                            <div className="dismiss-form-grid">
-                              <label>
-                                Dismiss reason
-                                <input
-                                  aria-label="Dismiss reason"
-                                  value={dismissReason}
-                                  onChange={(event) => setDismissReason(event.target.value)}
-                                  placeholder="e.g. WRONG_DOCUMENT_TYPE"
-                                />
-                              </label>
-                              <button
-                                className="button-danger-secondary"
-                                type="button"
-                                disabled={actionState === "loading" || !dismissReason.trim()}
-                                onClick={() => void onDismiss(reviewer, dismissReason, note)}
-                              >
-                                {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
-                              </button>
-                            </div>
-                            <label style={{ marginTop: "6px" }}>
-                              Resolution Note (Optional)
-                              <input
-                                aria-label="Dismiss note"
-                                value={note}
-                                onChange={(event) => setNote(event.target.value)}
-                                placeholder="e.g. Attached file is a Certificate of Origin, requested customer to re-send Draft BL"
-                              />
-                            </label>
-                            <div className="dismiss-presets">
-                              <span className="dismiss-presets-label">Quick presets:</span>
-                              {[
-                                "WRONG_DOCUMENT_TYPE",
-                                "MISSING_ATTACHMENT",
-                                "NOT_ACTIONABLE",
-                                "INCORRECT_ROUTING",
-                                "DUPLICATE_CASE",
-                              ].map((preset) => (
-                                <button
-                                  key={preset}
-                                  type="button"
-                                  className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
-                                  onClick={() => setDismissReason(preset)}
-                                >
-                                  {preset}
-                                </button>
-                              ))}
+
+                              <div className="missing-next-step-card">
+                                <AlertCircle size={18} className="next-step-icon" />
+                                <div>
+                                  <div style={{ marginBottom: "2px" }}>
+                                    <strong>Recommended Action:</strong> Request or provide the missing document
+                                  </div>
+                                  <p className="next-step-instruction">
+                                    <strong>Required next step:</strong> Obtain the missing {missingDocName} from the sender.
+                                  </p>
+                                  <p className="next-step-hint">
+                                    This review case remains open while awaiting the required document. Dismiss only if verification is no longer needed.
+                                  </p>
+                                </div>
+                              </div>
+
+                              <div className="dismiss-zone secondary-dismiss-zone" id="dismiss-zone-box">
+                                <div className="dismiss-zone-header">
+                                  <div className="dismiss-zone-title-row">
+                                    <span className="dismiss-tag secondary-tag">Secondary Action</span>
+                                    <strong className="dismiss-title">Dismiss Review</strong>
+                                  </div>
+                                  <p className="dismiss-subtitle">
+                                    Dismiss the review only if the case is not actionable, incorrectly routed, duplicated, or otherwise does not require further verification. Dismissing records an audited resolution in the review history.
+                                  </p>
+                                </div>
+                                <div className="dismiss-form-grid">
+                                  <label>
+                                    Dismiss reason
+                                    <input
+                                      aria-label="Dismiss reason"
+                                      value={dismissReason}
+                                      onChange={(event) => setDismissReason(event.target.value)}
+                                      placeholder="e.g. NOT_ACTIONABLE"
+                                    />
+                                  </label>
+                                  <button
+                                    className="button-secondary btn-dismiss-secondary"
+                                    type="button"
+                                    disabled={actionState === "loading" || !dismissReason.trim()}
+                                    onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                                  >
+                                    {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                                  </button>
+                                </div>
+                                <label style={{ marginTop: "6px" }}>
+                                  Resolution Note (Optional)
+                                  <input
+                                    aria-label="Dismiss note"
+                                    value={note}
+                                    onChange={(event) => setNote(event.target.value)}
+                                    placeholder="e.g. Booking cancelled or not actionable"
+                                  />
+                                </label>
+                                <div className="dismiss-presets">
+                                  <span className="dismiss-presets-label">Quick presets:</span>
+                                  {[
+                                    "NOT_ACTIONABLE",
+                                    "INCORRECT_ROUTING",
+                                    "DUPLICATE_CASE",
+                                    "COMMERCIAL_SETTLEMENT",
+                                  ].map((preset) => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                      onClick={() => setDismissReason(preset)}
+                                    >
+                                      {preset}
+                                    </button>
+                                  ))}
+                                </div>
+                              </div>
                             </div>
                           </div>
-                        </div>
+                        ) : (
+                          <div className="detail-section dismiss-section" style={{ marginTop: "24px" }}>
+                            <div id="dismiss-zone-box" className="dismiss-zone">
+                              <div className="dismiss-zone-header">
+                                <div className="dismiss-zone-title-row">
+                                  <span className="dismiss-tag">Resolution Action</span>
+                                  <strong className="dismiss-title">Dismiss &amp; Record Operational Decision</strong>
+                                </div>
+                                <p className="dismiss-subtitle">
+                                  Dismissing records an audited resolution in the review history. Closed cases remain available in History for compliance.
+                                </p>
+                              </div>
+                              <div className="dismiss-form-grid">
+                                <label>
+                                  Dismiss reason
+                                  <input
+                                    aria-label="Dismiss reason"
+                                    value={dismissReason}
+                                    onChange={(event) => setDismissReason(event.target.value)}
+                                    placeholder="e.g. WRONG_DOCUMENT_TYPE"
+                                  />
+                                </label>
+                                <button
+                                  className="button-danger-secondary"
+                                  type="button"
+                                  disabled={actionState === "loading" || !dismissReason.trim()}
+                                  onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                                >
+                                  {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                                </button>
+                              </div>
+                              <label style={{ marginTop: "6px" }}>
+                                Resolution Note (Optional)
+                                <input
+                                  aria-label="Dismiss note"
+                                  value={note}
+                                  onChange={(event) => setNote(event.target.value)}
+                                  placeholder="e.g. Attached file is a Certificate of Origin, requested customer to re-send Draft BL"
+                                />
+                              </label>
+                              <div className="dismiss-presets">
+                                <span className="dismiss-presets-label">Quick presets:</span>
+                                {[
+                                  "WRONG_DOCUMENT_TYPE",
+                                  "NOT_ACTIONABLE",
+                                  "INCORRECT_ROUTING",
+                                  "DUPLICATE_CASE",
+                                  "COMMERCIAL_SETTLEMENT",
+                                ].map((preset) => (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                    onClick={() => setDismissReason(preset)}
+                                  >
+                                    {preset}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        )
                       ) : (
                         <div className="detail-section">
                           <div className="state-note">

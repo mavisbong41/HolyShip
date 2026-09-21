@@ -3358,6 +3358,190 @@ button:disabled {
   font-weight: 600;
 }
 
+/* Unresolved Requirement Box */
+.unresolved-requirement-box {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 14px;
+  border-radius: var(--radius-sm);
+  background: #fef2f2;
+  border: 1px dashed #f87171;
+  margin-top: 6px;
+}
+
+.unresolved-requirement-box .unresolved-req-icon {
+  color: #dc2626;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.unresolved-req-title-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 2px;
+}
+
+.unresolved-req-title-row strong {
+  font-size: 12px;
+  color: #991b1b;
+}
+
+.unresolved-requirement-box p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.45;
+  color: #7f1d1d;
+}
+
+/* Missing Document Resolution Section */
+.missing-resolution-box {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 14px 16px;
+  border-radius: var(--radius-md);
+  border: 1px solid rgba(2, 132, 199, 0.25);
+  background: #f0f9ff;
+}
+
+.missing-resolution-header {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.missing-resolution-title {
+  font-size: 13px;
+  font-weight: 750;
+  color: #0369a1;
+}
+
+.missing-resolution-desc {
+  margin: 0 !important;
+  font-size: 11.5px !important;
+  color: #0c4a6e !important;
+  line-height: 1.45 !important;
+}
+
+.missing-next-step-card {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  padding: 10px 12px;
+  background: var(--color-white);
+  border: 1px solid rgba(2, 132, 199, 0.2);
+  border-left: 3px solid #0284c7;
+  border-radius: var(--radius-sm);
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-grey-800);
+}
+
+.missing-next-step-card .next-step-icon {
+  color: #0284c7;
+  flex-shrink: 0;
+  margin-top: 1px;
+}
+
+.missing-next-step-card strong {
+  color: var(--color-black);
+}
+
+.missing-next-step-card .next-step-instruction {
+  margin: 0 0 3px !important;
+  font-size: 11.5px !important;
+  color: var(--color-grey-900) !important;
+}
+
+.missing-next-step-card .next-step-hint {
+  margin: 0 !important;
+  font-size: 10.5px !important;
+  color: var(--color-grey-500) !important;
+}
+
+/* Secondary Dismiss Zone */
+.secondary-dismiss-zone {
+  margin-top: 4px;
+  background: var(--color-white) !important;
+  border-color: rgba(18, 18, 18, 0.14) !important;
+}
+
+.secondary-dismiss-zone:hover {
+  border-color: rgba(18, 18, 18, 0.28) !important;
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.04) !important;
+}
+
+.secondary-dismiss-zone .dismiss-tag.secondary-tag {
+  background: var(--color-grey-200);
+  color: var(--color-grey-700);
+}
+
+.secondary-dismiss-zone .dismiss-title {
+  color: var(--color-grey-800);
+}
+
+.secondary-dismiss-zone .dismiss-subtitle {
+  color: var(--color-grey-600) !important;
+}
+
+.secondary-dismiss-zone .dismiss-form-grid label {
+  color: var(--color-grey-700);
+}
+
+.secondary-dismiss-zone .dismiss-form-grid input {
+  border-color: var(--color-grey-300);
+  color: var(--color-black);
+}
+
+.secondary-dismiss-zone .dismiss-form-grid input:focus {
+  border-color: var(--color-black);
+  box-shadow: 0 0 0 2px rgba(18, 18, 18, 0.08);
+}
+
+.secondary-dismiss-zone .btn-dismiss-secondary {
+  height: 32px;
+  min-height: 32px;
+  padding: 0 14px;
+  border: 1px solid var(--color-grey-300);
+  background: var(--color-grey-100);
+  color: var(--color-grey-800);
+  font-size: 11.5px;
+  font-weight: 650;
+  border-radius: var(--radius-sm);
+  cursor: pointer;
+  white-space: nowrap;
+  transition: all 120ms ease;
+}
+
+.secondary-dismiss-zone .btn-dismiss-secondary:hover:not(:disabled) {
+  background: var(--color-grey-200);
+  color: var(--color-black);
+  border-color: var(--color-grey-400);
+}
+
+.secondary-dismiss-zone .dismiss-presets-label {
+  color: var(--color-grey-600);
+}
+
+.secondary-dismiss-zone .dismiss-preset-chip {
+  border-color: var(--color-grey-300);
+  color: var(--color-grey-700);
+}
+
+.secondary-dismiss-zone .dismiss-preset-chip:hover {
+  border-color: var(--color-grey-500);
+  background: var(--color-grey-100);
+  color: var(--color-black);
+}
+
+.secondary-dismiss-zone .dismiss-preset-chip.active {
+  background: var(--color-grey-800);
+  color: var(--color-white);
+  border-color: var(--color-grey-800);
+}
+
 /* Prominent CTA button for Case Inspector */
 .button-action-cta {
   display: inline-flex;

@@ -64,6 +64,7 @@ export const reasonLabels: Record<string, string> = {
   DOCUMENT_ROLE_UNRESOLVED: "Wrong Document Type",
   WRONG_DOCUMENT_TYPE: "Wrong Document Type",
   MISSING_REQUIRED_ATTACHMENT: "Missing Attachment",
+  MISSING_ATTACHMENT: "Missing Attachment",
   UNREADABLE_ATTACHMENT: "Unreadable Document",
   UNSUPPORTED_ATTACHMENT: "Unreadable Document",
   CORRUPTED_ATTACHMENT: "Unreadable Document",
