@@ -189,11 +189,11 @@ export function ConfirmedDiscrepanciesPageView({
           <MetricCard
             cardIndex={0}
             totalCards={5}
-            icon={<AlertTriangle size={18} color="var(--color-danger)" />}
+            icon={<AlertTriangle size={18} color="var(--color-review)" />}
             label="Open"
             value={openCount}
             trendText="Active confirmed mismatches"
-            tone="bad"
+            tone="attention"
           />
           <MetricCard
             cardIndex={1}
@@ -216,11 +216,11 @@ export function ConfirmedDiscrepanciesPageView({
           <MetricCard
             cardIndex={3}
             totalCards={5}
-            icon={<AlertCircle size={18} color="currentColor" />}
+            icon={<AlertCircle size={18} color="var(--color-grey-700)" />}
             label="Total Queue"
             value={total}
             trendText="All mismatch cases"
-            tone="attention"
+            tone="neutral"
           />
           <MetricCard
             cardIndex={4}
@@ -364,9 +364,9 @@ export function ConfirmedDiscrepanciesPageView({
                 const isSelected = selected?.discrepancy.id === item.id;
                 const statusTone =
                   item.resolution_status === "OPEN"
-                    ? "badge-bad"
+                    ? "badge-attention"
                     : item.resolution_status === "ACKNOWLEDGED"
-                    ? "badge-info"
+                    ? "badge-warn"
                     : "badge-good";
 
                 return (
@@ -384,7 +384,7 @@ export function ConfirmedDiscrepanciesPageView({
                       <div>
                         <h2>{item.subject}</h2>
                         <p>{item.sender || "Unknown sender"}</p>
-                        <strong className="review-reason" style={{ color: "var(--color-danger)" }}>
+                        <strong className="review-reason">
                           {item.mismatched_fields.map(labelForField).join(", ")} Mismatch
                         </strong>
                         <p className="human-explanation">
@@ -410,7 +410,7 @@ export function ConfirmedDiscrepanciesPageView({
                     </div>
 
                     <div className="review-meta">
-                      <span className="badge badge-bad" style={{ fontWeight: 700 }}>
+                      <span className="badge badge-attention" style={{ fontWeight: 700 }}>
                         {item.mismatch_count} Mismatch{item.mismatch_count > 1 ? "es" : ""}
                       </span>
                       <span className={cx("badge", statusTone)}>
@@ -515,16 +515,16 @@ export function ConfirmedDiscrepanciesPageView({
                       className={cx(
                         "badge",
                         selected.discrepancy.resolution_status === "OPEN"
-                          ? "badge-bad"
+                          ? "badge-attention"
                           : selected.discrepancy.resolution_status === "ACKNOWLEDGED"
-                          ? "badge-info"
+                          ? "badge-warn"
                           : "badge-good"
                       )}
                       style={{ fontWeight: 700 }}
                     >
                       {displayLabel(selected.discrepancy.resolution_status)}
                     </span>
-                    <span className="badge badge-bad" style={{ fontWeight: 700 }}>
+                    <span className="badge badge-attention" style={{ fontWeight: 700 }}>
                       {selected.discrepancy.mismatch_count} Mismatched Field{selected.discrepancy.mismatch_count > 1 ? "s" : ""}
                     </span>
                   </div>
@@ -535,7 +535,6 @@ export function ConfirmedDiscrepanciesPageView({
                       <button
                         type="button"
                         className="button-primary"
-                        style={{ background: "#2563eb", borderColor: "#2563eb" }}
                         disabled={actionState === "loading"}
                         onClick={() => onAcknowledge(selected.discrepancy.id, operatorName)}
                         title="Acknowledge this discrepancy for operational handling"
@@ -627,7 +626,7 @@ export function ConfirmedDiscrepanciesPageView({
                       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
                         <div>
                           <h3 style={{ fontSize: "14.5px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                            <AlertTriangle size={16} color="var(--color-danger)" />
+                            <AlertTriangle size={16} color="var(--color-review)" />
                             Confirmed Differences ({selected.mismatched_fields_detail.length})
                           </h3>
                           <p style={{ fontSize: "11.5px", color: "var(--color-grey-500)", margin: "2px 0 0" }}>
@@ -640,21 +639,14 @@ export function ConfirmedDiscrepanciesPageView({
                         {selected.mismatched_fields_detail.map((diff) => (
                           <div
                             key={diff.field}
-                            className="discrepancy-diff-card"
-                            style={{
-                              border: "1px solid var(--color-grey-300)",
-                              borderRadius: "var(--radius-md)",
-                              background: "var(--color-white)",
-                              padding: "12px 14px",
-                              boxShadow: "0 1px 3px rgba(0,0,0,0.03)",
-                            }}
+                            className="discrepancy-diff-card is-mismatch"
                           >
                             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px", flexWrap: "wrap", gap: "6px" }}>
                               <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
                                 <strong style={{ fontSize: "13.5px", color: "var(--color-black)" }}>
                                   {labelForField(diff.field)}
                                 </strong>
-                                <span className="badge badge-bad" style={{ fontSize: "10px" }}>
+                                <span className="badge badge-attention" style={{ fontSize: "10px" }}>
                                   {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
                                 </span>
                               </div>
@@ -685,44 +677,30 @@ export function ConfirmedDiscrepanciesPageView({
                             {/* Side by side comparison cards */}
                             <div className="diff-side-by-side" style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "10px" }}>
                               {/* SI Box */}
-                              <div
-                                style={{
-                                  background: "#f0fdf4",
-                                  border: "1px solid #bbf7d0",
-                                  borderRadius: "var(--radius-sm)",
-                                  padding: "10px 12px",
-                                }}
-                              >
-                                <div style={{ fontSize: "10px", fontWeight: 750, color: "#166534", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                              <div className="diff-box si-side">
+                                <div className="diff-box-label">
                                   SI (Reference Document)
                                 </div>
-                                <div style={{ fontSize: "13.5px", fontWeight: 650, color: "#14532d", wordBreak: "break-word" }}>
+                                <div className="diff-box-value">
                                   {displayValue(diff.si.canonical ?? diff.si.normalized ?? diff.si.raw)}
                                 </div>
                                 {diff.si.raw !== undefined && diff.si.raw !== diff.si.canonical && (
-                                  <div style={{ fontSize: "11px", color: "#166534", marginTop: "4px", opacity: 0.85 }}>
+                                  <div className="diff-box-raw">
                                     Raw: <code>{displayValue(diff.si.raw)}</code>
                                   </div>
                                 )}
                               </div>
 
                               {/* BL Box */}
-                              <div
-                                style={{
-                                  background: "#fef2f2",
-                                  border: "1px solid #fecaca",
-                                  borderRadius: "var(--radius-sm)",
-                                  padding: "10px 12px",
-                                }}
-                              >
-                                <div style={{ fontSize: "10px", fontWeight: 750, color: "#991b1b", textTransform: "uppercase", letterSpacing: "0.05em", marginBottom: "4px" }}>
+                              <div className="diff-box bl-side">
+                                <div className="diff-box-label">
                                   Draft BL (Document Checked)
                                 </div>
-                                <div style={{ fontSize: "13.5px", fontWeight: 650, color: "#7f1d1d", wordBreak: "break-word" }}>
+                                <div className="diff-box-value">
                                   {displayValue(diff.bl.canonical ?? diff.bl.normalized ?? diff.bl.raw)}
                                 </div>
                                 {diff.bl.raw !== undefined && diff.bl.raw !== diff.bl.canonical && (
-                                  <div style={{ fontSize: "11px", color: "#991b1b", marginTop: "4px", opacity: 0.85 }}>
+                                  <div className="diff-box-raw">
                                     Raw: <code>{displayValue(diff.bl.raw)}</code>
                                   </div>
                                 )}
@@ -781,7 +759,7 @@ export function ConfirmedDiscrepanciesPageView({
                                     borderBottom: "1px solid var(--color-grey-200)",
                                     background:
                                       f.status === "MISMATCH"
-                                        ? "rgba(239, 68, 68, 0.04)"
+                                        ? "rgba(227, 148, 57, 0.08)"
                                         : f.status === "MATCH"
                                         ? "rgba(34, 197, 94, 0.02)"
                                         : "transparent",
@@ -795,7 +773,7 @@ export function ConfirmedDiscrepanciesPageView({
                                         f.status === "MATCH"
                                           ? "badge-good"
                                           : f.status === "MISMATCH"
-                                          ? "badge-bad"
+                                          ? "badge-attention"
                                           : "badge-warn"
                                       )}
                                       style={{ fontSize: "10px" }}

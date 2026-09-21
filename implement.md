@@ -45,8 +45,8 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-22
-**Updated by:** Outlook Add-in current-email binding refinement
-**Repository state:** `codex/ui-human-review-stabilization` from starting HEAD `7000558834868a91c4e8ad9995c24bee8fa59378`. Outlook Add-in task pane no longer repeats the HolyShip logo inside Outlook's Apps shell, and it now re-resolves when the selected Outlook email changes via `ItemChanged` plus a provider-based fallback poll. Latest validation in this task: Outlook Add-in typecheck, Vitest suite, and production build PASS.
+**Updated by:** Discrepancies workspace visual refinement
+**Repository state:** `main` includes pushed Outlook Add-in current-email binding commit `083a588`. The Confirmed Discrepancies workspace has been harmonized with the Human Review visual system, using warmer orange/review tones instead of high-contrast red/blue treatments. Latest validation in this task: Dashboard typecheck, focused Discrepancy workflow tests, and production build PASS.
 
 ---
 
@@ -110,7 +110,7 @@ Stabilization is implemented on `codex/ui-human-review-stabilization`. The backe
 | Persistence | IMPLEMENTED THROUGH PHASE 6 | Non-destructive AI proposal/audit persistence and versioned request-cache identity added |
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
-| Web Dashboard UI | IMPLEMENTED / VERIFIED | Unified operational design system, truthful overview, selected inbox state, hierarchical detail, evidence expansion, explicit waiting/failure states, and polished Human Review workflow; 12 component tests, typecheck, and production build pass |
+| Web Dashboard UI | IMPLEMENTED / VERIFIED | Unified operational design system, truthful overview, selected inbox state, hierarchical detail, evidence expansion, explicit waiting/failure states, polished Human Review workflow, and visually harmonized Discrepancies workspace; focused Discrepancy tests, typecheck, and production build pass |
 | Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, refresh, and selected-message re-resolution; 64 tests, typecheck, and production build pass |
 | Human Review product API | IMPLEMENTED / VERIFIED | Read queue/detail plus claim, separate override, resolve/recompare, and dismiss mutations are PostgreSQL/API-tested |
 | Human Review UI/workflow | IMPLEMENTED / VERIFIED | Actionable BLOCKED policy, idempotent active case, four-state lifecycle, immutable events, separate overrides, and comparison versioning are active |
@@ -228,6 +228,12 @@ Fast compare
 - Refined the Add-in task pane so the Outlook shell owns the visible app branding, while the pane listens for selected-email changes and re-resolves the corresponding HolyShip case instead of appearing static.
 - Added `docs/ui_design_system.md`. No classification, readiness, document, extraction, comparison, submission, or Human Review lifecycle semantics changed; no backend application code changed in this task.
 - Made Make's Node executable configurable as `NPM` so the existing root UI gates run on Windows via `NPM=npm.cmd`.
+
+### Discrepancies workspace visual refinement
+
+- Recolored Confirmed Discrepancies away from high-contrast red/blue controls toward the existing Human Review orange/review, neutral, and success semantic palette.
+- Updated discrepancy queue cards, selected state, status badges, difference cards, and SI/Draft BL value panels for better harmony with the Human Review page while preserving backend-driven comparison truth.
+- No backend API contract, comparison semantics, lifecycle enum, or persistence schema changed.
 
 ### Product UI — Dashboard client
 
@@ -790,6 +796,14 @@ When adding an environment variable:
 
 ## Tests & Validation
 
+### Discrepancies workspace visual refinement (2026-09-22)
+
+- Deployed backend state repair PASS: `email_499` was restored from current `ACKNOWLEDGED` state to a current `OPEN` discrepancy by calling the existing remote recompare endpoint; follow-up API checks showed `open_count=46`, `acknowledged_count=0`, and no active acknowledged discrepancies.
+- Dashboard typecheck PASS: `npm run typecheck` from `frontend/`.
+- Focused Dashboard workflow PASS: `npm run test -- DiscrepancyWorkflow` from `frontend/`; 3 tests passed.
+- Dashboard production build PASS: `npm run build` from `frontend/`.
+- Full frontend test suite was not rerun; this task changed the Discrepancies workspace styling and state restoration only.
+
 ### Outlook Add-in current-email binding (2026-09-22)
 
 - Outlook Add-in typecheck PASS: `npm run typecheck` from `outlook-addin/`.
@@ -1122,6 +1136,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-22 — Discrepancies workspace visual refinement
+
+- **Changed:** Restored the accidentally acknowledged deployed discrepancy for `email_499` to the current OPEN queue via recompare, then softened the Confirmed Discrepancies workspace with warmer review/orange tones, neutral queue panels, harmonized badges, and clearer SI vs Draft BL mismatch panels.
+- **Why:** The Discrepancies page needed to align visually with the Human Review workspace while preserving backend-authored comparison results and status semantics.
+- **Files:** `frontend/src/components/discrepancies/ConfirmedDiscrepanciesPageView.tsx`, `frontend/src/styles/app.css`, `implement.md`.
+- **Validation:** Remote API verification showed 46 open and 0 acknowledged active discrepancies; Dashboard `npm run typecheck`, `npm run test -- DiscrepancyWorkflow` (3 passed), and `npm run build` passed from `frontend/`.
+- **Next:** User visual review on the deployed page.
 
 ### 2026-09-22 — Outlook Add-in current-email binding
 
