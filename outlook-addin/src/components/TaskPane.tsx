@@ -489,12 +489,16 @@ export function TaskPane({
   }, [contextProvider]);
 
 
-  // Refresh: full page reload so Office.js re-initialises and binds to the
-  // email that is currently open in the reading pane.  This is the most reliable
-  // way to switch context in New Outlook where mailbox.item can lag.
-  const refresh = useCallback(() => {
-    window.location.reload();
+  // In New Outlook's WebView2, window.location.reload() may be intercepted
+  // and served from memory without re-initialising Office.js.
+  // Navigate to a timestamped URL instead to force a true navigation event
+  // that causes Office.js to re-bind to the current reading-pane email.
+  const hardNavigate = useCallback(() => {
+    const base = window.location.origin + window.location.pathname;
+    window.location.href = base + "?v=" + Date.now();
   }, []);
+
+  const refresh = hardNavigate;
 
 
   useEffect(() => {
@@ -518,8 +522,9 @@ export function TaskPane({
         }
 
         if (currentKey !== lastContextKey) {
-          // Email changed detected via polling — reload to pick up new context
-          window.location.reload();
+          // Email changed — force a hard navigation so Office.js re-binds
+          const base = window.location.origin + window.location.pathname;
+          window.location.href = base + "?v=" + Date.now();
         }
       } catch {
         // ignore transient failures
@@ -532,13 +537,14 @@ export function TaskPane({
     const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
     let itemChangedRegistered = false;
 
-    // When the user clicks a different email, reload the entire page.
-    // This is the most reliable approach for New Outlook where mailbox.item and
-    // getSelectedItemsAsync can both lag or return stale data.
-    // After reload, Office.js re-initialises and binds to the currently open email.
+    // When the user clicks a different email, force a hard navigation.
+    // Using href assignment (not reload()) bypasses WebView2 in-memory page caching
+    // and causes Office.js to re-initialise with the current reading-pane email.
     const onItemChanged = () => {
-      window.location.reload();
+      const base = window.location.origin + window.location.pathname;
+      window.location.href = base + "?v=" + Date.now();
     };
+
 
     if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
       try {
