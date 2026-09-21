@@ -44,7 +44,7 @@ from backend.app.storage.models import (
 from backend.app.resolution.runtime import get_configured_resolution_executor_factory
 from backend.app.review.service import HumanReviewService, ReviewConflictError
 from backend.app.sync.service import SyncService
-from backend.app.api.analytics_helper import get_human_review_analytics
+from backend.app.api.analytics_helper import get_human_review_analytics, get_human_review_reconciliation
 from backend.app.api.product_queries import (
     get_email_detail,
     get_human_review as get_product_human_review,
@@ -68,6 +68,7 @@ from backend.app.api.product_schemas import (
     ReviewOverrideIn,
     ReviewResolveIn,
     HumanReviewAnalytics,
+    HumanReviewReconciliation,
 )
 
 router = APIRouter()
@@ -490,6 +491,15 @@ def product_email_detail_alias(
 )
 def product_human_review_analytics(session: Session = Depends(get_session)):
     return get_human_review_analytics(session)
+
+@router.get(
+    "/v1/human-review-reconciliation",
+    response_model=HumanReviewReconciliation,
+    summary="Get persisted Human Review reconciliation diagnostics",
+)
+def product_human_review_reconciliation(session: Session = Depends(get_session)):
+    return get_human_review_reconciliation(session)
+
 
 @router.get(
     "/v1/human-review",
