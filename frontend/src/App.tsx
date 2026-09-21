@@ -1455,6 +1455,73 @@ function EmailDetailContent({
   );
 }
 
+function getReviewActionGuidance(
+  review: ProductReview,
+  isFieldLevel: boolean,
+  unresolvedCount: number
+): { actionTitle: string; instruction: string } {
+  if (review.case_origin === "LEGACY") {
+    return {
+      actionTitle: "No action required",
+      instruction: "Historical review record is read-only.",
+    };
+  }
+
+  if (isFieldLevel) {
+    const count = review.affected_fields?.length || unresolvedCount || 1;
+    const isMismatch = review.reason_code === "COMPARISON_MISMATCH";
+    return {
+      actionTitle: isMismatch ? "Review mismatched fields" : (review.suggested_action || "Review unresolved fields"),
+      instruction: `Please review the ${count} ${isMismatch ? "mismatched" : "unresolved"} field(s) below. Click any field chip or table row to edit, enter verified values from documents, and submit "Resolve & Recompare".`,
+    };
+  }
+
+  switch (review.reason_code) {
+    case "WRONG_DOCUMENT_TYPE":
+    case "MULTIPLE_CANDIDATES":
+      return {
+        actionTitle: "Confirm attached shipping documents",
+        instruction:
+          "The attached document failed validation and is not a valid Shipping Instruction or Draft Bill of Lading (e.g. Commercial Invoice or Packing List). Review attached files under 'Email & Documents'. Dismiss this review case as NOT_ACTIONABLE / WRONG_DOCUMENT_TYPE, or request the sender to submit the correct SI / Draft BL.",
+      };
+    case "MISSING_REQUIRED_ATTACHMENT":
+    case "READINESS_UNRESOLVED":
+      return {
+        actionTitle: "Provide or request required document",
+        instruction:
+          "A required shipping document (Draft BL or SI) was not attached to the email. Inspect the email thread under 'Email & Documents' or follow up with the sender to obtain the missing document, or dismiss as NOT_ACTIONABLE.",
+      };
+    case "UNREADABLE_ATTACHMENT":
+    case "CORRUPTED_ATTACHMENT":
+    case "UNSUPPORTED_ATTACHMENT":
+      return {
+        actionTitle: "Inspect document readability",
+        instruction:
+          "The attached document could not be reliably parsed or read via OCR (e.g. low-resolution scan or unsupported format). Inspect the file in 'Email & Documents', request a clear digital PDF from the customer, or dismiss the case.",
+      };
+    case "DOCUMENT_ROLE_UNRESOLVED":
+      return {
+        actionTitle: "Confirm document roles",
+        instruction:
+          "HolyShip could not determine which file is the Shipping Instruction and which is the Draft BL. Inspect both documents under 'Email & Documents' to verify document types.",
+      };
+    case "CLASSIFICATION_UNRESOLVED":
+      return {
+        actionTitle: "Confirm email intent",
+        instruction:
+          "The email intent is ambiguous between document comparison and other request types. Review the email body and subject under 'Email & Documents' to determine if this requires document comparison, or dismiss with INCORRECT_ROUTING.",
+      };
+    default:
+      return {
+        actionTitle: review.suggested_action || "Investigate case exception",
+        instruction:
+          review.human_explanation ||
+          review.reason_text ||
+          "Inspect email and document evidence under 'Email & Documents', then decide whether to dismiss or reprocess.",
+      };
+  }
+}
+
 function HumanReviewPageView({
   reviews,
   analytics,
@@ -1505,7 +1572,23 @@ function HumanReviewPageView({
     } else {
       setReviewer("John Doe");
     }
-  }, [selected?.id, selected?.reviewer_name]);
+
+    if (selected?.reason_code) {
+      if (selected.reason_code === "WRONG_DOCUMENT_TYPE") {
+        setDismissReason("WRONG_DOCUMENT_TYPE");
+      } else if (selected.reason_code === "MISSING_REQUIRED_ATTACHMENT") {
+        setDismissReason("MISSING_ATTACHMENT");
+      } else if (selected.reason_code === "UNREADABLE_ATTACHMENT" || selected.reason_code === "CORRUPTED_ATTACHMENT") {
+        setDismissReason("UNREADABLE_DOCUMENT");
+      } else if (selected.reason_code === "CLASSIFICATION_UNRESOLVED") {
+        setDismissReason("INCORRECT_ROUTING");
+      } else {
+        setDismissReason("NOT_ACTIONABLE");
+      }
+    } else {
+      setDismissReason("NOT_ACTIONABLE");
+    }
+  }, [selected?.id, selected?.reviewer_name, selected?.reason_code]);
 
   const [reviewPage, setReviewPage] = useState(0);
   const pageSize = 20;
@@ -1612,6 +1695,33 @@ function HumanReviewPageView({
   const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
   const rawExplanation = selected?.human_explanation || selected?.reason_text || "";
   const cleanExplanation = rawExplanation.replace(/\s*Affected fields:.*$/i, "").trim() || rawExplanation;
+
+  const nonFieldReasonCodes = new Set([
+    "WRONG_DOCUMENT_TYPE",
+    "MISSING_REQUIRED_ATTACHMENT",
+    "UNREADABLE_ATTACHMENT",
+    "UNSUPPORTED_ATTACHMENT",
+    "CORRUPTED_ATTACHMENT",
+    "MULTIPLE_CANDIDATES",
+    "DOCUMENT_ROLE_UNRESOLVED",
+    "READINESS_UNRESOLVED",
+    "CLASSIFICATION_UNRESOLVED",
+    "STAGE2_UNRESOLVED",
+  ]);
+
+  const isFieldLevel = Boolean(
+    selected &&
+    selected.comparison &&
+    !nonFieldReasonCodes.has(selected.reason_code) &&
+    ((selected.affected_fields && selected.affected_fields.length > 0) ||
+     selected.reason_code === "COMPARISON_UNRESOLVED" ||
+     selected.reason_code === "COMPARISON_MISMATCH" ||
+     selected.reason_code === "MISSING_REQUIRED_VALUE")
+  );
+
+  const guidance = selected
+    ? getReviewActionGuidance(selected, isFieldLevel, selectedUnresolved)
+    : { actionTitle: "Review unresolved fields", instruction: "" };
 
   // Total count in current view mode population
   const totalInCurrentMode = (reviews?.items ?? []).filter((review) => {
@@ -1831,7 +1941,7 @@ function HumanReviewPageView({
                   <div className="detail-header-info">
                     <div className="detail-eyebrow-row">
                       <span className="eyebrow">Human Review</span>
-                      <span className="case-id-badge">#{selected.id.slice(0, 8)}</span>
+                      <span className="case-id-badge">#{selected.id ? String(selected.id).slice(0, 8) : "case"}</span>
                     </div>
                     <h2 className="detail-title-text" title={selected.email?.subject || "Review case"}>
                       {selected.email?.subject || "Review case"}
@@ -1875,14 +1985,25 @@ function HumanReviewPageView({
                           Start / Claim
                         </button>
                       ) : null}
-                      <button
-                        className="button-primary btn-compact"
-                        type="button"
-                        disabled={actionState === "loading" || selected.status === "DISMISSED"}
-                        onClick={() => void onResolve(reviewer, note)}
-                      >
-                        {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
-                      </button>
+                      {isFieldLevel ? (
+                        <button
+                          className="button-primary btn-compact"
+                          type="button"
+                          disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                          onClick={() => void onResolve(reviewer, note)}
+                        >
+                          {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
+                        </button>
+                      ) : (
+                        <button
+                          className="button-danger-secondary btn-compact"
+                          type="button"
+                          disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                          onClick={() => void onDismiss(reviewer, dismissReason || selected.reason_code, note)}
+                        >
+                          {actionState === "loading" ? "Dismissing…" : selected.status === "DISMISSED" ? "Dismissed" : "Dismiss Review"}
+                        </button>
+                      )}
                     </div>
                   </div>
                 ) : (
@@ -1899,11 +2020,15 @@ function HumanReviewPageView({
                     className={cx("detail-tab-btn", detailTab === "fields" && "active")}
                     onClick={() => setDetailTab("fields")}
                   >
-                    <CheckCircle2 size={13} />
-                    <span>Comparison & Overrides</span>
-                    {selectedUnresolved > 0 ? (
-                      <span className="tab-pill-badge unresolved">{selectedUnresolved}</span>
-                    ) : null}
+                    {isFieldLevel ? <CheckCircle2 size={13} /> : <AlertCircle size={13} />}
+                    <span>{isFieldLevel ? "Comparison & Overrides" : "Document Exception"}</span>
+                    {isFieldLevel ? (
+                      selectedUnresolved > 0 ? (
+                        <span className="tab-pill-badge unresolved">{selectedUnresolved}</span>
+                      ) : null
+                    ) : (
+                      <span className="tab-pill-badge unresolved">Action Needed</span>
+                    )}
                   </button>
                   <button
                     type="button"
@@ -1960,16 +2085,13 @@ function HumanReviewPageView({
                     {showActionGuidance && (
                       <div className="action-guidance-expanded">
                         <p className="action-guidance-text">
-                          <strong>{selected.case_origin === "LEGACY" ? "No action required" : (selected.suggested_action || "Review unresolved fields")}:</strong>{" "}
-                          {selected.case_origin === "LEGACY"
-                            ? "Historical review record is read-only."
-                            : `Please review the ${selected.affected_fields?.length || selectedUnresolved} unresolved field(s) below. Click any field chip to edit, enter verified values from documents, and submit "Resolve & Recompare".`}
+                          <strong>{guidance.actionTitle}:</strong> {guidance.instruction}
                         </p>
                       </div>
                     )}
                   </div>
 
-                  {selected.affected_fields?.length ? (
+                  {isFieldLevel && selected.affected_fields?.length ? (
                     <div className="callout-chips-row">
                       <span className="chips-title">Affected fields (click to edit):</span>
                       <div className="chips-container">
@@ -1996,7 +2118,7 @@ function HumanReviewPageView({
                       </div>
                     </div>
                   ) : (
-                    <p className="affected-fields-summary">Affected area: {selected.affected_area || "Review case"}</p>
+                    <p className="affected-fields-summary">Affected area: {selected.affected_area || (isFieldLevel ? "Document fields" : "Documents")}</p>
                   )}
 
                   <details className="callout-pipeline-details">
@@ -2014,254 +2136,424 @@ function HumanReviewPageView({
 
               {detailTab === "fields" && (
                 <div className="tab-pane">
-                  <div className="detail-section">
-                    <div className="section-heading-row">
-                      <div>
-                        <h3>Seven reviewed fields</h3>
-                        <p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p>
-                      </div>
-                      <span className="total-pill pill-unresolved">{selectedUnresolved} unresolved</span>
-                    </div>
-                    <div className="comparison-table-wrap">
-                      <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
-                        <colgroup>
-                          <col style={{ width: "18%", minWidth: "80px" }} />
-                          <col style={{ width: "28%", minWidth: "110px" }} />
-                          <col style={{ width: "26%", minWidth: "100px" }} />
-                          <col style={{ width: "18%", minWidth: "105px" }} />
-                          <col style={{ width: "10%", minWidth: "60px" }} />
-                        </colgroup>
-                        <thead>
-                          <tr>
-                            <th>Field</th>
-                            <th>Shipping Instruction</th>
-                            <th>Draft BL</th>
-                            <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>System result</th>
-                            <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {canonicalFields.map((name) => {
-                            const compared = selected.comparison?.fields.find((item) => item.field === name);
-                            const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
-                            const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
-                            return (
-                              <tr
-                                key={name}
-                                className={cx(
-                                  compared?.status === "MISMATCH" && "field-mismatch",
-                                  compared?.status === "UNRESOLVED" && "field-unresolved"
-                                )}
-                              >
-                                <th>{labelForField(name)}</th>
-                                <td>
-                                  <span className="value-label">Original SI</span>
-                                  {displayValue(compared?.si.raw)}
-                                  {siOverride ? (
-                                    <span className="reviewed-value">
-                                      <span>Reviewed SI</span>
-                                      {displayValue(siOverride.corrected_value)}
-                                    </span>
-                                  ) : null}
-                                  <span className="effective-value">
-                                    Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}
-                                  </span>
-                                </td>
-                                <td>
-                                  <span className="value-label">Original BL</span>
-                                  {displayValue(compared?.bl.raw)}
-                                  {blOverride ? (
-                                    <span className="reviewed-value">
-                                      <span>Reviewed BL</span>
-                                      {displayValue(blOverride.corrected_value)}
-                                    </span>
-                                  ) : null}
-                                  <span className="effective-value">
-                                    Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}
-                                  </span>
-                                </td>
-                                <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                                  <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
-                                </td>
-                                <td style={{ textAlign: "center" }}>
-                                  {selected.case_origin === "ACTIVE" ? (
-                                    <button
-                                      type="button"
-                                      className="row-edit-action-btn"
-                                      title={`Quick edit ${labelForField(name)}`}
-                                      onClick={() => {
-                                        setField(name);
-                                        if (compared?.bl.raw == null && compared?.si.raw != null) {
-                                          setSide("BL");
-                                        } else if (compared?.si.raw == null && compared?.bl.raw != null) {
-                                          setSide("SI");
-                                        } else {
-                                          setSide("BL");
-                                        }
-                                        const el = document.getElementById("review-editor-box");
-                                        if (el) el.scrollIntoView({ behavior: "smooth" });
-                                      }}
-                                    >
-                                      Edit
-                                    </button>
-                                  ) : (
-                                    <span className="subtle">—</span>
-                                  )}
-                                </td>
-                              </tr>
-                            );
-                          })}
-                        </tbody>
-                      </table>
-                    </div>
-                  </div>
-
-                  {activeOverrides.length > 0 && (
-                    <div className="staged-overrides-card">
-                      <div className="staged-overrides-header">
-                        <strong>Staged Overrides ({activeOverrides.length})</strong>
-                        <span>Applied on Recomparison</span>
-                      </div>
-                      <div className="staged-overrides-list">
-                        {activeOverrides.map((ov) => (
-                          <div key={ov.id || `${ov.document_side}-${ov.field}`} className="staged-override-chip">
-                            <span className="override-side-tag">{ov.document_side}</span>
-                            <span className="override-field-name">{labelForField(ov.field)}:</span>
-                            <strong className="override-val">{displayValue(ov.corrected_value)}</strong>
-                            {ov.reviewer_name && <small className="override-by">({ov.reviewer_name})</small>}
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-
-                  {selected.case_origin === "ACTIVE" ? (
-                    <div id="review-editor-box" className="detail-section review-editor">
-                      <h3>Save a correction</h3>
-                      <p>Corrections are stored separately from original extraction evidence.</p>
-                      <div className="form-grid">
-                        <label>
-                          Document side
-                          <select
-                            aria-label="Override side"
-                            value={side}
-                            onChange={(event) => setSide(event.target.value as "SI" | "BL")}
-                          >
-                            <option>SI</option>
-                            <option>BL</option>
-                          </select>
-                        </label>
-                        <label>
-                          Field
-                          <select
-                            aria-label="Override field"
-                            value={field}
-                            onChange={(event) => setField(event.target.value)}
-                          >
-                            {canonicalFields.map((name) => (
-                              <option key={name} value={name}>{labelForField(name)}</option>
-                            ))}
-                          </select>
-                        </label>
-                        <label className="form-span">
-                          Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
-                          <input
-                            type={inputType}
-                            step={inputStep}
-                            min={inputType === "number" ? "0" : undefined}
-                            aria-label="Corrected value"
-                            aria-describedby="correction-help"
-                            value={correctedValue}
-                            onChange={(event) => setCorrectedValue(event.target.value)}
-                            placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
-                          />
-                        </label>
-                        <label className="form-span">
-                          Reviewer note
-                          <textarea
-                            aria-label="Reviewer note"
-                            value={note}
-                            onChange={(event) => setNote(event.target.value)}
-                            placeholder="Explain the evidence for this correction"
-                          />
-                        </label>
-                      </div>
-                      <p id="correction-help" className="form-help">
-                        The saved correction becomes the effective value only when Resolve & Recompare succeeds.
-                      </p>
-                      <div className="editor-button-row">
-                        <button
-                          className="button-primary"
-                          type="button"
-                          disabled={!correctedValue || actionState === "loading"}
-                          onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
-                        >
-                          {actionState === "loading" ? "Saving…" : "Save Correction"}
-                        </button>
-                        {actionState === "ready" && activeOverrides.length ? (
-                          <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
-                        ) : null}
-                      </div>
-                    </div>
-                  ) : (
-                    <div className="detail-section">
-                      <div className="state-note">
-                        <strong>Historical review record</strong>
-                        <span>This record is retained for audit history and is read-only.</span>
-                        <small>No correction, claim, resolve, or dismiss action is available.</small>
-                      </div>
-                    </div>
-                  )}
-
-                  {selected.case_origin === "ACTIVE" ? (
-                    <div className="detail-section dismiss-section">
-                      <div id="dismiss-zone-box" className="dismiss-zone">
-                        <div className="dismiss-zone-header">
-                          <div className="dismiss-zone-title-row">
-                            <span className="dismiss-tag">Danger Zone</span>
-                            <strong className="dismiss-title">Dismiss without resolving</strong>
-                          </div>
-                          <p className="dismiss-subtitle">
-                            Dismiss records an audited decision. It does not mark the comparison completed.
+                  {!isFieldLevel ? (
+                    <div className="detail-section document-exception-panel">
+                      <div className="section-heading-row">
+                        <div>
+                          <h3>Document role & validation exception</h3>
+                          <p>
+                            Automated comparison was halted before field extraction because valid Shipping Instruction (SI) and Draft Bill of Lading (BL) documents could not be established.
                           </p>
                         </div>
-                        <div className="dismiss-form-grid">
-                          <label>
-                            Dismiss reason
-                            <input
-                              aria-label="Dismiss reason"
-                              value={dismissReason}
-                              onChange={(event) => setDismissReason(event.target.value)}
-                              placeholder="e.g. NOT_ACTIONABLE"
-                            />
-                          </label>
-                          <button
-                            className="button-danger-secondary"
-                            type="button"
-                            disabled={actionState === "loading" || !dismissReason.trim()}
-                            onClick={() => void onDismiss(reviewer, dismissReason, note)}
-                          >
-                            {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
-                          </button>
+                        <span className="badge badge-bad">{displayLabel(selected.reason_code)}</span>
+                      </div>
+
+                      <div className="document-exception-alert-box">
+                        <div className="exception-alert-header">
+                          <AlertCircle size={20} className="exception-alert-icon" />
+                          <div>
+                            <strong>Validation Outcome: {selected.canonical_reason || displayLabel(selected.reason_code)}</strong>
+                            <p>{cleanExplanation}</p>
+                          </div>
                         </div>
-                        <div className="dismiss-presets">
-                          <span className="dismiss-presets-label">Quick presets:</span>
-                          {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
-                            <button
-                              key={preset}
-                              type="button"
-                              className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
-                              onClick={() => setDismissReason(preset)}
-                            >
-                              {preset}
-                            </button>
-                          ))}
+
+                        <div className="exception-sop-guide">
+                          <span className="sop-guide-title">Standard Operational Procedure (SOP):</span>
+                          <ol className="sop-steps-list">
+                            <li>
+                              <strong>Verify attached files:</strong> Check whether the sender mistakenly attached an unrelated document (e.g. Commercial Invoice, Packing List) instead of a draft B/L or SI.
+                            </li>
+                            <li>
+                              <strong>Inspect email body:</strong> Review the message context in the <em>Email & Documents</em> tab to check for customer notes, instructions, or booking numbers.
+                            </li>
+                            <li>
+                              <strong>Record auditable decision:</strong> Dismiss this review case with the appropriate reason code below, or request the customer to supply the correct document.
+                            </li>
+                          </ol>
                         </div>
                       </div>
+
+                      <div className="detail-section-nested">
+                        <div className="nested-section-header">
+                          <h4>Received Attachments ({selected.documents?.length || 0})</h4>
+                          <button
+                            type="button"
+                            className="button-secondary btn-compact view-in-email-btn"
+                            onClick={() => setDetailTab("context")}
+                          >
+                            <Mail size={13} />
+                            <span>Open Email & Documents Tab</span>
+                          </button>
+                        </div>
+
+                        {selected.documents?.length ? (
+                          <div className="documents-card-list">
+                            {selected.documents.map((doc) => {
+                              const evidenceSummary =
+                                doc.role_evidence && typeof doc.role_evidence === "object" && "summary" in doc.role_evidence
+                                  ? String((doc.role_evidence as { summary?: string }).summary || "")
+                                  : null;
+                              return (
+                                <div className="attachment-row document-card" key={doc.id}>
+                                  <FileText size={20} className="doc-icon" />
+                                  <div className="doc-info">
+                                    <strong className="doc-name">{doc.filename}</strong>
+                                    <div className="doc-badges">
+                                      <span className="badge badge-info">Role: {displayLabel(doc.role)}</span>
+                                      <span
+                                        className={cx(
+                                          "badge",
+                                          doc.validation_outcome === "VALID"
+                                            ? "badge-good"
+                                            : doc.validation_outcome === "INVALID" ||
+                                              doc.validation_outcome === "WRONG_DOCUMENT_TYPE" ||
+                                              doc.validation_outcome === "CONFLICTING_MARKER"
+                                            ? "badge-bad"
+                                            : "badge-warn"
+                                        )}
+                                      >
+                                        Validation: {displayLabel(doc.validation_outcome)}
+                                      </span>
+                                      {doc.routing_outcome ? (
+                                        <span className="badge badge-muted">Router: {displayLabel(doc.routing_outcome)}</span>
+                                      ) : null}
+                                    </div>
+                                    {evidenceSummary ? (
+                                      <small className="doc-evidence-hint">{evidenceSummary}</small>
+                                    ) : null}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        ) : (
+                          <EmptyState title="No attachments found" body="The email contained no attached documents to extract or compare." />
+                        )}
+                      </div>
+
+                      {selected.case_origin === "ACTIVE" ? (
+                        <div className="detail-section dismiss-section" style={{ marginTop: "24px" }}>
+                          <div id="dismiss-zone-box" className="dismiss-zone">
+                            <div className="dismiss-zone-header">
+                              <div className="dismiss-zone-title-row">
+                                <span className="dismiss-tag">Resolution Action</span>
+                                <strong className="dismiss-title">Dismiss & Record Operational Decision</strong>
+                              </div>
+                              <p className="dismiss-subtitle">
+                                Dismissing records an audited resolution in the review history. If the customer subsequently emails valid documents, a new verification case will be created automatically.
+                              </p>
+                            </div>
+                            <div className="dismiss-form-grid">
+                              <label>
+                                Dismiss reason
+                                <input
+                                  aria-label="Dismiss reason"
+                                  value={dismissReason}
+                                  onChange={(event) => setDismissReason(event.target.value)}
+                                  placeholder="e.g. WRONG_DOCUMENT_TYPE"
+                                />
+                              </label>
+                              <button
+                                className="button-danger-secondary"
+                                type="button"
+                                disabled={actionState === "loading" || !dismissReason.trim()}
+                                onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                              >
+                                {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                              </button>
+                            </div>
+                            <label style={{ marginTop: "6px" }}>
+                              Resolution Note (Optional)
+                              <input
+                                aria-label="Dismiss note"
+                                value={note}
+                                onChange={(event) => setNote(event.target.value)}
+                                placeholder="e.g. Attached file is a Certificate of Origin, requested customer to re-send Draft BL"
+                              />
+                            </label>
+                            <div className="dismiss-presets">
+                              <span className="dismiss-presets-label">Quick presets:</span>
+                              {[
+                                "WRONG_DOCUMENT_TYPE",
+                                "MISSING_ATTACHMENT",
+                                "NOT_ACTIONABLE",
+                                "INCORRECT_ROUTING",
+                                "DUPLICATE_CASE",
+                              ].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                  onClick={() => setDismissReason(preset)}
+                                >
+                                  {preset}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="detail-section">
+                          <div className="state-note">
+                            <strong>Historical review record</strong>
+                            <span>This record is retained for audit history and is read-only.</span>
+                          </div>
+                        </div>
+                      )}
                     </div>
-                  ) : null}
+                  ) : (
+                    <>
+                      <div className="detail-section">
+                        <div className="section-heading-row">
+                          <div>
+                            <h3>Seven reviewed fields</h3>
+                            <p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p>
+                          </div>
+                          <span className="total-pill pill-unresolved">{selectedUnresolved} unresolved</span>
+                        </div>
+                        <div className="comparison-table-wrap">
+                          <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
+                            <colgroup>
+                              <col style={{ width: "18%", minWidth: "80px" }} />
+                              <col style={{ width: "28%", minWidth: "110px" }} />
+                              <col style={{ width: "26%", minWidth: "100px" }} />
+                              <col style={{ width: "18%", minWidth: "105px" }} />
+                              <col style={{ width: "10%", minWidth: "60px" }} />
+                            </colgroup>
+                            <thead>
+                              <tr>
+                                <th>Field</th>
+                                <th>Shipping Instruction</th>
+                                <th>Draft BL</th>
+                                <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>System result</th>
+                                <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {canonicalFields.map((name) => {
+                                const compared = selected.comparison?.fields.find((item) => item.field === name);
+                                const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
+                                const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                                return (
+                                  <tr
+                                    key={name}
+                                    className={cx(
+                                      compared?.status === "MISMATCH" && "field-mismatch",
+                                      compared?.status === "UNRESOLVED" && "field-unresolved"
+                                    )}
+                                  >
+                                    <th>{labelForField(name)}</th>
+                                    <td>
+                                      <span className="value-label">Original SI</span>
+                                      {displayValue(compared?.si.raw)}
+                                      {siOverride ? (
+                                        <span className="reviewed-value">
+                                          <span>Reviewed SI</span>
+                                          {displayValue(siOverride.corrected_value)}
+                                        </span>
+                                      ) : null}
+                                      <span className="effective-value">
+                                        Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}
+                                      </span>
+                                    </td>
+                                    <td>
+                                      <span className="value-label">Original BL</span>
+                                      {displayValue(compared?.bl.raw)}
+                                      {blOverride ? (
+                                        <span className="reviewed-value">
+                                          <span>Reviewed BL</span>
+                                          {displayValue(blOverride.corrected_value)}
+                                        </span>
+                                      ) : null}
+                                      <span className="effective-value">
+                                        Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}
+                                      </span>
+                                    </td>
+                                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                                      <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
+                                    </td>
+                                    <td style={{ textAlign: "center" }}>
+                                      {selected.case_origin === "ACTIVE" ? (
+                                        <button
+                                          type="button"
+                                          className="row-edit-action-btn"
+                                          title={`Quick edit ${labelForField(name)}`}
+                                          onClick={() => {
+                                            setField(name);
+                                            if (compared?.bl.raw == null && compared?.si.raw != null) {
+                                              setSide("BL");
+                                            } else if (compared?.si.raw == null && compared?.bl.raw != null) {
+                                              setSide("SI");
+                                            } else {
+                                              setSide("BL");
+                                            }
+                                            const el = document.getElementById("review-editor-box");
+                                            if (el) el.scrollIntoView({ behavior: "smooth" });
+                                          }}
+                                        >
+                                          Edit
+                                        </button>
+                                      ) : (
+                                        <span className="subtle">—</span>
+                                      )}
+                                    </td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                        </div>
+                      </div>
+
+                      {activeOverrides.length > 0 && (
+                        <div className="staged-overrides-card">
+                          <div className="staged-overrides-header">
+                            <strong>Staged Overrides ({activeOverrides.length})</strong>
+                            <span>Applied on Recomparison</span>
+                          </div>
+                          <div className="staged-overrides-list">
+                            {activeOverrides.map((ov) => (
+                              <div key={ov.id || `${ov.document_side}-${ov.field}`} className="staged-override-chip">
+                                <span className="override-side-tag">{ov.document_side}</span>
+                                <span className="override-field-name">{labelForField(ov.field)}:</span>
+                                <strong className="override-val">{displayValue(ov.corrected_value)}</strong>
+                                {ov.reviewer_name && <small className="override-by">({ov.reviewer_name})</small>}
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+
+                      {selected.case_origin === "ACTIVE" ? (
+                        <div id="review-editor-box" className="detail-section review-editor">
+                          <h3>Save a correction</h3>
+                          <p>Corrections are stored separately from original extraction evidence.</p>
+                          <div className="form-grid">
+                            <label>
+                              Document side
+                              <select
+                                aria-label="Override side"
+                                value={side}
+                                onChange={(event) => setSide(event.target.value as "SI" | "BL")}
+                              >
+                                <option>SI</option>
+                                <option>BL</option>
+                              </select>
+                            </label>
+                            <label>
+                              Field
+                              <select
+                                aria-label="Override field"
+                                value={field}
+                                onChange={(event) => setField(event.target.value)}
+                              >
+                                {canonicalFields.map((name) => (
+                                  <option key={name} value={name}>{labelForField(name)}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <label className="form-span">
+                              Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
+                              <input
+                                type={inputType}
+                                step={inputStep}
+                                min={inputType === "number" ? "0" : undefined}
+                                aria-label="Corrected value"
+                                aria-describedby="correction-help"
+                                value={correctedValue}
+                                onChange={(event) => setCorrectedValue(event.target.value)}
+                                placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
+                              />
+                            </label>
+                            <label className="form-span">
+                              Reviewer note
+                              <textarea
+                                aria-label="Reviewer note"
+                                value={note}
+                                onChange={(event) => setNote(event.target.value)}
+                                placeholder="Explain the evidence for this correction"
+                              />
+                            </label>
+                          </div>
+                          <p id="correction-help" className="form-help">
+                            The saved correction becomes the effective value only when Resolve & Recompare succeeds.
+                          </p>
+                          <div className="editor-button-row">
+                            <button
+                              className="button-primary"
+                              type="button"
+                              disabled={!correctedValue || actionState === "loading"}
+                              onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
+                            >
+                              {actionState === "loading" ? "Saving…" : "Save Correction"}
+                            </button>
+                            {actionState === "ready" && activeOverrides.length ? (
+                              <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
+                            ) : null}
+                          </div>
+                        </div>
+                      ) : (
+                        <div className="detail-section">
+                          <div className="state-note">
+                            <strong>Historical review record</strong>
+                            <span>This record is retained for audit history and is read-only.</span>
+                            <small>No correction, claim, resolve, or dismiss action is available.</small>
+                          </div>
+                        </div>
+                      )}
+
+                      {selected.case_origin === "ACTIVE" ? (
+                        <div className="detail-section dismiss-section">
+                          <div id="dismiss-zone-box" className="dismiss-zone">
+                            <div className="dismiss-zone-header">
+                              <div className="dismiss-zone-title-row">
+                                <span className="dismiss-tag">Danger Zone</span>
+                                <strong className="dismiss-title">Dismiss without resolving</strong>
+                              </div>
+                              <p className="dismiss-subtitle">
+                                Dismiss records an audited decision. It does not mark the comparison completed.
+                              </p>
+                            </div>
+                            <div className="dismiss-form-grid">
+                              <label>
+                                Dismiss reason
+                                <input
+                                  aria-label="Dismiss reason"
+                                  value={dismissReason}
+                                  onChange={(event) => setDismissReason(event.target.value)}
+                                  placeholder="e.g. NOT_ACTIONABLE"
+                                />
+                              </label>
+                              <button
+                                className="button-danger-secondary"
+                                type="button"
+                                disabled={actionState === "loading" || !dismissReason.trim()}
+                                onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                              >
+                                {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                              </button>
+                            </div>
+                            <div className="dismiss-presets">
+                              <span className="dismiss-presets-label">Quick presets:</span>
+                              {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                  onClick={() => setDismissReason(preset)}
+                                >
+                                  {preset}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
+                        </div>
+                      ) : null}
+                    </>
+                  )}
                 </div>
               )}
+
 
               {detailTab === "context" && (
                 <div className="tab-pane">

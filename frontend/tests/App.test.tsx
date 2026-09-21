@@ -27,10 +27,7 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/emails/22222222-2222-4222-8222-222222222222")) {
       return jsonResponse(overrides?.detail ?? demoDetail);
     }
-    if (url.includes("/human-review/99999999-9999-4999-8999-999999999999")) {
-      return jsonResponse(reviewDetail);
-    }
-    if (url.includes("/human-review/88888888-8888-4888-8888-888888888888")) {
+    if (url.includes("/human-review/") && !url.includes("/human-review?")) {
       return jsonResponse(reviewDetail);
     }
     if (url.includes("/human-review")) {
@@ -402,4 +399,78 @@ describe("HolyShip dashboard", () => {
     expect(await screen.findByText("2 historical")).toBeInTheDocument();
     expect(screen.queryByText("No review history")).not.toBeInTheDocument();
   });
+
+  it("renders Document Exception panel without 7-field table or field editor for non-field reviews", async () => {
+    const wrongDocReview = {
+      ...demoHumanReview.items[0],
+      id: "55555555-5555-4555-8555-555555555555",
+      reason_code: "WRONG_DOCUMENT_TYPE",
+      reason_text: "Wrong Document Type",
+      presentation_title: "Wrong document type",
+      canonical_reason: "Wrong Document Type",
+      human_explanation: "The attached file does not appear to be the required shipping document.",
+      affected_fields: [],
+      affected_area: "Documents",
+      suggested_action: "Confirm the attached document",
+      comparison: null,
+      documents: [
+        {
+          id: "11111111-1111-4111-8111-111111111111",
+          attachment_id: "att-1",
+          filename: "email_503_SI.txt",
+          role: "SI",
+          format: "PLAIN_TEXT",
+          validation_outcome: "VALID",
+          routing_outcome: "SI_FOUND",
+        },
+        {
+          id: "22222222-2222-4222-8222-222222222222",
+          attachment_id: "att-2",
+          filename: "email_503_BL.txt",
+          role: "OTHER",
+          format: "PLAIN_TEXT",
+          validation_outcome: "WRONG_DOCUMENT_TYPE",
+          routing_outcome: "WRONG_DOCUMENT_TYPE",
+          role_evidence: {
+            summary: "Conflicting business-document marker(s): CERTIFICATE OF ORIGIN",
+          },
+        },
+      ],
+    };
+
+    setupFetch({
+      humanReview: {
+        total: 1,
+        skip: 0,
+        limit: 50,
+        items: [wrongDocReview],
+      },
+      reviewDetail: wrongDocReview,
+    });
+    window.history.replaceState({}, "", "/?review=55555555-5555-4555-8555-555555555555");
+
+    render(<App />);
+
+    // Tab should say Document Exception
+    expect(await screen.findByRole("tab", { name: /Document Exception/i })).toBeInTheDocument();
+
+    // Should NOT render the 7-field comparison table or field editor
+    expect(screen.queryByRole("table", { name: "Human Review seven-field comparison" })).not.toBeInTheDocument();
+    expect(screen.queryByText("Seven reviewed fields")).not.toBeInTheDocument();
+    expect(screen.queryByText("Save a correction")).not.toBeInTheDocument();
+    expect(screen.queryByLabelText("Corrected value")).not.toBeInTheDocument();
+    expect(screen.queryByText("Resolve & Recompare")).not.toBeInTheDocument();
+
+    // Top action button should be Dismiss Review
+    expect(screen.getAllByRole("button", { name: "Dismiss Review" }).length).toBeGreaterThan(0);
+
+    // Document Exception panel should be visible
+    expect(screen.getByText("Document role & validation exception")).toBeInTheDocument();
+    expect(screen.getByText("Standard Operational Procedure (SOP):")).toBeInTheDocument();
+    expect(screen.getByText("email_503_BL.txt")).toBeInTheDocument();
+    expect(screen.getByText("Conflicting business-document marker(s): CERTIFICATE OF ORIGIN")).toBeInTheDocument();
+    expect(screen.getByText("Quick presets:")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "WRONG_DOCUMENT_TYPE" })).toBeInTheDocument();
+  });
 });
+
