@@ -206,6 +206,14 @@ export interface ProductReview {
   resolved_at?: string | null;
   confidence: number | null;
   evidence: ProductEvidence[];
+  priority?: "HIGH" | "MEDIUM" | "LOW";
+  presentation_title?: string | null;
+  human_explanation?: string | null;
+  affected_fields?: string[];
+  affected_area?: string | null;
+  suggested_action?: string | null;
+  semantic_style?: string | null;
+  age_minutes?: number;
   comparison: ProductComparison | null;
   resolutions: ProductResolution[];
   created_at: string;
