@@ -4325,3 +4325,426 @@ button:disabled {
   gap: 8px;
   margin-top: 16px;
 }
+
+/* ==========================================================================
+   Confirmed Discrepancies Page & Mobile Responsive System
+   ========================================================================== */
+
+/* Header Mobile Hamburger Button */
+.header-left-wrap {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.mobile-menu-toggle-btn {
+  display: none;
+  background: transparent;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-sm);
+  padding: 6px 8px;
+  color: var(--color-grey-800);
+  cursor: pointer;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s ease;
+}
+
+.mobile-menu-toggle-btn:hover {
+  background: var(--color-grey-100);
+  border-color: var(--color-grey-300);
+}
+
+.mobile-sidebar-backdrop {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(17, 17, 17, 0.45);
+  backdrop-filter: blur(2px);
+  z-index: 998;
+}
+
+/* Mobile Back to List Button inside Detail Views */
+.mobile-detail-nav-row {
+  display: none;
+  margin-bottom: 12px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--color-grey-200);
+}
+
+.mobile-back-to-list-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-blue-700, #0369a1);
+  background: rgba(3, 105, 161, 0.08);
+  border: 1px solid rgba(3, 105, 161, 0.2);
+  border-radius: var(--radius-sm);
+  padding: 6px 12px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.mobile-back-to-list-btn:hover {
+  background: rgba(3, 105, 161, 0.14);
+}
+
+/* Discrepancy View Specific Helper Styles */
+.discrepancies-metric-grid {
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+}
+
+.discrepancy-card-body {
+  margin-top: 6px;
+}
+
+.discrepancy-chips-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.discrepancy-chip {
+  display: inline-flex;
+  align-items: center;
+  font-size: 11px;
+  font-weight: 600;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: var(--color-grey-100);
+  color: var(--color-grey-700);
+  border: 1px solid var(--color-grey-200);
+}
+
+.discrepancy-chip.mismatch {
+  background: #fef2f2;
+  color: #b91c1c;
+  border-color: #fecaca;
+}
+
+.discrepancy-chip.unresolved {
+  background: #fffbeb;
+  color: #b45309;
+  border-color: #fde68a;
+}
+
+.discrepancy-diff-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+}
+
+.discrepancy-diff-card {
+  background: #ffffff;
+  border: 1px solid var(--color-grey-200);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
+}
+
+.discrepancy-diff-card.is-mismatch {
+  border-color: #fecaca;
+  background: #fffafa;
+}
+
+.diff-card-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 10px;
+}
+
+.diff-field-label {
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--color-grey-900);
+}
+
+.diff-side-by-side {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.diff-box {
+  border-radius: var(--radius-sm);
+  padding: 8px 12px;
+  border: 1px solid var(--color-grey-200);
+  background: #ffffff;
+}
+
+.diff-box.si-side {
+  border-left: 3px solid #16a34a;
+  background: #f0fdf4;
+}
+
+.diff-box.bl-side {
+  border-left: 3px solid #dc2626;
+  background: #fef2f2;
+}
+
+.diff-box-label {
+  display: block;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  margin-bottom: 3px;
+}
+
+.diff-box.si-side .diff-box-label {
+  color: #15803d;
+}
+
+.diff-box.bl-side .diff-box-label {
+  color: #b91c1c;
+}
+
+.diff-box-value {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-grey-900);
+  word-break: break-word;
+}
+
+.detail-tab-btn {
+  background: transparent;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  padding: 8px 16px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-grey-600);
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+
+.detail-tab-btn.active {
+  color: var(--color-orange-600);
+  border-bottom-color: var(--color-orange-500);
+}
+
+/* ==========================================================================
+   Responsive Breakpoints: Tablets & Laptops (<= 1024px)
+   ========================================================================== */
+@media (max-width: 1024px) {
+  .metric-grid,
+  .discrepancies-metric-grid,
+  .human-review-metric-grid,
+  .overview-metric-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr)) !important;
+  }
+}
+
+/* ==========================================================================
+   Responsive Breakpoints: Tablets & Mobile Landscape (<= 900px)
+   ========================================================================== */
+@media (max-width: 900px) {
+  .app-shell {
+    grid-template-columns: 1fr;
+    padding: 10px 12px;
+    gap: 12px;
+  }
+
+  /* Hamburger Menu Button */
+  .mobile-menu-toggle-btn {
+    display: inline-flex;
+  }
+
+  /* Off-canvas Sidebar Drawer */
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    bottom: 0;
+    width: 260px;
+    height: 100vh;
+    min-height: 100vh;
+    z-index: 999;
+    border-radius: 0;
+    transform: translateX(-100%);
+    transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    box-shadow: 4px 0 24px rgba(0, 0, 0, 0.18);
+  }
+
+  .sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .mobile-sidebar-backdrop {
+    display: block;
+  }
+
+  /* Overview Tri-Grid Stacking */
+  .overview-tri-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+
+  /* Queue, Discrepancy & Human Review Split Layouts on Tablet/Mobile */
+  .queue-layout {
+    grid-template-columns: 1fr !important;
+    position: relative;
+  }
+
+  .panel-resize-handle {
+    display: none !important;
+  }
+
+  /* Show/Hide Split Columns Based on Selection State */
+  .mobile-hide-when-detail-open {
+    display: none !important;
+  }
+
+  .mobile-hide-when-no-detail {
+    display: none !important;
+  }
+
+  .mobile-detail-nav-row {
+    display: block;
+  }
+
+  /* Header Topbar Flexibility */
+  .overview-header-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+    padding: 12px 14px;
+  }
+
+  .overview-header-actions {
+    justify-content: flex-start;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .topbar-divider {
+    display: none;
+  }
+
+  /* Filters Rows Flexibility */
+  .review-filters-row-1,
+  .review-filters-row,
+  .filters {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .review-view-switch {
+    width: 100%;
+    overflow-x: auto;
+    justify-content: flex-start;
+  }
+
+  .review-view-switch button {
+    flex: 1;
+    min-width: 80px;
+    text-align: center;
+  }
+
+  /* Metric Grids on Mobile */
+  .metric-grid,
+  .discrepancies-metric-grid,
+  .human-review-metric-grid,
+  .overview-metric-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 10px;
+  }
+}
+
+/* ==========================================================================
+   Responsive Breakpoints: Mobile Phones (<= 640px)
+   ========================================================================== */
+@media (max-width: 640px) {
+  body {
+    font-size: 13px;
+  }
+
+  .app-shell {
+    padding: 6px 8px;
+    gap: 8px;
+  }
+
+  .metric-grid,
+  .discrepancies-metric-grid,
+  .human-review-metric-grid,
+  .overview-metric-grid {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  .surface-panel {
+    padding: 12px;
+    border-radius: var(--radius-md);
+  }
+
+  /* Side-by-side diff boxes stack on narrow phones */
+  .diff-side-by-side {
+    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .review-card-header {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .review-card-header button {
+    width: 100%;
+  }
+
+  .detail-header-meta {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 10px;
+  }
+
+  .detail-top-action-bar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 10px;
+  }
+
+  .top-action-buttons {
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    gap: 8px;
+  }
+
+  .top-action-buttons button {
+    width: 100%;
+  }
+
+  .detail-actions {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .detail-actions button {
+    width: 100%;
+  }
+
+  /* Table overflow handling */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .pagination {
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* Modal responsiveness */
+  .modal-dialog {
+    margin: 8px;
+    width: calc(100% - 16px);
+  }
+}

@@ -17,6 +17,7 @@ import {
   Mail,
   MailCheck,
   Maximize2,
+  Menu,
   Minimize2,
   MoreHorizontal,
   LogOut,
@@ -219,6 +220,7 @@ function AppHeader({
   onRefresh,
   onInitialSync,
   syncState,
+  onToggleMobileMenu,
 }: {
   page: Page;
   state: LoadState;
@@ -226,6 +228,7 @@ function AppHeader({
   onRefresh?: () => void;
   onInitialSync?: () => void;
   syncState?: LoadState;
+  onToggleMobileMenu?: () => void;
 }) {
   const [syncTimeText, setSyncTimeText] = useState(() => formatRelativeTime(lastSyncedAt));
   const [userMenuOpen, setUserMenuOpen] = useState(false);
@@ -263,9 +266,22 @@ function AppHeader({
 
   return (
     <div className="overview-header-bar">
-      <div>
-        <p className="eyebrow" style={{ margin: 0 }}>{eyebrowText}</p>
-        <h1 className="sr-only">Shipping document operations, at a glance.</h1>
+      <div className="header-left-wrap">
+        {onToggleMobileMenu && (
+          <button
+            type="button"
+            className="mobile-menu-toggle-btn"
+            onClick={onToggleMobileMenu}
+            aria-label="Toggle navigation menu"
+            title="Open navigation menu"
+          >
+            <Menu size={20} />
+          </button>
+        )}
+        <div>
+          <p className="eyebrow" style={{ margin: 0 }}>{eyebrowText}</p>
+          <h1 className="sr-only">Shipping document operations, at a glance.</h1>
+        </div>
       </div>
       <div className="overview-header-actions">
         <div className="tooltip-wrap">
@@ -1013,7 +1029,7 @@ function QueuePage({
       className={cx("queue-layout", isFloating && "floating-layout", isResizing && "is-resizing", !detail && "queue-layout-empty")}
       style={layoutStyle}
     >
-      <div className="surface-panel queue-panel">
+      <div className={cx("surface-panel queue-panel", detail && "mobile-hide-when-detail-open")}>
         <div className="section-header queue-header">
           <div>
             <p className="eyebrow">Operational queue</p>
@@ -1256,7 +1272,7 @@ function QueuePage({
           </>
         ) : null
       ) : (
-        <div className="detail-panel-wrapper">
+        <div className={cx("detail-panel-wrapper", !detail && "mobile-hide-when-no-detail")}>
           {detail ? (
             <div
               className={cx("panel-resize-handle", isResizing && "dragging")}
@@ -1300,6 +1316,19 @@ function EmailDetailContent({
   const latestFailure = [...detail.timeline].reverse().find((event) => event.new_status === "FAILED");
   return (
     <div>
+      {/* Mobile Back to List Button */}
+      {onClose && (
+        <div className="mobile-detail-nav-row">
+          <button
+            type="button"
+            className="mobile-back-to-list-btn"
+            onClick={onClose}
+          >
+            <ChevronLeft size={16} />
+            Back to Queue
+          </button>
+        </div>
+      )}
       <div className="detail-title">
         <div className="detail-header-top">
           <p className="eyebrow" style={{ margin: 0 }}>Case inspector</p>
@@ -1601,6 +1630,7 @@ function HumanReviewPageView({
   onDismiss,
   onReprocess,
   onCaseUpdated,
+  onDeselect,
 }: {
   reviews: HumanReviewPage | null;
   analytics: HumanReviewAnalytics | null;
@@ -1616,6 +1646,7 @@ function HumanReviewPageView({
   onDismiss: (reviewer: string, reason: string, notes?: string) => Promise<void>;
   onReprocess?: (emailId: string) => void | Promise<void>;
   onCaseUpdated?: (review: ProductReview) => void | Promise<void>;
+  onDeselect?: () => void;
 }) {
   const [activeStatusFilter, setActiveStatusFilter] = useState("ACTIVE");
   const [historyStatusFilter, setHistoryStatusFilter] = useState("ALL_HISTORY");
@@ -1881,7 +1912,7 @@ function HumanReviewPageView({
         </div>
       </section>
       <section className={cx("queue-layout", isResizing && "is-resizing", !selected && "queue-layout-empty")} style={layoutStyle}>
-      <div className="surface-panel queue-panel">
+      <div className={cx("surface-panel queue-panel", selected && "mobile-hide-when-detail-open")}>
         <div className="section-header">
           <div>
             <p className="eyebrow">Actionable exception handling</p>
@@ -2036,7 +2067,7 @@ function HumanReviewPageView({
         )}
       </div>
 
-      <div className="detail-panel-wrapper">
+      <div className={cx("detail-panel-wrapper", !selected && "mobile-hide-when-no-detail")}>
         {selected ? (
           <div
             className={cx("panel-resize-handle", isResizing && "dragging")}
@@ -2049,6 +2080,18 @@ function HumanReviewPageView({
         <div className={cx("surface-panel detail-panel", !selected && "detail-panel-empty")}>
           {!selected ? <EmptyState title="Select a review" body="Open an actionable case to inspect documents, seven fields, provenance, overrides, and its audit trail." /> : (
             <div className="review-detail">
+              {onDeselect && (
+                <div className="mobile-detail-nav-row">
+                  <button
+                    type="button"
+                    className="mobile-back-to-list-btn"
+                    onClick={onDeselect}
+                  >
+                    <ChevronLeft size={16} />
+                    Back to Reviews
+                  </button>
+                </div>
+              )}
               <header className="detail-sticky-header">
                 <div className="detail-header-meta">
                   <div className="detail-header-info">
@@ -3153,6 +3196,7 @@ function HumanReviewPageView({
 
 export default function App() {
   const [page, setPage] = useState<Page>("overview");
+  const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [summary, setSummary] = useState<ProductSummary | null>(null);
   const [queue, setQueue] = useState<EmailQueuePage | null>(null);
   const [detail, setDetail] = useState<ProductEmailDetail | null>(null);
@@ -3456,12 +3500,22 @@ export default function App() {
 
   const navigate = (nextPage: Page) => {
     setPage(nextPage);
+    setMobileMenuOpen(false);
     window.history.replaceState({}, "", window.location.pathname);
   };
 
   return (
     <div className="app-shell">
-      <aside className="sidebar" aria-label="Primary navigation">
+      {/* Mobile Drawer Backdrop */}
+      {mobileMenuOpen && (
+        <div
+          className="mobile-sidebar-backdrop"
+          onClick={() => setMobileMenuOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      <aside className={cx("sidebar", mobileMenuOpen && "mobile-open")} aria-label="Primary navigation">
         <div className="brand">
           <img src="/holyship-logo.png" alt="HolyShip" className="brand-logo" />
         </div>
@@ -3513,6 +3567,7 @@ export default function App() {
           onRefresh={() => void loadDashboard()}
           onInitialSync={() => void initialSync()}
           syncState={syncState}
+          onToggleMobileMenu={() => setMobileMenuOpen((open) => !open)}
         />
 
         {error ? <div className="error-banner" role="alert">{error}</div> : null}
@@ -3558,6 +3613,7 @@ export default function App() {
             onOverrideAndRecompare={handleOverrideAndRecompareDiscrepancy}
             onOpenEmailInQueue={(emailId) => void selectEmailById(emailId)}
             onRefresh={() => void loadDiscrepancies()}
+            onDeselect={() => setSelectedDiscrepancy(null)}
           />
         ) : null}
 
@@ -3577,6 +3633,7 @@ export default function App() {
             onDismiss={(reviewer, reason, notes) => reviewMutation(() => dismissHumanReview(selectedReview!.id, reason, reviewer, notes))}
             onReprocess={(emailId) => void reprocess(emailId)}
             onCaseUpdated={(updated) => void refreshAfterReview(updated)}
+            onDeselect={() => setSelectedReview(null)}
           />
         ) : null}
       </main>
