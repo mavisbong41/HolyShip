@@ -1514,7 +1514,12 @@ function HumanReviewPageView({
   const visibleReviews = (reviews?.items ?? []).filter((review) => {
     const search = searchFilter.trim().toLowerCase();
     const matchesSearch = !search || `${review.email?.subject ?? ""} ${review.email?.sender ?? ""} ${review.reason_code}`.toLowerCase().includes(search);
-    const matchesReason = !reasonFilter || review.reason_code === reasonFilter;
+    const matchesReason =
+      !reasonFilter ||
+      review.reason_code === reasonFilter ||
+      review.canonical_reason === reasonFilter ||
+      review.presentation_title === reasonFilter ||
+      reasonLabels[review.reason_code] === reasonFilter;
     const matchesReviewer = !reviewerFilter || (review.reviewer_name ?? "").toLowerCase().includes(reviewerFilter.toLowerCase());
 
     if (reviewViewMode === "ACTIVE") {
@@ -1558,7 +1563,13 @@ function HumanReviewPageView({
     return sortFilter === "oldest" || sortFilter === "age" ? delta : -delta;
   });
 
-  const reasons = [...new Set((reviews?.items ?? []).map((review) => review.reason_code))].sort();
+  const reasons = [
+    ...new Set(
+      (reviews?.items ?? []).map(
+        (review) => review.canonical_reason || review.presentation_title || reasonLabels[review.reason_code] || review.reason_code
+      )
+    ),
+  ].sort();
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
   const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
@@ -1669,9 +1680,13 @@ function HumanReviewPageView({
                   <div>
                     <h2>{review.email?.subject ?? "Unknown subject"}</h2>
                     <p>{review.email?.sender || "Unknown sender"}</p>
-                    <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
+                    <strong className="review-reason">{review.case_origin === "LEGACY" ? "Historical review record" : (review.canonical_reason || review.presentation_title || reasonLabels[review.reason_code] || review.reason_text || displayLabel(review.reason_code))}</strong>
                     <p className="human-explanation">{review.human_explanation}</p>
-                    <p className="affected-fields-summary">Affected area: {review.affected_area || (review.affected_fields?.length ? review.affected_fields.join(", ") : "Review case")}</p>
+                    {review.affected_fields?.length ? (
+                      <p className="affected-fields-summary">Affected fields: {review.affected_fields.map((f) => labelForField(f)).join(", ")}</p>
+                    ) : (
+                      <p className="affected-fields-summary">Affected area: {review.affected_area || "Review case"}</p>
+                    )}
                     <p className="suggested-action-summary">Next action: {review.case_origin === "LEGACY" ? "No action required" : (review.suggested_action || "Open Human Review")}</p>
                     <p className="age-summary">Age: {review.age_minutes} mins</p>
                   </div>
@@ -1737,7 +1752,21 @@ function HumanReviewPageView({
               </div>
               <div className="review-callout">
                 <AlertTriangle size={18} aria-hidden="true" />
-                <div><strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong><p>{selected.human_explanation || selected.reason_text}</p><p className="affected-fields-summary">Affected area: {selected.affected_area || (selected.affected_fields.length ? selected.affected_fields.join(", ") : "Review case")}</p><p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p><small className="technical-code">{selected.reason_code}</small></div>
+                <div>
+                  <strong>{selected.case_origin === "LEGACY" ? "Historical review record" : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}</strong>
+                  <p>{selected.human_explanation || selected.reason_text}</p>
+                  {selected.affected_fields?.length ? (
+                    <p className="affected-fields-summary">Affected fields: {selected.affected_fields.map((f) => labelForField(f)).join(", ")}</p>
+                  ) : (
+                    <p className="affected-fields-summary">Affected area: {selected.affected_area || "Review case"}</p>
+                  )}
+                  <p className="suggested-action-summary">{selected.case_origin === "LEGACY" ? "No action required" : "Suggested action: " + (selected.suggested_action || "Open Human Review")}</p>
+                  <div className="callout-pipeline-meta">
+                    {selected.trigger ? <span><strong>Trigger:</strong> {selected.trigger}</span> : null}
+                    {selected.stage ? <span> · <strong>Stage:</strong> {selected.stage}</span> : null}
+                    {selected.reason_code ? <span> · <strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span> : null}
+                  </div>
+                </div>
               </div>
               <div className="detail-section"><h3>Email context</h3><p className="body-copy">{selected.body || "No body text available."}</p></div>
               <div className="detail-section"><h3>Source documents</h3>{selected.documents?.length ? selected.documents.map((doc) => <div className="attachment-row" key={doc.id}><FileText size={16} /><div><strong>{doc.filename}</strong><p>{displayLabel(doc.role)} · {displayLabel(doc.validation_outcome)} · {displayLabel(doc.routing_outcome)}</p></div></div>) : <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />}</div>

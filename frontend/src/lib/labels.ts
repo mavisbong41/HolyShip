@@ -58,19 +58,20 @@ export const reviewStatusLabels: Record<string, string> = {
 };
 
 export const reasonLabels: Record<string, string> = {
-  COMPARISON_UNRESOLVED: "One or more document fields could not be verified",
-  COMPARISON_MISMATCH: "The SI and BL contain different values",
-  CLASSIFICATION_UNRESOLVED: "Email type unclear",
-  DOCUMENT_ROLE_UNRESOLVED: "Document role unclear",
-  WRONG_DOCUMENT_TYPE: "Wrong document type",
-  MISSING_REQUIRED_ATTACHMENT: "Required shipping document is missing",
-  UNREADABLE_ATTACHMENT: "Document could not be read reliably",
-  UNSUPPORTED_ATTACHMENT: "Document format is unsupported",
-  CORRUPTED_ATTACHMENT: "Document could not be read",
-  MULTIPLE_CANDIDATES: "More than one document may match",
-  READINESS_UNRESOLVED: "Document readiness unclear",
-  DOCUMENT_FIELD_EXTRACTION_FAILED: "Document extraction failed",
-  NOT_ACTIONABLE: "Not actionable",
+  COMPARISON_UNRESOLVED: "Missing Required Value",
+  COMPARISON_MISMATCH: "Field Mismatch",
+  CLASSIFICATION_UNRESOLVED: "Email Type Unclear",
+  DOCUMENT_ROLE_UNRESOLVED: "Wrong Document Type",
+  WRONG_DOCUMENT_TYPE: "Wrong Document Type",
+  MISSING_REQUIRED_ATTACHMENT: "Missing Attachment",
+  UNREADABLE_ATTACHMENT: "Unreadable Document",
+  UNSUPPORTED_ATTACHMENT: "Unreadable Document",
+  CORRUPTED_ATTACHMENT: "Unreadable Document",
+  MULTIPLE_CANDIDATES: "Wrong Document Type",
+  READINESS_UNRESOLVED: "Missing Attachment",
+  DOCUMENT_FIELD_EXTRACTION_FAILED: "Document Extraction Failed",
+  NOT_ACTIONABLE: "Not Actionable",
+  STAGE2_UNRESOLVED: "Historical Review Record",
 };
 
 export const reviewActionLabels: Record<string, string> = {
