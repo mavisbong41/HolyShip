@@ -282,12 +282,15 @@ describe("Confirmed Discrepancies Workspace", () => {
     expect(await screen.findByText("MSG-MISMATCH-001")).toBeInTheDocument();
     const subjects = await screen.findAllByText("Draft BL for Verification - Ref 9901");
     expect(subjects.length).toBeGreaterThanOrEqual(1);
+    expect(screen.queryByText(/Confirmed Differences/i)).not.toBeInTheDocument();
+
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
 
     // Verify right pane differences-first card
     expect(await screen.findByText(/Confirmed Differences/i)).toBeInTheDocument();
     expect(await screen.findByText("Beta Imports Corp")).toBeInTheDocument();
     expect(await screen.findByText("Gamma Overseas Ltd")).toBeInTheDocument();
-    expect(await screen.findByText("SI (Reference)")).toBeInTheDocument();
+    expect(await screen.findByText("SI (Reference Document)")).toBeInTheDocument();
     expect(await screen.findByText("Draft BL (Document Checked)")).toBeInTheDocument();
   });
 
@@ -298,6 +301,8 @@ describe("Confirmed Discrepancies Workspace", () => {
 
     const navBtn = await screen.findByRole("button", { name: /Discrepancies/i });
     await user.click(navBtn);
+
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
 
     // Wait for detail pane to load
     expect(await screen.findByText("Draft BL (Document Checked)")).toBeInTheDocument();
@@ -323,6 +328,8 @@ describe("Confirmed Discrepancies Workspace", () => {
     const navBtn = await screen.findByRole("button", { name: /Discrepancies/i });
     await user.click(navBtn);
 
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
+
     // Wait for detail pane to load
     expect(await screen.findByText("Draft BL (Document Checked)")).toBeInTheDocument();
 
@@ -335,6 +342,6 @@ describe("Confirmed Discrepancies Workspace", () => {
     expect(ports.length).toBeGreaterThanOrEqual(1);
     const discharge = await screen.findAllByText("Singapore");
     expect(discharge.length).toBeGreaterThanOrEqual(1);
-    expect(await screen.findByText("Gross Weight")).toBeInTheDocument();
+    expect((await screen.findAllByText("Gross Weight")).length).toBeGreaterThanOrEqual(2);
   });
 });

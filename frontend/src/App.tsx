@@ -3285,14 +3285,6 @@ export default function App() {
       const pageData = await getDiscrepancies(discrepancyFilters);
       setDiscrepancies(pageData);
       setDiscrepancyState("ready");
-      if (pageData.items.length > 0) {
-        setSelectedDiscrepancy((current) => {
-          if (!current || !pageData.items.some((i) => i.id === current.discrepancy.id)) {
-            void selectDiscrepancyById(pageData.items[0].id, false);
-          }
-          return current;
-        });
-      }
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Unable to load discrepancies");
       setDiscrepancyState("error");

@@ -93,11 +93,11 @@ export function MetricCard({
   return (
     <article className={cx("metric-card", `metric-${tone}`)}>
       <MetricCardWave index={cardIndex} totalCards={totalCards} />
-      <div className="metric-header">
-        <span className="metric-icon" aria-hidden="true">
+      <div className="metric-card-top">
+        <div className="metric-header-left">
           {icon}
-        </span>
-        <span className="metric-label">{label}</span>
+          <p>{label}</p>
+        </div>
         <div className="sparkline-bars">
           <span style={{ height: 6 }} />
           <span style={{ height: 10 }} />
