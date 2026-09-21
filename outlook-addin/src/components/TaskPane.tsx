@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useState } from "react";
-import { getEmailDetail } from "../api/client";
-import { dashboardEmailUrl } from "../lib/config";
-import { categoryLabels, formatDate, statusLabels } from "../lib/labels";
+import { getEmailDetail, reprocessEmail } from "../api/client";
+import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
+import { categoryLabels, displayLabel, formatDate, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
-import type { ProductEmailDetail, ProductEmailSummary } from "../types/product";
+import type { ProductComparison, ProductEmailDetail, ProductEmailSummary } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
@@ -58,11 +58,12 @@ function NotFoundView({ note }: { note: string | null }): React.ReactElement {
   );
 }
 
-function ErrorView({ message }: { message: string }): React.ReactElement {
+function ErrorView({ message, onRetry }: { message: string; onRetry: () => void }): React.ReactElement {
   return (
-    <div className="error-banner" role="alert">
-      <AlertCircle size={13} style={{ marginRight: 6, verticalAlign: "middle" }} aria-hidden="true" />
-      {message}
+    <div className="error-state" role="alert">
+      <div><AlertCircle size={16} aria-hidden="true" /><strong>Unable to reconnect</strong></div>
+      <p>{message}</p>
+      <button className="btn-secondary" type="button" onClick={onRetry}>Try again</button>
     </div>
   );
 }
@@ -155,7 +156,7 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-warn" aria-hidden="true">
           <Clock size={18} />
         </div>
-        <h2>Waiting for documents</h2>
+        <h2>Awaiting Documents</h2>
         <p>
           This is a Document Comparison case. Required documents have not been
           received yet.
@@ -164,17 +165,17 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
     );
   }
 
-  if (status === "BLOCKED" || email.needs_review) {
+  if ((status === "BLOCKED" || email.needs_review) && status !== "FAILED") {
     return (
       <div className="state-card">
         <div className="state-card-icon icon-warn" aria-hidden="true">
           <AlertTriangle size={18} />
         </div>
-        <h2>Needs attention</h2>
+        <h2>Needs Review</h2>
         <p>
           {email.review_reason
-            ? `Reason: ${email.review_reason.replaceAll("_", " ")}`
-            : "Human review may be required for this case."}
+            ? reasonLabels[email.review_reason] || displayLabel(email.review_reason)
+            : "Human Review is required for this case."}
         </p>
       </div>
     );
@@ -228,12 +229,19 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
 
 function ComparisonSummaryStrip({
   email,
+  comparison,
 }: {
   email: ProductEmailSummary;
+  comparison: ProductComparison | null;
 }): React.ReactElement | null {
-  if (email.category !== "document_comparison") return null;
+  if (email.category !== "document_comparison" || !comparison) return null;
+  const matchCount = comparison.fields.filter((field) => field.status === "MATCH").length;
   return (
     <div className="summary-strip" aria-label="Comparison summary">
+      <div className="summary-chip">
+        <span className="summary-chip-value chip-good" aria-label={`${matchCount} matches`}>{matchCount}</span>
+        <span className="summary-chip-label">Match</span>
+      </div>
       <div className="summary-chip">
         <span
           className={`summary-chip-value ${email.mismatch_count > 0 ? "chip-bad" : ""}`}
@@ -265,6 +273,7 @@ export function TaskPane({
 }): React.ReactElement {
   const [state, setState] = useState<PaneState>({ type: "loading" });
   const [showComparison, setShowComparison] = useState(true);
+  const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
 
   const resolve = useCallback(async () => {
     setState({ type: "loading" });
@@ -321,6 +330,23 @@ export function TaskPane({
 
   const emailId = state.type === "ready" ? state.detail.email.id : null;
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
+  const activeReview = state.type === "ready"
+    ? state.detail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
+    : null;
+  const reviewUrl = activeReview ? dashboardReviewUrl(activeReview.id) : null;
+
+  const retryProcessing = async () => {
+    if (!emailId) return;
+    setActionState("loading");
+    try {
+      await reprocessEmail(emailId);
+      await refresh();
+      setActionState("idle");
+    } catch (err) {
+      setActionState("error");
+      setState({ type: "error", message: err instanceof Error ? err.message : "Retry failed" });
+    }
+  };
 
   return (
     <div className="pane-shell">
@@ -347,7 +373,7 @@ export function TaskPane({
       <main className="pane-body">
         {state.type === "loading" && <LoadingView />}
 
-        {state.type === "error" && <ErrorView message={state.message} />}
+        {state.type === "error" && <ErrorView message={state.message} onRetry={() => void resolve()} />}
 
         {state.type === "not_found" && <NotFoundView note={state.note} />}
 
@@ -361,11 +387,17 @@ export function TaskPane({
               </div>
             )}
 
+            <section className="email-hero" aria-labelledby="current-email-heading">
+              <p className="pane-section-label">Current email</p>
+              <h1 id="current-email-heading">{state.detail.email.subject}</h1>
+              <p>{state.detail.email.sender || "Unknown sender"} · {formatDate(state.detail.email.received_at ?? state.detail.email.created_at)}</p>
+            </section>
+
             {/* Processing state card */}
             <ProcessingStateCard email={state.detail.email} />
 
             {/* Comparison summary chips */}
-            <ComparisonSummaryStrip email={state.detail.email} />
+            <ComparisonSummaryStrip email={state.detail.email} comparison={state.detail.comparison} />
 
             {/* Email info */}
             <EmailInfoSection email={state.detail.email} />
@@ -396,20 +428,17 @@ export function TaskPane({
               )}
 
             {/* Review info */}
-            {state.detail.email.needs_review && state.detail.review.length > 0 && (
+            {activeReview && (
               <>
                 <div className="pane-divider" />
                 <p className="pane-section-label">Human Review</p>
-                {state.detail.review.map((r) => (
-                  <div key={r.id} className="state-card" style={{ marginBottom: 8 }}>
-                    <p style={{ margin: "0 0 4px", fontWeight: 700, fontSize: 12 }}>
-                      {r.reason_code.replaceAll("_", " ")}
-                    </p>
-                    <p style={{ margin: 0, fontSize: 11.5, color: "var(--color-grey-700)" }}>
-                      {r.reason_text}
-                    </p>
-                  </div>
-                ))}
+                <section className="review-card-compact">
+                  <div className="review-card-heading"><StatusBadge value={activeReview.status} /><span>{activeReview.reviewer_name || "Unassigned"}</span></div>
+                  <strong>{reasonLabels[activeReview.reason_code] || displayLabel(activeReview.reason_code)}</strong>
+                  <p>{activeReview.reason_text}</p>
+                  <small>{activeReview.comparison?.unresolved_fields.length ?? state.detail.email.unresolved_count} affected field(s)</small>
+                  {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
+                </section>
               </>
             )}
 
@@ -428,6 +457,12 @@ export function TaskPane({
                   Open in Dashboard
                 </a>
               )}
+              {state.detail.email.processing_status === "FAILED" ? (
+                <button className="btn-primary" type="button" disabled={actionState === "loading"} onClick={() => void retryProcessing()}>
+                  <RefreshCw size={12} aria-hidden="true" />
+                  {actionState === "loading" ? "Retrying…" : "Retry / Reprocess"}
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="btn-secondary"

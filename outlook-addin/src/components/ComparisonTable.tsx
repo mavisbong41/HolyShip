@@ -32,17 +32,7 @@ export function ComparisonTable({
   const fieldMap = new Map(comparison.fields.map((f) => [f.field, f]));
 
   return (
-    <div className="comparison-wrap">
-      <table className="comparison-table" aria-label="SI vs BL field comparison">
-        <thead>
-          <tr>
-            <th scope="col">Field</th>
-            <th scope="col">SI</th>
-            <th scope="col">Draft BL</th>
-            <th scope="col">Status</th>
-          </tr>
-        </thead>
-        <tbody>
+    <div className="comparison-cards" role="list" aria-label="SI vs BL field comparison">
           {canonicalFields.map((field) => {
             const row = fieldMap.get(field);
             const status = row?.status ?? "UNRESOLVED";
@@ -51,24 +41,18 @@ export function ComparisonTable({
             const siMissing = siRaw === null || siRaw === undefined || siRaw === "";
             const blMissing = blRaw === null || blRaw === undefined || blRaw === "";
             return (
-              <tr key={field} className={fieldRowClass(status)}>
-                <td className="field-name-cell">{labelForField(field)}</td>
-                <td
-                  className={`value-cell ${siMissing ? "value-missing" : status === "MISMATCH" ? "value-mismatch" : ""}`}
-                >
-                  {displayValue(siRaw)}
-                </td>
-                <td
-                  className={`value-cell ${blMissing ? "value-missing" : status === "MISMATCH" ? "value-mismatch" : ""}`}
-                >
-                  {displayValue(blRaw)}
-                </td>
-                <td>{fieldStatusBadge(status)}</td>
-              </tr>
+              <article key={field} className={`comparison-field-card ${fieldRowClass(status)}`} role="listitem">
+                <div className="comparison-field-heading">
+                  <strong>{labelForField(field)}</strong>
+                  {fieldStatusBadge(status)}
+                </div>
+                <dl className="comparison-values">
+                  <div><dt>SI</dt><dd className={`${siMissing ? "value-missing" : status === "MISMATCH" ? "value-mismatch" : ""}`}>{displayValue(siRaw)}</dd></div>
+                  <div><dt>Draft BL</dt><dd className={`${blMissing ? "value-missing" : status === "MISMATCH" ? "value-mismatch" : ""}`}>{displayValue(blRaw)}</dd></div>
+                </dl>
+              </article>
             );
           })}
-        </tbody>
-      </table>
     </div>
   );
 }
