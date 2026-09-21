@@ -112,3 +112,13 @@ def test_record_summary_counts_active_in_review_as_actionable():
         review=active_claimed,
     )
     assert summary.needs_review is True
+
+
+def test_correction_analytics_query_is_scoped_to_active_cases():
+    from pathlib import Path
+
+    source = Path("backend/app/api/analytics_helper.py").read_text(encoding="utf-8")
+    correction_section = source.split("# Correction insights", 1)[1]
+    assert 'HumanReviewCaseRecord.case_origin == "ACTIVE"' in correction_section
+    assert "HumanReviewFieldOverrideRecord.active.is_(True)" in correction_section
+    assert "extracted.raw_value_json" in correction_section
