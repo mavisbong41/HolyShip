@@ -410,7 +410,7 @@ def product_email_queue(
     category: str | None = Query(None),
     comparison_readiness: ComparisonReadiness | None = Query(None),
     needs_review: bool | None = Query(None),
-    review_status: Literal["OPEN", "RESOLVED"] | None = Query(None),
+    review_status: Literal["OPEN", "IN_REVIEW", "RESOLVED", "DISMISSED"] | None = Query(None),
     comparison_state: Literal["COMPLETED", "BLOCKED"] | None = Query(None),
     has_mismatch: bool | None = Query(None),
     search: str | None = Query(None, min_length=1, max_length=200),
