@@ -80,6 +80,7 @@ export async function getHumanReviewQueue(filters: ReviewQueueFilters = {}): Pro
   appendParam(params, "reviewer", filters.reviewer?.trim());
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "active_only", filters.active_only ?? true);
+  appendParam(params, "sort", filters.sort);
   appendParam(params, "skip", filters.skip ?? 0);
   appendParam(params, "limit", filters.limit ?? 50);
   return request<HumanReviewPage>(`/human-review?${params.toString()}`);
