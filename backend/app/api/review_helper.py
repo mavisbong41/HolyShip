@@ -36,5 +36,7 @@ def compute_review_presentation(row, affected_fields: list[str]):
 
 def compute_age_minutes(created_at: datetime) -> int:
     now = datetime.now(timezone.utc)
+    if created_at.tzinfo is None:
+        created_at = created_at.replace(tzinfo=timezone.utc)
     delta = now - created_at
     return max(0, int(delta.total_seconds() / 60))

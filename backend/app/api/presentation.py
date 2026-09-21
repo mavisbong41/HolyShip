@@ -38,6 +38,7 @@ REASON_PRESENTATION = {
     "CORRUPTED_ATTACHMENT": ("Document could not be read", "The attached document appears to be corrupted or invalid.", "Documents", "Replace the document", "attention"),
     "MULTIPLE_CANDIDATES": ("More than one document may match", "More than one document may match the required shipping-document role.", "Documents", "Confirm the correct document", "attention"),
     "READINESS_UNRESOLVED": ("Document readiness unclear", "HolyShip is unsure whether the documents are ready for comparison.", "Documents", "Review document readiness", "attention"),
+    "STAGE2_UNRESOLVED": ("Email type unclear (historical)", "HolyShip could not confidently determine what this email is asking for.", "Email intent", "View history", "muted"),
 }
 
 FIELD_LABELS = {

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import datetime, timezone
 import copy
 import hashlib
 import os
@@ -483,3 +484,86 @@ def test_historical_review_records_are_read_only(db_factory):
             service.resolve_and_recompare(case.id, reviewer_name="Reviewer")
         with pytest.raises(ReviewConflictError, match="read-only"):
             service.dismiss(case.id, reviewer_name="Reviewer", reason="NOT_ACTIONABLE")
+from backend.app.storage.models import EmailMessageRecord, ClassificationResultRecord, HumanReviewCaseRecord
+from backend.app.api.product_queries import get_product_summary, list_human_reviews
+import uuid
+def test_legacy_not_counted_in_summary(db_factory):
+    with db_factory() as session:
+        now = datetime.now(timezone.utc)
+        email_legacy = EmailMessageRecord(
+            id=uuid.uuid4(),
+            external_message_id='legacy_1',
+            source_type='STATIC_BUNDLE',
+            sender='a@b.com',
+            subject='legacy',
+            body='legacy',
+            content_hash=hashlib.sha256(b"legacy").hexdigest(),
+            created_at=now,
+            processing_status='COMPLETED',
+        )
+        session.add(email_legacy)
+        session.commit()
+
+        cls_legacy = ClassificationResultRecord(
+            id=uuid.uuid4(),
+            email_id=email_legacy.id,
+            category='general_message',
+            confidence=0.5,
+            resolved_at_stage='STAGE1_RULES',
+            classifier_version='v1',
+            created_at=now,
+        )
+        session.add(cls_legacy)
+        session.commit()
+
+        hr_legacy = HumanReviewCaseRecord(
+            id=uuid.uuid4(),
+            email_id=email_legacy.id,
+            status='OPEN',
+            case_origin='LEGACY',
+            reason_code='STAGE2_UNRESOLVED',
+            reason_text='Unresolved',
+            created_at=now,
+        )
+        session.add(hr_legacy)
+        session.commit()
+
+        summary1 = get_product_summary(session)
+        assert summary1.needs_review_count == 0
+        assert summary1.human_review_open_count == 0
+
+        # Check API return
+        reviews_legacy = list_human_reviews(session, active_only=False, skip=0, limit=100)
+        assert len(reviews_legacy.items) == 1
+        assert reviews_legacy.items[0].case_origin == 'LEGACY'
+
+        # Test active open
+        email_active = EmailMessageRecord(
+            id=uuid.uuid4(),
+            external_message_id='active_1',
+            source_type='STATIC_BUNDLE',
+            sender='a@b.com',
+            subject='active',
+            body='active',
+            content_hash=hashlib.sha256(b"active").hexdigest(),
+            created_at=now,
+            processing_status='BLOCKED',
+        )
+        session.add(email_active)
+        session.commit()
+
+        hr_active = HumanReviewCaseRecord(
+            id=uuid.uuid4(),
+            email_id=email_active.id,
+            status='OPEN',
+            case_origin='ACTIVE',
+            reason_code='WRONG_DOCUMENT_TYPE',
+            reason_text='Wrong',
+            created_at=now,
+        )
+        session.add(hr_active)
+        session.commit()
+
+        summary2 = get_product_summary(session)
+        assert summary2.needs_review_count == 1
+        assert summary2.human_review_open_count == 1

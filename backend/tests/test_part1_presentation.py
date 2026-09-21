@@ -197,4 +197,4 @@ def test_frontend_review_filtering_uses_complete_paginated_population():
     app = Path("frontend/src/App.tsx").read_text(encoding="utf-8")
     assert "export async function getAllHumanReviews" in client
     assert "while (items.length < total)" in client
-    assert "getAllHumanReviews({ active_only: false })" in app
+    assert "getAllHumanReviews({ active_only: !showAllReviews })" in app
