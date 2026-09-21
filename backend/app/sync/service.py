@@ -31,8 +31,10 @@ from backend.app.classification.models import HUMAN_REVIEW
 from backend.app.documents.materialization import DocumentMaterializationService
 from backend.app.ingestion.models import EmailMessage
 from backend.app.ingestion.sources import EmailSource
+from backend.app.review.service import HumanReviewService
 from backend.app.storage.repositories import (
     ClassificationResultRepository,
+    ComparisonResultRepository,
     EmailRepository,
     HumanReviewRepository,
     ProcessingJobRepository,
@@ -166,6 +168,8 @@ class SyncService:
         self._job_repo = ProcessingJobRepository(session)
         self._cls_repo = ClassificationResultRepository(session)
         self._review_repo = HumanReviewRepository(session)
+        self._active_review_service = HumanReviewService(session)
+        self._comparison_repo = ComparisonResultRepository(session)
         self._document_service = DocumentMaterializationService(
             session,
             semantic_resolver_timeout_seconds=semantic_resolver_timeout_seconds,
@@ -504,6 +508,11 @@ class SyncService:
             transition(self.session, record, "AWAITING_DOCUMENTS", "AWAITING_DOCUMENTS")
         elif result.comparison_readiness == "UNRESOLVED":
             transition(self.session, record, "BLOCKED", "READINESS_UNRESOLVED")
+            self._active_review_service.ensure_actionable_case(
+                record,
+                reason_code="READINESS_UNRESOLVED",
+                evidence={"comparison_readiness": "UNRESOLVED"},
+            )
         elif result.comparison_readiness == "READY_FOR_COMPARISON":
             resolver_before = self._resolution_metrics()
             materialization = self._document_service.process(record, message, source)
@@ -533,6 +542,19 @@ class SyncService:
             if materialization.processing_status == "BLOCKED":
                 job.status = "BLOCKED"
                 job.error_message = materialization.reason_code
+                source_comparison = (
+                    self._comparison_repo.get_latest_by_email_id(record.id)
+                    if materialization.reason_code == "COMPARISON_UNRESOLVED"
+                    else None
+                )
+                self._active_review_service.ensure_actionable_case(
+                    record,
+                    reason_code=materialization.reason_code,
+                    source_comparison_id=(source_comparison.id if source_comparison else None),
+                    evidence={
+                        "comparison_id": str(source_comparison.id) if source_comparison else None,
+                    },
+                )
 
         # ---- HUMAN REVIEW --------------------------------------------- #
         if result.resolved_at_stage == HUMAN_REVIEW:
