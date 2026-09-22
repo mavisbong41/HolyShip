@@ -10,6 +10,8 @@
 
 [🌐 Dashboard](https://holyship.onrender.com/) · [⚙️ Backend API](https://holyship-backend.onrender.com) · [📘 API Docs](https://holyship-backend.onrender.com/docs) · [📑 Presentation Slides](https://canva.link/kflchdm6qu1pslv) · [🎥 Demo Video](https://youtu.be/mnfbrDJyGaQ) 
 
+**Outlook Add-in Demo Account:** `captain.holyship@outlook.com` · Password: `captain12`
+
 <br>
 
 > **Shipping document verification should not depend on one black-box AI answer.**
@@ -712,17 +714,6 @@ For document-comparison emails, the Add-in can show:
 - a deep link to the full Dashboard case
 
 This creates a continuous workflow from **email → verification → review**.
-
-### Outlook Demo Account
-
-Use this dedicated demo account for the Outlook Add-in presentation:
-
-| Credential | Demo value |
-|---|---|
-| Username | `captain.holyship@outlook.com` |
-| Password | `captain12` |
-
-These credentials are for the demo account only and have also been submitted through the project Google Form.
 
 ---
 
