@@ -185,6 +185,12 @@ The same workflow semantics are shared across both surfaces.
 
 ---
 
+
+# Purpose
+
+HolyShip aims to reduce repetitive manual SI–BL verification while keeping shipping-document decisions traceable and reliable. Instead of replacing human judgment with a black-box AI result, it automates deterministic checks, preserves source evidence, and escalates only cases that genuinely require human review.
+
+---
 # 1. The Problem
 
 Shipping teams receive mixed inbox traffic every day:
@@ -1221,6 +1227,24 @@ Open the same email in Outlook and show the compact HolyShip status plus a link 
 
 ---
 
+# Challenges Faced
+
+**1. Distinguishing mismatches from uncertainty**
+An early challenge was avoiding the assumption that every mismatch requires Human Review. HolyShip therefore separates `MATCH`, `MISMATCH`, and `UNRESOLVED`, allowing definite mismatches to complete automatically while escalating only uncertain cases.
+
+**2. Handling inconsistent shipping documents**
+SI and BL files can use different layouts, labels, formatting, units, and document names. HolyShip addresses this with content-based document validation, canonical field mapping, and layered L0/L1 normalization rather than relying on filenames or direct string comparison.
+
+**3. Separating operational waiting from real exceptions**
+A missing BL does not always mean an error; the sender may simply state that it will arrive later. We introduced explicit comparison-readiness states so `AWAITING_DOCUMENTS` is kept separate from actionable missing-document exceptions.
+
+**4. Keeping AI useful without making it authoritative**
+Using an LLM for the entire comparison pipeline would make outcomes harder to reproduce and audit. We therefore kept deterministic verification as the core and limited LLM usage to optional semantic resolution and reviewer assistance.
+
+**5. Preserving auditability during Human Review**
+Reviewer corrections must not destroy the original machine extraction. HolyShip stores overrides separately and performs re-comparison using effective reviewed values, preserving the original evidence and review history.
+
+---
 # 29. Hackathon Highlights
 
 HolyShip combines several ideas in one workflow:
@@ -1252,7 +1276,32 @@ The main idea is straightforward:
 
 ---
 
-# 30. Contributors
+# 30. Future Roadmap
+
+HolyShip's next phase would focus on moving from a competition-ready verification platform toward a production shipping workflow.
+
+**Near term**
+
+- Connect live Microsoft Graph mailbox ingestion instead of relying primarily on the demo/static source.
+- Expand extraction and validation to additional shipping-document formats and layouts.
+- Improve L2 semantic resolution using accumulated unresolved and reviewer-confirmed cases.
+- Extend Dashboard analytics with reviewer workload and discrepancy trends.
+
+**Medium term**
+
+- Add configurable organisation-specific normalization and validation rules.
+- Support additional shipping documents beyond SI and BL.
+- Introduce role-based access control and richer reviewer collaboration.
+- Improve document-level confidence and evidence visualization.
+
+**Long term**
+
+- Learn from approved Human Review corrections to reduce recurring unresolved cases.
+- Integrate with existing shipping/TMS workflows through APIs and webhooks.
+- Provide continuous monitoring of verification quality, exception rates, and automation coverage.
+
+---
+# 31. Contributors
 
 - Wong Jia Hui
 - Bong Zi Shan
