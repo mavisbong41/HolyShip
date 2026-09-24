@@ -649,16 +649,25 @@ def product_outlook_reconcile(
         if requested == "DELETED":
             record.lifecycle_status = "DELETED"
             record.deleted_at = record.deleted_at or now
-            changed_reasons.append("OUTLOOK_EMAIL_DELETED")
+            if previous_lifecycle != "DELETED":
+                changed_reasons.append("OUTLOOK_EMAIL_DELETED")
+            else:
+                changed_reasons.append("OUTLOOK_LIFECYCLE_RECONCILED")
         elif requested == "RESTORED":
             record.lifecycle_status = "ACTIVE"
-            record.restored_at = now
             record.outlook_sync_error = None
-            changed_reasons.append("OUTLOOK_EMAIL_RESTORED")
+            if previous_lifecycle == "DELETED":
+                record.restored_at = now
+                changed_reasons.append("OUTLOOK_EMAIL_RESTORED")
+            else:
+                changed_reasons.append("OUTLOOK_LIFECYCLE_RECONCILED")
         elif requested == "ARCHIVED":
             record.lifecycle_status = "ARCHIVED"
             record.outlook_archived = True
-            changed_reasons.append("OUTLOOK_EMAIL_ARCHIVED")
+            if previous_lifecycle != "ARCHIVED":
+                changed_reasons.append("OUTLOOK_EMAIL_ARCHIVED")
+            else:
+                changed_reasons.append("OUTLOOK_LIFECYCLE_RECONCILED")
         elif requested == "ACTIVE":
             record.lifecycle_status = "ACTIVE"
             record.outlook_archived = bool(payload.outlook_archived) if payload.outlook_archived is not None else False
