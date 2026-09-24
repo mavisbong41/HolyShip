@@ -56,14 +56,13 @@ button:disabled {
   border-bottom: 1px solid var(--color-grey-200);
   padding: 16px 12px 10px 12px;
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
   min-height: 48px;
   box-sizing: border-box;
   flex-shrink: 0;
-  overflow: hidden;
 }
 
 .top-header-ribbon-svg {
@@ -89,14 +88,16 @@ button:disabled {
   color: var(--color-black);
   margin: 0;
   line-height: 1.35;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 
 .top-case-header-bar .btn-sync-refresh {
   position: relative;
   z-index: 1;
+  margin-top: 1px;
+  flex-shrink: 0;
 }
 
 .subview-header-bar {

@@ -2586,7 +2586,7 @@ export function TaskPane({
       {effectiveState.type === "ready" && effectiveDetail && (
         <div className="top-case-header-bar">
           <HeaderRibbonWave />
-          <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
+          <h1 className="case-title-compact" title={effectiveDetail.email.subject}>{effectiveDetail.email.subject}</h1>
           <button
             className="btn-sync-refresh"
             type="button"
