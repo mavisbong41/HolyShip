@@ -612,6 +612,27 @@ def test_gateway_blocks_unapproved_provider_model_and_endpoint_before_network():
         mocked.assert_not_called()
 
 
+def test_gemini_host_cannot_be_used_by_non_gemini_provider():
+    gateway = SecureAIGateway(
+        allowed_providers={"gemini", "http_json"},
+        allowed_endpoint_hosts={"generativelanguage.googleapis.com"},
+    )
+    with pytest.raises(AIGatewayPolicyError, match="Gemini endpoint"):
+        gateway.prepare_payload(
+            purpose=PURPOSE_FIELD_EXTRACTION,
+            feature="l2_http_json_resolution",
+            model="custom",
+            provider="http_json",
+            endpoint="https://generativelanguage.googleapis.com/v1beta/models",
+            data={
+                "field": "port_of_loading",
+                "document_role": "SI",
+                "evidence": "Port of Loading: Port Klang",
+                "escalation_reason": "UNRESOLVED_EXTRACTION",
+            },
+        )
+
+
 def test_privacy_mode_off_allows_explicit_development_endpoint_policy_bypass():
     gateway = SecureAIGateway(
         enterprise_privacy_mode=False,
