@@ -860,6 +860,13 @@ When adding an environment variable:
 
 ## Tests & Validation
 
+### Outlook ↔ Dashboard and Email Lifecycle Synchronisation (Sections 6 & 7) (2026-09-25)
+
+- Backend lifecycle migration `20260925_0017_add_email_lifecycle_sync.py` applied with `lifecycle_status`, `outlook_read_state`, `outlook_categories`, `outlook_folder_id`, `outlook_archived`, `last_outlook_sync_at`, `outlook_sync_error`, `deleted_at`, `restored_at`.
+- Backend endpoints `POST /api/v1/outlook/reconcile` and `GET /api/v1/sync/status` tested and verified (reconcile delete, reconcile restore, sync status query).
+- Outlook Add-in full test suite PASS: `npm test --prefix outlook-addin -- --run`; 71 tests passed.
+- Dashboard frontend full test suite PASS: `npm test --prefix frontend -- --run`; 32 tests passed (lifecycle filtering, case inspector deleted state, restore action).
+
 ### Outlook Add-in Enhancement section 5 (2026-09-24)
 
 - Outlook Add-in focused TaskPane tests PASS: `npm test -- --run tests/TaskPane.test.tsx` from `outlook-addin/`; 28 tests passed.
@@ -1210,6 +1217,13 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-25 — Outlook ↔ Dashboard & Email Lifecycle Synchronisation (Sections 6 & 7)
+
+- **Changed:** Implemented shared email lifecycle reconciliation contract across Backend, Outlook Add-in, and Dashboard. Added schema migration, `POST /api/v1/outlook/reconcile`, and `GET /api/v1/sync/status`. Outlook Add-in synchronises read/unread, categories, folder, archive, and delete/restore events while surfacing sync rails and status banners. Dashboard provides operational queue filters for Deleted/Archived items, unread indicators, deleted case inspector alerts, and one-click email restoration without duplicate recreation.
+- **Why:** Fulfills Sections 6 & 7 requirements ensuring single shared state between Outlook and Dashboard, preserving audit evidence when emails are deleted, and supporting resilient lifecycle reconciliation.
+- **Files:** `backend/alembic/versions/20260925_0017_add_email_lifecycle_sync.py`, `backend/app/storage/models.py`, `backend/app/api/router.py`, `backend/app/api/product_schemas.py`, `backend/app/api/product_queries.py`, `backend/tests/test_api.py`, `outlook-addin/src/api/client.ts`, `outlook-addin/src/components/TaskPane.tsx`, `outlook-addin/src/office/OfficeContextProvider.ts`, `outlook-addin/src/office/FakeContextProvider.ts`, `outlook-addin/src/types/context.ts`, `outlook-addin/src/types/product.ts`, `outlook-addin/src/lib/labels.ts`, `outlook-addin/src/styles/pane.css`, `outlook-addin/tests/TaskPane.test.tsx`, `outlook-addin/tests/fixtures.ts`, `frontend/src/api/client.ts`, `frontend/src/api/types.ts`, `frontend/src/App.tsx`, `frontend/src/lib/labels.ts`, `frontend/src/styles/app.css`, `frontend/tests/App.test.tsx`, `implement.md`.
+- **Validation:** Outlook Add-in tests PASS (71 tests). Frontend tests PASS (32 tests). Backend targeted tests for delete/restore reconcile and sync status PASS.
 
 ### 2026-09-24 — Outlook Add-in Enhancement section 5
 
