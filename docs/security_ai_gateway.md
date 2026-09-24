@@ -27,6 +27,9 @@ When enabled, the Secure AI Gateway:
 - redacts email addresses in free-form question text;
 - strips known secret-like assignments from free-form strings;
 - enforces purpose-specific data minimisation;
+- allows only configured AI providers;
+- optionally pins approved model names;
+- allows outbound AI traffic only to configured endpoint hosts;
 - rejects payloads above `AI_GATEWAY_MAX_PAYLOAD_BYTES`.
 
 ## Secure AI Gateway
@@ -48,12 +51,18 @@ The API key is sent in the `x-goog-api-key` request header and is not placed in 
 The gateway performs:
 
 1. purpose validation;
-2. minimum-necessary payload construction;
-3. sanitisation/redaction;
-4. payload-size policy enforcement;
-5. Gemini transport;
-6. JSON-object response validation;
-7. non-sensitive audit metadata generation.
+2. provider/model/endpoint-host policy validation;
+3. minimum-necessary payload construction;
+4. sanitisation/redaction;
+5. payload-size policy enforcement;
+6. Gemini transport;
+7. JSON-object response validation;
+8. non-sensitive audit metadata generation.
+
+Gemini HTTP transport remains centralized in this module. Non-Gemini/custom
+providers are disabled by the production-default allowlist. If an operator
+explicitly approves one, its request still passes through the same disclosure
+and destination policy before the provider transport can run.
 
 A policy violation fails closed before a provider request is sent.
 
@@ -179,10 +188,21 @@ This allows the system to prove what *type* of information was disclosed without
 
 ```env
 ENTERPRISE_PRIVACY_MODE=true
+AI_GATEWAY_ALLOWED_PROVIDERS=gemini,google
+AI_GATEWAY_ALLOWED_MODELS=
+AI_GATEWAY_ALLOWED_ENDPOINT_HOSTS=generativelanguage.googleapis.com
 AI_GATEWAY_MAX_PAYLOAD_BYTES=65536
 ```
 
-Production should keep Enterprise Privacy Mode enabled.
+Production should keep Enterprise Privacy Mode enabled. The default provider
+and endpoint allowlists intentionally permit only Google's Gemini transport.
+An empty model allowlist means any model under an approved provider; production
+may pin one or more exact model names. An empty provider or endpoint-host
+allowlist is rejected while Enterprise Privacy Mode is enabled.
+
+There is deliberately no runtime switch that re-enables raw AI prompt/request
+persistence. Durable storage keeps disclosure metadata and validated structured
+results only.
 
 ## Validation
 
