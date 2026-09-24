@@ -244,11 +244,21 @@ export async function sendReplyDraft(
   });
 }
 
+export type ReconcileItemPayload = Partial<MailContextItem> & {
+  lifecycle_status?: EmailLifecycleStatus | "RESTORED";
+  outlook_item_id?: string | null;
+  internet_message_id?: string | null;
+  outlook_read_state?: OutlookReadState;
+  outlook_categories?: string[];
+  outlook_folder_id?: string | null;
+  outlook_archived?: boolean | null;
+};
+
 export async function reconcileOutlookLifecycle(
   emailId: string,
-  item: Partial<MailContextItem> & { lifecycle_status?: EmailLifecycleStatus | "RESTORED" },
+  item: ReconcileItemPayload,
 ): Promise<void> {
-  const folder = (item.outlookFolderId || "").toLowerCase();
+  const folder = (item.outlookFolderId || item.outlook_folder_id || "").toLowerCase();
   const isDeletedFolder =
     folder.includes("deleted") ||
     folder.includes("trash") ||
@@ -267,8 +277,8 @@ export async function reconcileOutlookLifecycle(
       lifecycle_status: lifecycleStatus,
       outlook_read_state: (item.outlookReadState ?? "UNKNOWN") as OutlookReadState,
       outlook_categories: item.outlookCategories ?? [],
-      outlook_folder_id: item.outlookFolderId ?? undefined,
-      outlook_archived: item.outlookArchived ?? undefined,
+      outlook_folder_id: item.outlookFolderId ?? item.outlook_folder_id ?? undefined,
+      outlook_archived: item.outlookArchived ?? item.outlook_archived ?? undefined,
       actor_name: "Outlook Add-in",
     }),
   });

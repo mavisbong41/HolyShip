@@ -199,23 +199,34 @@ export interface ProductDocument {
 
 export interface ProductTimelineEvent {
   id: string;
-  old_status: string | null;
-  new_status: ProcessingStatus | string;
-  reason_code: string;
+  old_status?: string | null;
+  new_status?: ProcessingStatus | string;
+  reason_code?: string;
   created_at: string;
+  event_type?: string;
+  status?: string;
+  details?: Record<string, unknown>;
 }
 
 export interface ProductResolution {
+  id?: string;
+  email_id?: string;
+  review_id?: string;
   attempted: boolean;
-  purpose: string;
+  purpose?: string;
   field: string;
-  accepted: boolean;
+  current_value?: unknown;
+  suggested_value?: unknown;
+  applied?: boolean;
+  accepted?: boolean;
   confidence: number;
   reason: string;
-  evidence: ProductEvidence[];
-  provider_name: string | null;
-  model_name: string | null;
-  resolver_version: string | null;
+  explanation?: string;
+  evidence?: ProductEvidence[];
+  provider_name?: string | null;
+  model_name?: string | null;
+  resolver_version?: string | null;
+  created_at?: string;
 }
 
 export interface ProductReview {
