@@ -36,6 +36,9 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/events")) {
       return jsonResponse([]);
     }
+    if (url.includes("/outlook/reconcile")) {
+      return jsonResponse({ email_id: "22222222-2222-4222-8222-222222222222", action: "OUTLOOK_EMAIL_RESTORED" });
+    }
     return jsonResponse({ detail: "Not found" }, false, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -80,6 +83,143 @@ describe("HolyShip dashboard", () => {
         expect.anything(),
       );
     });
+  });
+
+  it("filters queue by lifecycle status", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    expect(await screen.findByText("Please verify draft BL details")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Filter by lifecycle"), "DELETED");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("lifecycle_status=DELETED"),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("navigates to queue with corresponding filters when clicking overview cards and alerts", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+
+    // Click "Emails with BL vs SI mismatch" alert row
+    await user.click(screen.getByText("Emails with BL vs SI mismatch"));
+
+    // Verify it navigated to Queue and fetched with has_mismatch=true
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("has_mismatch=true"),
+        expect.anything(),
+      );
+    });
+    expect(screen.getByText("Verification: BL vs SI Mismatch ✕")).toBeInTheDocument();
+
+    // Navigate back to overview
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await screen.findByText("Shipping document operations, at a glance.");
+
+    // Click "Missing documents" alert row
+    await user.click(screen.getByText("Missing documents"));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("status=AWAITING_DOCUMENTS"),
+        expect.anything(),
+      );
+    });
+    expect(screen.getByText("Status: Waiting for Documents ✕")).toBeInTheDocument();
+  });
+
+  it("renders deleted lifecycle banner and restores email from case inspector", async () => {
+    const deletedDetail: ProductEmailDetail = {
+      ...demoDetail,
+      email: {
+        ...demoDetail.email,
+        lifecycle: {
+          lifecycle_status: "DELETED",
+          outlook_read_state: "READ",
+          outlook_categories: ["BL_COMPARISON"],
+          outlook_folder_id: "trash",
+          outlook_archived: false,
+          last_outlook_sync_at: "2026-09-21T10:23:00+08:00",
+          outlook_sync_error: null,
+          deleted_at: "2026-09-21T10:23:00+08:00",
+          restored_at: null,
+        },
+      },
+    };
+    const fetchMock = setupFetch({ detail: deletedDetail });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    await user.click(await screen.findByRole("button", { name: "Please verify draft BL details" }));
+
+    expect(await screen.findByText("Mailbox item deleted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restore email/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /restore email/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/outlook/reconcile"),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"lifecycle_status":"RESTORED"'),
+        }),
+      );
+    });
+  });
+
+  it("renders latest 5 timeline events by default and toggles full timeline expansion", async () => {
+    const detailWithLongTimeline: ProductEmailDetail = {
+      ...demoDetail,
+      timeline: [
+        { id: "ev-1", old_status: null, new_status: "NEW", reason_code: "EMAIL_INGESTED", created_at: "2026-09-21T10:00:00Z" },
+        { id: "ev-2", old_status: "NEW", new_status: "QUEUED", reason_code: "QUEUED_FOR_CLASSIFICATION", created_at: "2026-09-21T10:01:00Z" },
+        { id: "ev-3", old_status: "QUEUED", new_status: "CLASSIFYING", reason_code: "CLASSIFICATION_STARTED", created_at: "2026-09-21T10:02:00Z" },
+        { id: "ev-4", old_status: "CLASSIFYING", new_status: "CLASSIFIED", reason_code: "CLASSIFICATION_COMPLETED", created_at: "2026-09-21T10:03:00Z" },
+        { id: "ev-5", old_status: "CLASSIFIED", new_status: "EXTRACTING", reason_code: "DOCUMENT_ROUTED", created_at: "2026-09-21T10:04:00Z" },
+        { id: "ev-6", old_status: "EXTRACTING", new_status: "COMPARING", reason_code: "DOCUMENTS_EXTRACTED", created_at: "2026-09-21T10:05:00Z" },
+        { id: "ev-7", old_status: "COMPARING", new_status: "COMPLETED", reason_code: "COMPARISON_COMPLETED", created_at: "2026-09-21T10:06:00Z" },
+      ],
+    };
+    setupFetch({ detail: detailWithLongTimeline });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    await user.click(await screen.findByRole("button", { name: "Please verify draft BL details" }));
+
+    // Verify it indicates latest 5 of 7
+    expect(await screen.findByText(/latest 5 of 7/i)).toBeInTheDocument();
+    const expandBtn = screen.getByRole("button", { name: /expand all/i });
+    expect(expandBtn).toBeInTheDocument();
+
+    // Oldest event should not be in the DOM
+    expect(screen.queryByText("EMAIL_INGESTED")).not.toBeInTheDocument();
+    // Latest event should be visible
+    expect(screen.getByText("COMPARISON_COMPLETED")).toBeInTheDocument();
+
+    // Click to expand
+    await user.click(expandBtn);
+    expect(screen.getByText(/all 7 events/i)).toBeInTheDocument();
+    expect(screen.getByText("EMAIL_INGESTED")).toBeInTheDocument();
+
+    // Collapse back
+    await user.click(screen.getByRole("button", { name: /show latest 5/i }));
+    expect(screen.getByText(/latest 5 of 7/i)).toBeInTheDocument();
+    expect(screen.queryByText("EMAIL_INGESTED")).not.toBeInTheDocument();
   });
 
   it("renders the seven backend comparison fields without local comparison decisions", async () => {

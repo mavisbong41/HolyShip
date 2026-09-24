@@ -44,8 +44,24 @@ superseded historical restriction are recorded in
 
 ## Last Updated
 
-**Date:** 2026-09-24
-**Updated by:** Final Enterprise AI Security consolidation
+**Date:** 2026-09-25
+**Updated by:** Section 8 Delete and Restore Behaviour implementation
+
+### Section 8: Delete and Restore Behaviour Completed:
+- **8.1 Delete Detection & Evidence Preservation**:
+  - `reconcileOutlookLifecycle` in Outlook Add-in detects deleted items folders (`deleteditems`, `trash`, etc.) and automatically synchronizes `DELETED` lifecycle status.
+  - Soft-delete semantics guarantee all historical processing data, extracted values, comparisons, Human Review cases, overrides, and audit events are strictly preserved.
+  - Deletions are audited as `OUTLOOK_EMAIL_DELETED` processing events and recorded in lifecycle audit history.
+  - Normal active queue queries filter out `DELETED` records by default.
+  - `SyncService` guards against re-processing `DELETED` emails during inbox synchronization to prevent overwriting historical state.
+- **8.2 Restore Behaviour**:
+  - `handleRestore` in Outlook Add-in explicitly sends `lifecycle_status: "RESTORED"` to the backend.
+  - Backend restores email to `ACTIVE`, sets `restored_at` timestamp, clears sync errors, audits `OUTLOOK_EMAIL_RESTORED`, and makes case active again in default queues.
+  - Idempotent transitions ensure re-sending `DELETED` or `RESTORED` does not generate spurious duplicate audit events.
+  - Unique identity constraints (`source_type`, `external_message_id`) guarantee restored records match existing cases without creating duplicate entries.
+- **UI/UX Refinements**:
+  - Dashboard Overview displays deleted email counts in a subtle, clickable grey banner (outside KPI cards), navigating directly to the deleted queue filter.
+  - Outlook Add-in Case Timeline renders full audit trail including `OUTLOOK_EMAIL_DELETED` and `OUTLOOK_EMAIL_RESTORED` events with color-coded status dots.
 **Repository state:** Security work is isolated on `feature/security-ai-gateway`, branched from `main@5d06606eb8a72f5b4f50f15b764d84154f1232b1`. This branch is the canonical security implementation; the separate `feature/security-privacy-gateway` branch is superseded and must not be merged together with it.
 
 Implemented controls:
@@ -141,7 +157,7 @@ Stabilization is implemented on `codex/ui-human-review-stabilization`. The backe
 | Reliability/performance | VERIFIED — PHASE 6 | 257 tests, PostgreSQL cache/concurrency tests, trace 89/0/0, byte-identical disabled evaluation, and measured sub-20% slowdown |
 | Dashboard backend API | IMPLEMENTED — PHASE 7 | `/api/v1/emails`, `/api/v1/summary`, unified detail, filters, pagination, and persisted event polling |
 | Web Dashboard UI | IMPLEMENTED / VERIFIED | Unified operational design system, truthful overview, selected inbox state, hierarchical detail, evidence expansion, explicit waiting/failure states, polished Human Review workflow, and visually harmonized Discrepancies workspace; focused Discrepancy tests, typecheck, and production build pass |
-| Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, refresh, and selected-message re-resolution; 64 tests, typecheck, and production build pass |
+| Outlook Add-in | ENHANCED / VERIFIED | Current-email companion now supports shared case view, seven-field comparison, active-review context, direct Human Review actions, AI suggestion approve/edit/reject, manual category correction, backend-tracked reply workflow, retry, refresh, and selected-message re-resolution; 69 tests, typecheck, and production build pass |
 | Human Review product API | IMPLEMENTED / VERIFIED | Read queue/detail plus claim, separate override, resolve/recompare, and dismiss mutations are PostgreSQL/API-tested |
 | Human Review UI/workflow | IMPLEMENTED / VERIFIED | Actionable BLOCKED policy, idempotent active case, four-state lifecycle, immutable events, separate overrides, and comparison versioning are active |
 | Enterprise AI security | IMPLEMENTED / VERIFIED — SECURITY BRANCH | `ENTERPRISE_PRIVACY_MODE=true` by default; all Gemini HTTP transport is centralized in the Secure AI Gateway; field and Human Review payloads are purpose-minimized/redacted; raw resolver requests and Human Review AI questions are no longer persistently stored; legacy payloads are redacted by migration `20260924_0016`. |
@@ -794,6 +810,11 @@ POST /api/v1/human-review/{review_id}/claim
 POST /api/v1/human-review/{review_id}/overrides
 POST /api/v1/human-review/{review_id}/resolve
 POST /api/v1/human-review/{review_id}/dismiss
+PATCH /api/v1/emails/{email_id}/category
+POST /api/v1/emails/{email_id}/reply/summary
+POST /api/v1/emails/{email_id}/reply/generate
+POST /api/v1/emails/{email_id}/reply/refine
+POST /api/v1/emails/{email_id}/reply/send
 GET  /api/v1/events
 POST /api/v1/emails/{email_id}/reprocess
 ```
@@ -802,7 +823,12 @@ POST /api/v1/emails/{email_id}/reprocess
 review status, comparison state, mismatch, subject/sender/external-id search,
 received time, and bounded skip/limit filters. Detail preserves raw/canonical/
 normalized values, SI-vs-BL direction, comparison states, evidence, review
-context, and safe AI provenance. The legacy `/api/*` contract remains intact.
+context, safe AI provenance, and additive `outlook_workflow` metadata. Manual
+category correction writes a new backend `classification_results` row with
+`MANUAL_CATEGORY_OVERRIDE`; reply workflow state is stored in
+`email_messages.source_metadata.outlook_workflow` and records bounded Outlook
+workflow events in metadata plus `processing_events`. The legacy `/api/*`
+contract remains intact.
 
 ---
 
@@ -849,6 +875,22 @@ When adding an environment variable:
 ---
 
 ## Tests & Validation
+
+### Outlook ↔ Dashboard and Email Lifecycle Synchronisation (Sections 6 & 7) (2026-09-25)
+
+- Backend lifecycle migration `20260925_0017_add_email_lifecycle_sync.py` applied with `lifecycle_status`, `outlook_read_state`, `outlook_categories`, `outlook_folder_id`, `outlook_archived`, `last_outlook_sync_at`, `outlook_sync_error`, `deleted_at`, `restored_at`.
+- Backend endpoints `POST /api/v1/outlook/reconcile` and `GET /api/v1/sync/status` tested and verified (reconcile delete, reconcile restore, sync status query).
+- Outlook Add-in full test suite PASS: `npm test --prefix outlook-addin -- --run`; 71 tests passed.
+- Dashboard frontend full test suite PASS: `npm test --prefix frontend -- --run`; 32 tests passed (lifecycle filtering, case inspector deleted state, restore action).
+
+### Outlook Add-in Enhancement section 5 (2026-09-24)
+
+- Outlook Add-in focused TaskPane tests PASS: `npm test -- --run tests/TaskPane.test.tsx` from `outlook-addin/`; 28 tests passed.
+- Outlook Add-in full check PASS: `npm run check` from `outlook-addin/`; typecheck PASS, 69 tests passed, production build PASS.
+- Backend API targeted tests PASS: `py -3 -m pytest -q backend\tests\test_api.py::test_v1_category_override_persists_manual_classification backend\tests\test_api.py::test_v1_reply_workflow_records_human_confirmed_send`; 2 tests passed.
+- Backend API compile PASS: `py -3 -m py_compile backend\app\api\router.py backend\app\api\product_schemas.py backend\app\api\product_queries.py backend\tests\test_api.py`.
+- Backend full `backend\tests\test_api.py` was attempted; 11 passed and 2 CORS tests failed because the current local settings did not allow `https://holyship.onrender.com` in this environment. Those failures were not caused by the Outlook enhancement endpoints.
+- Existing React testing-library `act(...)` warning remains in `TaskPane.test.tsx > shows loading state initially`; tests still pass and this warning predates the section 5 enhancement.
 
 ### Discrepancies workspace visual refinement (2026-09-22)
 
@@ -1152,6 +1194,7 @@ Never fabricate test results.
 ## Known Limitations
 
 - No live AI credentials were available and no live model call ran. Provider quality/latency/cancellation/accuracy are NOT VERIFIED.
+- Outlook Add-in section 5 is implemented against shared backend APIs, but live Microsoft Graph send/delete/restore/read-unread/category reconciliation is not implemented in this branch. `POST /api/v1/emails/{email_id}/reply/send` records explicit human-confirmed send state and audit metadata; it does not send mail through Graph yet.
 - Resolver/OCR single-flight, call budgets, and concurrency limits are process-local. Independent processes share durable cache identity only after commit and can duplicate external work during a race.
 - Live Tesseract was not verified on the six public scanned documents. Injected success, unavailable, garbage, timeout, cache, budget, and concurrency paths are tested.
 - Missing values, corrupt/wrong documents, and missing attachments intentionally remain blocked/Human Review outcomes.
@@ -1190,6 +1233,21 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-25 — Outlook ↔ Dashboard & Email Lifecycle Synchronisation (Sections 6 & 7)
+
+- **Changed:** Implemented shared email lifecycle reconciliation contract across Backend, Outlook Add-in, and Dashboard. Added schema migration, `POST /api/v1/outlook/reconcile`, and `GET /api/v1/sync/status`. Outlook Add-in synchronises read/unread, categories, folder, archive, and delete/restore events while surfacing sync rails and status banners. Dashboard provides operational queue filters for Deleted/Archived items, unread indicators, deleted case inspector alerts, and one-click email restoration without duplicate recreation.
+- **Why:** Fulfills Sections 6 & 7 requirements ensuring single shared state between Outlook and Dashboard, preserving audit evidence when emails are deleted, and supporting resilient lifecycle reconciliation.
+- **Files:** `backend/alembic/versions/20260925_0017_add_email_lifecycle_sync.py`, `backend/app/storage/models.py`, `backend/app/api/router.py`, `backend/app/api/product_schemas.py`, `backend/app/api/product_queries.py`, `backend/tests/test_api.py`, `outlook-addin/src/api/client.ts`, `outlook-addin/src/components/TaskPane.tsx`, `outlook-addin/src/office/OfficeContextProvider.ts`, `outlook-addin/src/office/FakeContextProvider.ts`, `outlook-addin/src/types/context.ts`, `outlook-addin/src/types/product.ts`, `outlook-addin/src/lib/labels.ts`, `outlook-addin/src/styles/pane.css`, `outlook-addin/tests/TaskPane.test.tsx`, `outlook-addin/tests/fixtures.ts`, `frontend/src/api/client.ts`, `frontend/src/api/types.ts`, `frontend/src/App.tsx`, `frontend/src/lib/labels.ts`, `frontend/src/styles/app.css`, `frontend/tests/App.test.tsx`, `implement.md`.
+- **Validation:** Outlook Add-in tests PASS (71 tests). Frontend tests PASS (32 tests). Backend targeted tests for delete/restore reconcile and sync status PASS.
+
+### 2026-09-24 — Outlook Add-in Enhancement section 5
+
+- **Changed:** Added Outlook-native Human Review actions, AI suggestion approve/edit/reject, manual field override with confirm/re-compare, manual category correction, backend-tracked reply summary/key-points/draft/refine/confirmed-send workflow, dense case status rail, and an operational task-pane layout aligned with Dashboard semantics.
+- **Why:** Section 5 requires the Add-in to be a focused current-email operations surface rather than only an Open Dashboard shortcut.
+- **Files:** `backend/app/api/router.py`, `backend/app/api/product_schemas.py`, `backend/app/api/product_queries.py`, `backend/tests/test_api.py`, `outlook-addin/src/api/client.ts`, `outlook-addin/src/components/TaskPane.tsx`, `outlook-addin/src/styles/pane.css`, `outlook-addin/src/types/product.ts`, `outlook-addin/tests/TaskPane.test.tsx`, `outlook-addin/tests/fixtures.ts`, `outlook-addin/README.md`, `implement.md`.
+- **Validation:** Outlook Add-in `npm run check` passed with typecheck, 69 tests, and production build. Backend targeted tests for category override and reply send passed. Backend API compile passed. Full `backend/tests/test_api.py` was attempted; 11 passed and 2 existing CORS-environment tests failed under local settings.
+- **Next:** Wire live Microsoft Graph send/delete/restore/read-unread/category reconciliation in a provider integration branch; this branch records confirmed send state but does not send via Graph.
 
 ### 2026-09-22 — KPI cards typography unification & Captain Jack persona alignment
 

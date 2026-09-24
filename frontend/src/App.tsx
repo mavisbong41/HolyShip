@@ -6,8 +6,10 @@ import {
   ArrowUpRight,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleCheck,
   ClipboardList,
   Clock,
@@ -22,6 +24,7 @@ import {
   MoreHorizontal,
   LogOut,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShipWheel,
@@ -49,6 +52,7 @@ import {
   resolveDiscrepancy,
   saveDiscrepancyOverride,
   recompareDiscrepancy,
+  reconcileOutlookLifecycle,
 } from "./api/client";
 import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
 import { MetricCard } from "./components/common/MetricCard";
@@ -56,6 +60,7 @@ import { ConfirmedDiscrepanciesPageView } from "./components/discrepancies/Confi
 import type {
   DiscrepancyPage,
   DiscrepancyQueueFilters,
+  EmailLifecycleStatus,
   EmailQueuePage,
   HumanReviewAnalytics,
   HumanReviewPage,
@@ -427,11 +432,15 @@ function OverviewPage({
   queue,
   state,
   onOpenQueue,
+  onOpenQueueWithFilters,
+  onSelectEmail,
 }: {
   summary: ProductSummary | null;
   queue: EmailQueuePage | null;
   state: LoadState;
   onOpenQueue: () => void;
+  onOpenQueueWithFilters: (filters: Partial<QueueFilters>) => void;
+  onSelectEmail: (item: ProductEmailSummary) => void;
 }) {
   const completed = metricFromStatus(summary, "COMPLETED");
   const completionRate =
@@ -450,6 +459,7 @@ function OverviewPage({
             value={summary?.total_emails ?? 0}
             trendText={`${summary?.processing_count ?? 0} processing`}
             tone="attention"
+            onClick={() => onOpenQueueWithFilters({ limit: 20, skip: 0 })}
           />
           <MetricCard
             cardIndex={1}
@@ -459,6 +469,7 @@ function OverviewPage({
             trendText={`${completionRate}% of total`}
             trend="up"
             tone="good"
+            onClick={() => onOpenQueueWithFilters({ status: "COMPLETED" })}
           />
           <MetricCard
             cardIndex={2}
@@ -468,6 +479,7 @@ function OverviewPage({
             trendText="Actionable business cases"
             trend="up"
             tone="warn"
+            onClick={() => onOpenQueueWithFilters({ needs_review: "true" })}
           />
           <MetricCard
             cardIndex={3}
@@ -477,6 +489,7 @@ function OverviewPage({
             trendText={`${summary && summary.total_emails > 0 ? Math.round(((summary.mismatch_count ?? 0) / summary.total_emails) * 100) : 0}% of total emails`}
             trend="down"
             tone="bad"
+            onClick={() => onOpenQueueWithFilters({ has_mismatch: "true" })}
           />
           <MetricCard
             cardIndex={4}
@@ -485,6 +498,7 @@ function OverviewPage({
             value={summary?.awaiting_documents_count ?? metricFromStatus(summary, "AWAITING_DOCUMENTS")}
             trendText="Operational waiting state"
             tone="warn"
+            onClick={() => onOpenQueueWithFilters({ status: "AWAITING_DOCUMENTS" })}
           />
           <MetricCard
             cardIndex={5}
@@ -493,6 +507,7 @@ function OverviewPage({
             value={summary?.failed_count ?? metricFromStatus(summary, "FAILED")}
             trendText="Retry / reprocess"
             tone="bad"
+            onClick={() => onOpenQueueWithFilters({ status: "FAILED" })}
           />
           <MetricCard
             cardIndex={6}
@@ -501,8 +516,31 @@ function OverviewPage({
             value={summary?.processing_count ?? 0}
             trendText="Active pipeline work"
             tone="neutral"
+            onClick={() => onOpenQueueWithFilters({ is_processing: "true" })}
           />
         </div>
+
+        {summary && (summary.deleted_count ?? 0) > 0 && (
+          <div
+            className="deleted-lifecycle-banner"
+            role="button"
+            tabIndex={0}
+            onClick={() => onOpenQueueWithFilters({ lifecycle_status: "DELETED" })}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                onOpenQueueWithFilters({ lifecycle_status: "DELETED" });
+              }
+            }}
+          >
+            <div className="deleted-lifecycle-banner-left">
+              <Archive size={14} className="deleted-banner-icon" />
+              <span>
+                <strong>{summary.deleted_count ?? 0}</strong> email{(summary.deleted_count ?? 0) === 1 ? "" : "s"} deleted in Outlook — historical comparisons, overrides, and audit events preserved.
+              </span>
+            </div>
+            <span className="deleted-banner-link">View deleted queue →</span>
+          </div>
+        )}
       </section>
 
       <div className="overview-tri-grid">
@@ -530,7 +568,19 @@ function OverviewPage({
                       ? "attention"
                       : "in-progress";
                 return (
-                  <div className="status-row-compact" key={status}>
+                  <div
+                    className="status-row-compact"
+                    key={status}
+                    role="button"
+                    tabIndex={0}
+                    title={`Filter queue by ${statusLabels[status]} (${count})`}
+                    onClick={() => onOpenQueueWithFilters({ status })}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        onOpenQueueWithFilters({ status });
+                      }
+                    }}
+                  >
                     <span className="status-row-label">{statusLabels[status]}</span>
                     <div className="status-row-bar">
                       <span className={barClass} style={{ width: `${Math.min(100, Math.max(count > 0 ? 5 : 0, pct))}%` }} />
@@ -553,7 +603,7 @@ function OverviewPage({
               <p className="eyebrow">NEWEST CASES</p>
               <h2>Recent Activity</h2>
             </div>
-            <button className="section-link-btn" onClick={onOpenQueue} type="button">
+            <button className="section-link-btn" onClick={() => onOpenQueueWithFilters({ limit: 20, skip: 0 })} type="button">
               View all →
             </button>
           </div>
@@ -566,7 +616,19 @@ function OverviewPage({
                 const isFailed = item.processing_status === "FAILED";
                 const circleTone = isCompleted ? "good" : isMismatch ? "warn" : isReview ? "attention" : isFailed ? "bad" : "neutral";
                 return (
-                  <div className="activity-row-compact" key={item.id}>
+                  <div
+                    className="activity-row-compact"
+                    key={item.id}
+                    role="button"
+                    tabIndex={0}
+                    title={`Open email ${item.subject}`}
+                    onClick={() => onSelectEmail(item)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        onSelectEmail(item);
+                      }
+                    }}
+                  >
                     <div className="activity-row-left">
                       <div className={`activity-circle-icon ${circleTone}`}>
                         {isCompleted ? (
@@ -606,12 +668,23 @@ function OverviewPage({
               <p className="eyebrow">VERIFICATION ALERTS</p>
               <h2>Comparison Summary</h2>
             </div>
-            <button className="section-link-btn" onClick={onOpenQueue} type="button">
+            <button className="section-link-btn" onClick={() => onOpenQueueWithFilters({ limit: 20, skip: 0 })} type="button">
               View all →
             </button>
           </div>
           <div className="alert-summary-list">
-            <div className="alert-row-compact" onClick={onOpenQueue}>
+            <div
+              className="alert-row-compact"
+              role="button"
+              tabIndex={0}
+              title="Filter queue to emails with BL vs SI mismatch"
+              onClick={() => onOpenQueueWithFilters({ has_mismatch: "true" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onOpenQueueWithFilters({ has_mismatch: "true" });
+                }
+              }}
+            >
               <div className="alert-row-left">
                 <div className="activity-circle-icon bad">
                   <X size={13} />
@@ -627,7 +700,18 @@ function OverviewPage({
               </div>
             </div>
 
-            <div className="alert-row-compact" onClick={onOpenQueue}>
+            <div
+              className="alert-row-compact"
+              role="button"
+              tabIndex={0}
+              title="Filter queue to emails awaiting documents"
+              onClick={() => onOpenQueueWithFilters({ status: "AWAITING_DOCUMENTS" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onOpenQueueWithFilters({ status: "AWAITING_DOCUMENTS" });
+                }
+              }}
+            >
               <div className="alert-row-left">
                 <div className="activity-circle-icon warn">
                   <AlertCircle size={13} />
@@ -643,7 +727,18 @@ function OverviewPage({
               </div>
             </div>
 
-            <div className="alert-row-compact" onClick={onOpenQueue}>
+            <div
+              className="alert-row-compact"
+              role="button"
+              tabIndex={0}
+              title="Filter queue to blocked or conflicted emails"
+              onClick={() => onOpenQueueWithFilters({ status: "BLOCKED" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onOpenQueueWithFilters({ status: "BLOCKED" });
+                }
+              }}
+            >
               <div className="alert-row-left">
                 <div className="activity-circle-icon attention">
                   <AlertTriangle size={13} />
@@ -659,7 +754,18 @@ function OverviewPage({
               </div>
             </div>
 
-            <div className="alert-row-compact" onClick={onOpenQueue}>
+            <div
+              className="alert-row-compact"
+              role="button"
+              tabIndex={0}
+              title="Filter queue to emails with unresolved fields"
+              onClick={() => onOpenQueueWithFilters({ has_unresolved: "true" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onOpenQueueWithFilters({ has_unresolved: "true" });
+                }
+              }}
+            >
               <div className="alert-row-left">
                 <div className="activity-circle-icon neutral">
                   <AlertCircle size={13} />
@@ -675,7 +781,18 @@ function OverviewPage({
               </div>
             </div>
 
-            <div className="alert-row-compact" onClick={onOpenQueue}>
+            <div
+              className="alert-row-compact"
+              role="button"
+              tabIndex={0}
+              title="Filter queue to processing exceptions and failures"
+              onClick={() => onOpenQueueWithFilters({ status: "FAILED" })}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  onOpenQueueWithFilters({ status: "FAILED" });
+                }
+              }}
+            >
               <div className="alert-row-left">
                 <div className="activity-circle-icon neutral">
                   <FileText size={13} />
@@ -701,7 +818,7 @@ function OverviewPage({
             <p className="eyebrow">QUEUE PREVIEW</p>
             <h2>Recent Email Queue (Latest 5)</h2>
           </div>
-          <button className="section-link-btn" onClick={onOpenQueue} type="button">
+          <button className="section-link-btn" onClick={() => onOpenQueueWithFilters({ limit: 20, skip: 0 })} type="button">
             View all →
           </button>
         </div>
@@ -726,7 +843,7 @@ function OverviewPage({
                 {queue.items.slice(0, 5).map((item) => {
                   const statusKey = item.processing_status.toLowerCase().replace(/_/g, "-");
                   return (
-                    <tr key={item.id} onClick={onOpenQueue} style={{ cursor: "pointer" }}>
+                    <tr key={item.id} onClick={() => onSelectEmail(item)} style={{ cursor: "pointer" }} title={`Open email ${item.subject}`}>
                       <td>
                         <input type="checkbox" readOnly onClick={(e) => e.stopPropagation()} />
                       </td>
@@ -838,6 +955,7 @@ function QueuePage({
   onSelect,
   onOpenReview,
   onReprocess,
+  onRestoreEmail,
   onCloseDetail,
   onPage,
   onGoToPage,
@@ -852,6 +970,7 @@ function QueuePage({
   onSelect: (email: ProductEmailSummary) => void;
   onOpenReview: (reviewId: string) => void;
   onReprocess: (emailId: string) => void;
+  onRestoreEmail?: (emailId: string) => void;
   onCloseDetail?: () => void;
   onPage: (direction: "next" | "previous") => void;
   onGoToPage: (pageIndex: number) => void;
@@ -942,12 +1061,18 @@ function QueuePage({
           </label>
           <select
             aria-label="Filter by status"
-            value={filters.status ?? ""}
-            onChange={(event) =>
-              onFilters({ ...filters, status: event.target.value as ProcessingStatus | "", skip: 0 })
-            }
+            value={filters.is_processing === "true" ? "PROCESSING" : filters.status ?? ""}
+            onChange={(event) => {
+              const val = event.target.value;
+              if (val === "PROCESSING") {
+                onFilters({ ...filters, status: "", is_processing: "true", skip: 0 });
+              } else {
+                onFilters({ ...filters, status: val as ProcessingStatus | "", is_processing: "", skip: 0 });
+              }
+            }}
           >
             <option value="">All statuses</option>
+            <option value="PROCESSING">Currently Processing (Active Pipeline)</option>
             {statusOptions.map((status) => (
               <option key={status} value={status}>
                 {statusLabels[status]}
@@ -969,6 +1094,35 @@ function QueuePage({
             ))}
           </select>
           <select
+            aria-label="Filter by verification"
+            value={
+              filters.has_mismatch === "true"
+                ? "mismatch"
+                : filters.has_unresolved === "true"
+                  ? "unresolved"
+                  : filters.has_mismatch === "false"
+                    ? "no_mismatch"
+                    : ""
+            }
+            onChange={(event) => {
+              const val = event.target.value;
+              if (val === "mismatch") {
+                onFilters({ ...filters, has_mismatch: "true", has_unresolved: "", skip: 0 });
+              } else if (val === "unresolved") {
+                onFilters({ ...filters, has_mismatch: "", has_unresolved: "true", skip: 0 });
+              } else if (val === "no_mismatch") {
+                onFilters({ ...filters, has_mismatch: "false", has_unresolved: "", skip: 0 });
+              } else {
+                onFilters({ ...filters, has_mismatch: "", has_unresolved: "", skip: 0 });
+              }
+            }}
+          >
+            <option value="">All verification states</option>
+            <option value="mismatch">BL vs SI Mismatch</option>
+            <option value="unresolved">Unresolved fields</option>
+            <option value="no_mismatch">No mismatch detected</option>
+          </select>
+          <select
             aria-label="Filter by review need"
             value={filters.needs_review ?? ""}
             onChange={(event) =>
@@ -979,7 +1133,150 @@ function QueuePage({
             <option value="true">Needs review</option>
             <option value="false">No review need</option>
           </select>
+          <select
+            aria-label="Filter by lifecycle"
+            value={filters.lifecycle_status ?? ""}
+            onChange={(event) =>
+              onFilters({ ...filters, lifecycle_status: event.target.value as EmailLifecycleStatus | "", skip: 0 })
+            }
+          >
+            <option value="">Active mailbox</option>
+            <option value="DELETED">Deleted in Outlook</option>
+            <option value="ARCHIVED">Archived in Outlook</option>
+          </select>
         </div>
+
+        {Boolean(
+          filters.search ||
+          filters.status ||
+          filters.category ||
+          filters.needs_review ||
+          filters.lifecycle_status ||
+          filters.has_mismatch ||
+          filters.has_unresolved ||
+          filters.is_processing
+        ) && (
+          <div className="active-filter-chips" aria-label="Active filters">
+            <span className="active-filters-label">Active filters:</span>
+            {filters.status && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, status: "", skip: 0 })}
+                title="Remove status filter"
+              >
+                Status: {statusLabels[filters.status]} ✕
+              </button>
+            )}
+            {filters.is_processing === "true" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, is_processing: "", skip: 0 })}
+                title="Remove processing filter"
+              >
+                Active Processing Pipeline ✕
+              </button>
+            )}
+            {filters.category && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, category: "", skip: 0 })}
+                title="Remove category filter"
+              >
+                Category: {categoryLabels[filters.category]} ✕
+              </button>
+            )}
+            {filters.has_mismatch === "true" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, has_mismatch: "", skip: 0 })}
+                title="Remove mismatch filter"
+              >
+                Verification: BL vs SI Mismatch ✕
+              </button>
+            )}
+            {filters.has_unresolved === "true" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, has_unresolved: "", skip: 0 })}
+                title="Remove unresolved filter"
+              >
+                Verification: Unresolved fields ✕
+              </button>
+            )}
+            {filters.has_mismatch === "false" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, has_mismatch: "", skip: 0 })}
+                title="Remove no mismatch filter"
+              >
+                Verification: No mismatch ✕
+              </button>
+            )}
+            {filters.needs_review === "true" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, needs_review: "", skip: 0 })}
+                title="Remove review filter"
+              >
+                Review: Needs review ✕
+              </button>
+            )}
+            {filters.needs_review === "false" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, needs_review: "", skip: 0 })}
+                title="Remove review filter"
+              >
+                Review: No review need ✕
+              </button>
+            )}
+            {filters.lifecycle_status === "DELETED" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, lifecycle_status: "", skip: 0 })}
+                title="Remove deleted filter"
+              >
+                Lifecycle: Deleted in Outlook ✕
+              </button>
+            )}
+            {filters.lifecycle_status === "ARCHIVED" && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, lifecycle_status: "", skip: 0 })}
+                title="Remove archived filter"
+              >
+                Lifecycle: Archived in Outlook ✕
+              </button>
+            )}
+            {filters.search && (
+              <button
+                type="button"
+                className="filter-chip"
+                onClick={() => onFilters({ ...filters, search: "", skip: 0 })}
+                title="Remove search query"
+              >
+                Search: "{filters.search}" ✕
+              </button>
+            )}
+            <button
+              type="button"
+              className="filter-chip-clear"
+              onClick={() => onFilters({ limit: 20, skip: 0 })}
+            >
+              Reset all filters
+            </button>
+          </div>
+        )}
 
         <div className="table-scroll-bar">
           <button
@@ -1023,13 +1320,16 @@ function QueuePage({
                   {queue.items.map((item) => (
                     <tr
                       key={item.id}
-                      className={cx(detail?.email.id === item.id && "selected-row")}
+                      className={cx(detail?.email.id === item.id && "selected-row", item.lifecycle?.lifecycle_status === "DELETED" && "deleted-row")}
                       onClick={() => onSelect(item)}
                       aria-selected={detail?.email.id === item.id}
                     >
                       <td>
                         <strong>{item.sender?.split("@")[0]?.replace(/[._]/g, " ") || item.sender}</strong>
-                        <span className="subtle">{item.external_message_id}</span>
+                        <span className="subtle">
+                          {item.lifecycle?.outlook_read_state === "UNREAD" && <span className="unread-dot" title="Unread in Outlook" aria-label="Unread in Outlook">● </span>}
+                          {item.external_message_id}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -1048,7 +1348,12 @@ function QueuePage({
                         <StatusBadge value={item.category} />
                       </td>
                       <td>
-                        <StatusBadge value={item.processing_status} />
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", alignItems: "center" }}>
+                          <StatusBadge value={item.processing_status} />
+                          {item.lifecycle?.lifecycle_status && item.lifecycle.lifecycle_status !== "ACTIVE" && (
+                            <StatusBadge value={item.lifecycle.lifecycle_status} />
+                          )}
+                        </div>
                       </td>
                       <td>
                         <span className="subtle">
@@ -1148,7 +1453,7 @@ function QueuePage({
           <>
             <div className="floating-backdrop" onClick={onCloseDetail} />
             <div className="surface-panel detail-panel floating-modal">
-              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} onRestoreEmail={onRestoreEmail} />
             </div>
           </>
         ) : null
@@ -1169,7 +1474,7 @@ function QueuePage({
             {detailState === "loading" ? (
               <LoadingRows />
             ) : detail ? (
-              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} onRestoreEmail={onRestoreEmail} />
             ) : (
               <EmptyState
                 title="Select an email"
@@ -1188,12 +1493,20 @@ function EmailDetailContent({
   onClose,
   onOpenReview,
   onReprocess,
+  onRestoreEmail,
 }: {
   detail: ProductEmailDetail;
   onClose?: () => void;
   onOpenReview: (reviewId: string) => void;
   onReprocess: (emailId: string) => void;
+  onRestoreEmail?: (emailId: string) => void;
 }) {
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
+
+  useEffect(() => {
+    setIsTimelineExpanded(false);
+  }, [detail.email.id]);
+
   const latestFailure = [...detail.timeline].reverse().find((event) => event.new_status === "FAILED");
   return (
     <div>
@@ -1232,6 +1545,9 @@ function EmailDetailContent({
         <div className="detail-badge-row">
           <StatusBadge value={detail.email.category} />
           <StatusBadge value={detail.email.processing_status} />
+          {detail.email.lifecycle?.lifecycle_status && detail.email.lifecycle.lifecycle_status !== "ACTIVE" ? (
+            <StatusBadge value={detail.email.lifecycle.lifecycle_status} />
+          ) : null}
           {detail.email.review_status &&
           displayLabel(detail.email.processing_status) !== displayLabel(detail.email.review_status) ? (
             <StatusBadge value={detail.email.review_status} />
@@ -1253,8 +1569,37 @@ function EmailDetailContent({
           {detail.email.processing_status === "FAILED" ? (
             <button className="button-primary" type="button" onClick={() => onReprocess(detail.email.id)}>Retry / Reprocess</button>
           ) : null}
+          {detail.email.lifecycle?.lifecycle_status === "DELETED" ? (
+            <button
+              className="button-primary button-action-cta"
+              type="button"
+              onClick={() => onRestoreEmail?.(detail.email.id)}
+              title="Restore this email to active mailbox queue"
+            >
+              <RotateCcw size={15} />
+              <span>Restore Email</span>
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {detail.email.lifecycle?.lifecycle_status === "DELETED" ? (
+        <div className="detail-section">
+          <div className="state-note failed" role="status">
+            <strong>Mailbox item deleted</strong>
+            <span>This email was marked DELETED in Outlook. It is excluded from active queues, but verification evidence, audit trail, and Human Review records remain intact.</span>
+          </div>
+        </div>
+      ) : null}
+
+      {detail.email.lifecycle?.outlook_sync_error ? (
+        <div className="detail-section">
+          <div className="state-note failed" role="alert">
+            <strong>Outlook Sync Warning</strong>
+            <span>{detail.email.lifecycle.outlook_sync_error}</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="detail-section">
         <h3>Email information</h3>
@@ -1274,6 +1619,24 @@ function EmailDetailContent({
           <div className="info-item">
             <span>Attachments</span>
             <strong>{detail.attachments.length}</strong>
+          </div>
+          <div className="info-item">
+            <span>Mailbox state</span>
+            <strong>{displayLabel(detail.email.lifecycle?.lifecycle_status || "ACTIVE")}</strong>
+          </div>
+          <div className="info-item">
+            <span>Outlook read</span>
+            <strong>{displayLabel(detail.email.lifecycle?.outlook_read_state || "UNKNOWN")}</strong>
+          </div>
+          {detail.email.lifecycle?.outlook_categories && detail.email.lifecycle.outlook_categories.length > 0 ? (
+            <div className="info-item">
+              <span>Outlook tags</span>
+              <strong>{detail.email.lifecycle.outlook_categories.join(", ")}</strong>
+            </div>
+          ) : null}
+          <div className="info-item">
+            <span>Last Outlook sync</span>
+            <strong>{formatDate(detail.email.lifecycle?.last_outlook_sync_at ?? null)}</strong>
           </div>
         </div>
         <details className="body-preview">
@@ -1409,19 +1772,68 @@ function EmailDetailContent({
       </div>
 
       <div className="detail-section">
-        <h3>Processing Timeline</h3>
-        {detail.timeline.length ? <div className="timeline">
-          {detail.timeline.map((event) => (
-            <div className="timeline-row" key={event.id}>
-              <span />
-              <div>
-                <strong>{(statusLabels as Record<string, string>)[event.new_status] || event.new_status}</strong>
-                <p>{displayLabel(event.reason_code)} · {formatDate(event.created_at)}</p>
-                <small className="technical-code">{event.reason_code}</small>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>
+            Processing Timeline
+            {detail.timeline.length > 5 && (
+              <span style={{ fontSize: "11px", fontWeight: "normal", color: "var(--color-grey-500)", marginLeft: "8px" }}>
+                ({isTimelineExpanded ? `all ${detail.timeline.length} events` : `latest 5 of ${detail.timeline.length}`})
+              </span>
+            )}
+          </h3>
+          {detail.timeline.length > 5 && (
+            <button
+              type="button"
+              className="timeline-expand-btn"
+              onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#e66800",
+                background: "rgba(227, 148, 57, 0.08)",
+                border: "1px solid rgba(227, 148, 57, 0.25)",
+                borderRadius: "6px",
+                padding: "3px 10px",
+                cursor: "pointer",
+                transition: "all 120ms ease",
+              }}
+            >
+              {isTimelineExpanded ? (
+                <>
+                  <ChevronUp size={13} />
+                  <span>Show latest 5</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} />
+                  <span>Expand all ({detail.timeline.length})</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        {detail.timeline.length ? (
+          <div className="timeline">
+            {(isTimelineExpanded || detail.timeline.length <= 5
+              ? detail.timeline
+              : detail.timeline.slice(-5)
+            ).map((event) => (
+              <div className="timeline-row" key={event.id}>
+                <span />
+                <div>
+                  <strong>{(statusLabels as Record<string, string>)[event.new_status] || event.new_status}</strong>
+                  <p>{displayLabel(event.reason_code)} · {formatDate(event.created_at)}</p>
+                  <small className="technical-code">{event.reason_code}</small>
+                </div>
               </div>
-            </div>
-          ))}
-        </div> : <EmptyState title="No events yet" body="Processing and review events will appear here as the case advances." />}
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No events yet" body="Processing and review events will appear here as the case advances." />
+        )}
       </div>
     </div>
   );
@@ -3340,6 +3752,21 @@ export default function App() {
     }
   };
 
+  const restoreEmail = async (emailId: string) => {
+    setError(null);
+    try {
+      await reconcileOutlookLifecycle({
+        email_id: emailId,
+        lifecycle_status: "RESTORED",
+        actor_name: "Dashboard operator",
+      });
+      await loadDashboard();
+      setDetail(await getEmailDetail(emailId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Restore failed");
+    }
+  };
+
   const initialSync = async () => {
     setSyncState("loading");
     setError(null);
@@ -3459,7 +3886,17 @@ export default function App() {
             summary={summary}
             queue={queue}
             state={loadState}
-            onOpenQueue={() => navigate("queue")}
+            onOpenQueue={() => {
+              setPageIndex(0);
+              setFilters({ limit: 20, skip: 0 });
+              setPage("queue");
+            }}
+            onOpenQueueWithFilters={(newFilters) => {
+              setPageIndex(0);
+              setFilters({ limit: 20, skip: 0, ...newFilters });
+              setPage("queue");
+            }}
+            onSelectEmail={(item) => void selectEmail(item)}
           />
         ) : null}
 
@@ -3475,6 +3912,7 @@ export default function App() {
             onSelect={(item) => void selectEmail(item)}
             onOpenReview={(reviewId) => void selectReviewById(reviewId)}
             onReprocess={(emailId) => void reprocess(emailId)}
+            onRestoreEmail={(emailId) => void restoreEmail(emailId)}
             onCloseDetail={() => setDetail(null)}
             onPage={movePage}
             onGoToPage={goToPage}

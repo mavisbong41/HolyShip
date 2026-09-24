@@ -46,6 +46,7 @@ class MutableMailContextProvider implements MailContextProvider {
 describe("TaskPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     const testGlobal = globalThis as unknown as { Office?: unknown };
     delete testGlobal.Office;
     setupAdapter({ detail: null, strategy: "not_resolved", confidence: "none", limitationNote: "Test: not found" });
@@ -347,6 +348,85 @@ describe("TaskPane", () => {
     });
   });
 
+  it("saves manual category correction from Outlook", async () => {
+    const updatedDetail: ProductEmailDetail = {
+      ...fixtures.cleanMatch,
+      email: {
+        ...fixtures.cleanMatch.email,
+        category: "invoice_query",
+      },
+    };
+    const mockCategory = vi.spyOn(clientModule, "updateEmailCategory").mockResolvedValue(updatedDetail);
+    const user = userEvent.setup();
+    setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Manual category correction" })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText("Category"), "invoice_query");
+    await user.type(screen.getByLabelText("Reason"), "Customer is asking about invoice charges.");
+    await user.click(screen.getByRole("button", { name: /save category/i }));
+
+    await waitFor(() => {
+      expect(mockCategory).toHaveBeenCalledWith(
+        "email-001",
+        "invoice_query",
+        "Outlook reviewer",
+        "Customer is asking about invoice charges.",
+      );
+    });
+  });
+
+  it("runs reply summary and draft workflow from Outlook", async () => {
+    const summaryWorkflow = {
+      email_id: "email-001",
+      status: "KEY_POINTS_READY",
+      summary: "Draft BL case needs a reply.",
+      key_points: ["Acknowledge discrepancy"],
+      draft: null,
+      last_instruction: null,
+      sent_at: null,
+      updated_at: "2024-05-01T09:05:00Z",
+    };
+    const draftWorkflow = {
+      ...summaryWorkflow,
+      status: "DRAFT_READY",
+      draft: "Dear Customer,\n\n- Acknowledge discrepancy\n\nBest regards,\nHolyShip Operations",
+    };
+    const sentWorkflow = {
+      ...draftWorkflow,
+      status: "SENT",
+      sent_at: "2024-05-01T09:07:00Z",
+    };
+    const mockSummary = vi.spyOn(clientModule, "createReplySummary").mockResolvedValue(summaryWorkflow);
+    const mockGenerate = vi.spyOn(clientModule, "generateReplyDraft").mockResolvedValue(draftWorkflow);
+    const mockSend = vi.spyOn(clientModule, "sendReplyDraft").mockResolvedValue(sentWorkflow);
+    const user = userEvent.setup();
+    setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Reply workflow" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /prepare summary/i }));
+    await waitFor(() => {
+      expect(mockSummary).toHaveBeenCalledWith("email-001", "Captain Jack");
+    });
+
+    await user.click(await screen.findByRole("button", { name: /generate draft/i }));
+    await waitFor(() => {
+      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Captain Jack");
+    });
+
+    await user.click(await screen.findByRole("button", { name: /confirm sent/i }));
+    await waitFor(() => {
+      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Captain Jack");
+    });
+  });
+
   describe("AI Review Assistant Companion", () => {
     it("renders AI Review Assistant section and chips when active review exists", async () => {
       setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
@@ -402,6 +482,56 @@ describe("TaskPane", () => {
       expect(applyLink.getAttribute("href")).toContain("review=review-001");
     });
 
+    it("accepts an AI suggestion directly from Outlook and refreshes the case", async () => {
+      const mockAccept = vi.spyOn(clientModule, "acceptAISuggestion").mockResolvedValue(fixtures.aiSuggestion.review[0]);
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "Pending AI suggestions" })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /^Approve$/i }));
+
+      await waitFor(() => {
+        expect(mockAccept).toHaveBeenCalledWith("review-001", "suggestion-001", "Outlook reviewer");
+      });
+      expect(MockAdapter).toHaveBeenCalledTimes(2);
+    });
+
+    it("saves a manual override and confirms backend recomparison from Outlook", async () => {
+      const mockOverride = vi.spyOn(clientModule, "saveHumanReviewOverride").mockResolvedValue(fixtures.blocked.review[0]);
+      const mockResolve = vi.spyOn(clientModule, "resolveHumanReview").mockResolvedValue(fixtures.blocked.review[0]);
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "Outlook Human Review actions" })).toBeInTheDocument();
+      });
+
+      await user.clear(screen.getByLabelText("Corrected value"));
+      await user.type(screen.getByLabelText("Corrected value"), "Same as consignee");
+      await user.click(screen.getByRole("button", { name: /save override/i }));
+
+      await waitFor(() => {
+        expect(mockOverride).toHaveBeenCalledWith("review-001", expect.objectContaining({
+          document_side: "BL",
+          field: "notify_party",
+          corrected_value: "Same as consignee",
+          reviewer_name: "Jordan Lee",
+        }));
+      });
+
+      await user.type(screen.getByLabelText("Confirmation notes"), "Confirmed in Outlook.");
+      await user.click(screen.getByRole("button", { name: /confirm & re-compare/i }));
+
+      await waitFor(() => {
+        expect(mockResolve).toHaveBeenCalledWith("review-001", "Jordan Lee", "Confirmed in Outlook.");
+      });
+    });
+
     it("displays error notice gracefully when AI assistant call fails", async () => {
       vi.spyOn(clientModule, "askAIAssistant").mockRejectedValue(new Error("AI service timeout"));
 
@@ -416,6 +546,131 @@ describe("TaskPane", () => {
       await user.click(screen.getByRole("button", { name: "Why does this need review?" }));
 
       expect(await screen.findByRole("alert")).toHaveTextContent("AI service timeout");
+    });
+
+    it("renders deleted lifecycle banner and sync rail status", async () => {
+      const deletedDetail = {
+        ...fixtures.cleanMatch,
+        email: {
+          ...fixtures.cleanMatch.email,
+          lifecycle: {
+            lifecycle_status: "DELETED",
+            outlook_read_state: "READ",
+            outlook_categories: ["BL_COMPARISON"],
+            outlook_folder_id: "trash",
+            outlook_archived: false,
+            last_outlook_sync_at: "2024-05-01T12:00:00Z",
+            outlook_sync_error: null,
+            deleted_at: "2024-05-01T12:00:00Z",
+            restored_at: null,
+          },
+        },
+      };
+      setupAdapter({ detail: deletedDetail as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+      await waitFor(() => {
+        expect(screen.getByRole("status")).toHaveTextContent("Hidden from active queues; history and review evidence are preserved.");
+      });
+      expect(screen.getAllByText("Deleted").length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("triggers best-effort lifecycle reconciliation on email resolution", async () => {
+      const mockReconcile = vi.spyOn(clientModule, "reconcileOutlookLifecycle").mockResolvedValue(undefined);
+      setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+      await waitFor(() => {
+        expect(mockReconcile).toHaveBeenCalledWith("email-001", expect.objectContaining({
+          subject: expect.stringContaining("Draft BL"),
+        }));
+      });
+    });
+
+    it("restores email with explicit RESTORED lifecycle status", async () => {
+      const mockReconcile = vi.spyOn(clientModule, "reconcileOutlookLifecycle").mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      const deletedDetail = {
+        ...fixtures.cleanMatch,
+        email: {
+          ...fixtures.cleanMatch.email,
+          lifecycle: {
+            lifecycle_status: "DELETED",
+            outlook_read_state: "READ",
+            outlook_categories: [],
+            outlook_folder_id: "trash",
+            outlook_archived: false,
+            last_outlook_sync_at: "2024-05-01T12:00:00Z",
+            outlook_sync_error: null,
+            deleted_at: "2024-05-01T12:00:00Z",
+            restored_at: null,
+          },
+        },
+      };
+      setupAdapter({ detail: deletedDetail as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Restore Email")).toBeInTheDocument();
+      });
+
+      const restoreBtn = screen.getByRole("button", { name: "Restore Email" });
+      await user.click(restoreBtn);
+
+      await waitFor(() => {
+        expect(mockReconcile).toHaveBeenCalledWith("email-001", expect.objectContaining({
+          lifecycle_status: "RESTORED",
+          outlook_folder_id: "inbox",
+        }));
+      });
+      mockReconcile.mockRestore();
+    });
+
+    it("renders lifecycle audit events in timeline card", async () => {
+      const detailWithLifecycleAudit = {
+        ...fixtures.cleanMatch,
+        timeline: [
+          {
+            id: "ev-1",
+            old_status: "NEW",
+            new_status: "COMPLETED",
+            reason_code: "OUTLOOK_EMAIL_DELETED",
+            created_at: "2024-05-01T12:00:00Z",
+          },
+          {
+            id: "ev-2",
+            old_status: "COMPLETED",
+            new_status: "COMPLETED",
+            reason_code: "OUTLOOK_EMAIL_RESTORED",
+            created_at: "2024-05-01T12:05:00Z",
+          },
+        ],
+      };
+      setupAdapter({ detail: detailWithLifecycleAudit as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Mailbox item deleted")).toBeInTheDocument();
+        expect(screen.getByText("Mailbox item restored")).toBeInTheDocument();
+      });
+    });
+
+    it("detects deleted items folder in reconcileOutlookLifecycle", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ email_id: "email-001", action: "OUTLOOK_EMAIL_DELETED", lifecycle: {} }),
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+
+      await clientModule.reconcileOutlookLifecycle("email-001", {
+        outlookFolderId: "DeletedItems",
+      } as any);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/outlook/reconcile"),
+        expect.objectContaining({
+          body: expect.stringContaining('"lifecycle_status":"DELETED"'),
+        }),
+      );
+      vi.unstubAllGlobals();
     });
   });
 });

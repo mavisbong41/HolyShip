@@ -79,6 +79,7 @@ export function MetricCard({
   tone = "neutral",
   cardIndex = 0,
   totalCards = 7,
+  onClick,
 }: {
   icon: React.ReactNode;
   label: string;
@@ -89,9 +90,26 @@ export function MetricCard({
   tone?: "neutral" | "good" | "warn" | "bad" | "attention";
   cardIndex?: number;
   totalCards?: number;
+  onClick?: () => void;
 }) {
   return (
-    <article className={cx("metric-card", `metric-${tone}`)}>
+    <article
+      className={cx("metric-card", `metric-${tone}`, onClick ? "clickable" : undefined)}
+      onClick={onClick}
+      role={onClick ? "button" : undefined}
+      tabIndex={onClick ? 0 : undefined}
+      onKeyDown={
+        onClick
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onClick();
+              }
+            }
+          : undefined
+      }
+      style={onClick ? { cursor: "pointer" } : undefined}
+    >
       <MetricCardWave index={cardIndex} totalCards={totalCards} />
       <div className="metric-card-top">
         <div className="metric-header-left">

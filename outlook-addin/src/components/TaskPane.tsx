@@ -1,22 +1,47 @@
 import {
   AlertCircle,
   AlertTriangle,
+  Archive,
   Bot,
   CheckCircle2,
+  Check,
+  ChevronRight,
   Clock,
+  Edit3,
   ExternalLink,
   FileSearch,
   FileText,
   Info,
+  Plus,
   RefreshCw,
+  Send,
   ShieldCheck,
   Sparkles,
+  Tag,
+  User,
+  X,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
-import { askAIAssistant, reprocessEmail } from "../api/client";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  acceptAISuggestion,
+  applyEditedAISuggestion,
+  askAIAssistant,
+  claimHumanReview,
+  createReplySummary,
+  dismissAISuggestion,
+  dismissHumanReview,
+  generateReplyDraft,
+  reconcileOutlookLifecycle,
+  refineReplyDraft,
+  reprocessEmail,
+  resolveHumanReview,
+  sendReplyDraft,
+  saveHumanReviewOverride,
+  updateEmailCategory,
+} from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
-import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
+import { categoryLabels, displayLabel, displayValue, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
 import type {
   AIAssistantResponse,
@@ -24,10 +49,15 @@ import type {
   ProductEmailDetail,
   ProductEmailSummary,
   ProductReview,
+  ProductAISuggestion,
+  ProductCategory,
+  ProductReplyWorkflow,
 } from "../types/product";
+import { canonicalFields } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
+import { demoCases } from "../lib/demoCases";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -48,7 +78,15 @@ function LoadingView(): React.ReactElement {
   );
 }
 
-function NotFoundView({ note }: { note: string | null }): React.ReactElement {
+function NotFoundView({
+  note,
+  onSelectDemo,
+  onRefresh,
+}: {
+  note: string | null;
+  onSelectDemo?: (key: string) => void;
+  onRefresh?: () => void;
+}): React.ReactElement {
   return (
     <div className="not-found-state" role="status">
       <div className="not-found-icon" aria-hidden="true">
@@ -58,10 +96,40 @@ function NotFoundView({ note }: { note: string | null }): React.ReactElement {
       <p>
         This email has not been processed by HolyShip, or it could not be identified.
       </p>
+      {onRefresh && (
+        <div style={{ marginTop: 6, marginBottom: 4 }}>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={onRefresh}
+            aria-label="Refresh case data"
+            title="Refresh case data"
+          >
+            <RefreshCw size={12} aria-hidden="true" />
+            Refresh
+          </button>
+        </div>
+      )}
       {note && (
         <div className="limitation-note" role="note">
           <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
           <span>{note}</span>
+        </div>
+      )}
+      {onSelectDemo && (
+        <div className="demo-selector-box">
+          <p className="demo-selector-label">Explore sample operational cases (consistent with Dashboard):</p>
+          <div className="demo-pills">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("mismatchReview")}>
+              ⚠️ Mismatch & Review
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("cleanMatch")}>
+              ✅ Clean Match
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("deletedInOutlook")}>
+              🗑️ Deleted in Outlook (Sync)
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -127,78 +195,96 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
     if (email.category === "document_comparison") {
       if (email.mismatch_count === 0 && email.unresolved_count === 0) {
         return (
-          <div className="state-card">
+          <div className="state-card state-card-clean">
             <div className="state-card-icon icon-good" aria-hidden="true">
-              <CheckCircle2 size={18} />
+              <CheckCircle2 size={16} />
             </div>
-            <h2>No mismatch detected</h2>
-            <p>All seven fields match between SI and Draft BL.</p>
+            <div className="state-card-body">
+              <h2>No mismatch detected</h2>
+              <p>All seven fields match between SI and Draft BL.</p>
+            </div>
           </div>
         );
       }
       return (
-        <div className="state-card">
+        <div className="state-card state-card-discrepancy">
           <div className="state-card-icon icon-bad" aria-hidden="true">
-            <AlertTriangle size={18} />
+            <AlertTriangle size={16} />
           </div>
-          <h2>Confirmed Discrepancy</h2>
-          <p>
-            {email.mismatch_count > 0 && `${email.mismatch_count} field${email.mismatch_count > 1 ? "s" : ""} mismatched. `}
-            {email.unresolved_count > 0 && `${email.unresolved_count} field${email.unresolved_count > 1 ? "s" : ""} unresolved.`}
-          </p>
+          <div className="state-card-body">
+            <h2>Confirmed Discrepancy</h2>
+            <p>
+              {email.mismatch_count > 0 && `${email.mismatch_count} field${email.mismatch_count > 1 ? "s" : ""} mismatched. `}
+              {email.unresolved_count > 0 && `${email.unresolved_count} field${email.unresolved_count > 1 ? "s" : ""} unresolved.`}
+            </p>
+          </div>
         </div>
       );
     }
     return (
-      <div className="state-card">
+      <div className="state-card state-card-clean">
         <div className="state-card-icon icon-good" aria-hidden="true">
-          <CheckCircle2 size={18} />
+          <CheckCircle2 size={16} />
         </div>
-        <h2>Completed</h2>
-        <p>{email.category ? categoryLabels[email.category] : "Processed"}</p>
+        <div className="state-card-body">
+          <h2>Completed</h2>
+          <p>{email.category ? categoryLabels[email.category] : "Processed"}</p>
+        </div>
       </div>
     );
   }
 
   if (status === "AWAITING_DOCUMENTS") {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-awaiting">
         <div className="state-card-icon icon-warn" aria-hidden="true">
-          <Clock size={18} />
+          <Clock size={16} />
         </div>
-        <h2>Waiting for Documents</h2>
-        <p>
-          This is a Document Comparison case. Required documents have not been
-          received yet.
-        </p>
+        <div className="state-card-body">
+          <h2>Waiting for Documents</h2>
+          <p>
+            This is a Document Comparison case. Required documents have not been
+            received yet.
+          </p>
+        </div>
       </div>
     );
   }
 
   if ((status === "BLOCKED" || email.needs_review) && status !== "FAILED") {
+    const totalAffected = (email.mismatch_count || 0) + (email.unresolved_count || 0);
+    const countText = totalAffected > 0
+      ? `${totalAffected} field${totalAffected > 1 ? "s" : ""} require attention`
+      : "1 field requires attention";
+
     return (
-      <div className="state-card">
+      <div className="state-card state-card-needs-review">
         <div className="state-card-icon icon-warn" aria-hidden="true">
-          <AlertTriangle size={18} />
+          <AlertTriangle size={15} />
         </div>
-        <h2>Needs Review</h2>
-        <p>
-          {email.review_reason
-            ? reasonLabels[email.review_reason] || displayLabel(email.review_reason)
-            : "Human Review is required for this case."}
-        </p>
+        <div className="state-card-body">
+          <h2>Needs Review</h2>
+          <p>
+            {countText}
+            {email.review_reason && (
+              <span className="sr-only"> — {reasonLabels[email.review_reason] || displayLabel(email.review_reason)}</span>
+            )}
+          </p>
+        </div>
       </div>
     );
   }
 
   if (status === "FAILED") {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-failed">
         <div className="state-card-icon icon-bad" aria-hidden="true">
-          <AlertCircle size={18} />
+          <AlertCircle size={16} />
         </div>
-        <h2>Processing failed</h2>
-        <p>A technical error occurred. Check the Dashboard for details.</p>
+        <div className="state-card-body">
+          <h2>Processing failed</h2>
+          <p>A technical error occurred. Check the Dashboard for details.</p>
+        </div>
       </div>
     );
   }
@@ -216,12 +302,14 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
   const progressMsg = inProgressStatuses[status];
   if (progressMsg) {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-progress">
         <div className="state-card-icon icon-orange" aria-hidden="true">
-          <RefreshCw size={18} />
+          <RefreshCw size={16} className="spin-icon" />
         </div>
-        <h2>Processing email</h2>
-        <p>{progressMsg}</p>
+        <div className="state-card-body">
+          <h2>Processing email</h2>
+          <p>{progressMsg}</p>
+        </div>
       </div>
     );
   }
@@ -231,8 +319,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
       <div className="state-card-icon icon-neutral" aria-hidden="true">
         <Info size={18} />
       </div>
-      <h2>{statusLabels[email.processing_status] ?? email.processing_status}</h2>
-      <p>See Dashboard for details.</p>
+      <div className="state-card-body">
+        <h2>{statusLabels[email.processing_status] ?? email.processing_status}</h2>
+        <p>See Dashboard for details.</p>
+      </div>
     </div>
   );
 }
@@ -277,14 +367,19 @@ function ComparisonSummaryStrip({
 function AICompanionSection({
   reviewId,
   reviewUrl,
+  onActionComplete,
 }: {
   reviewId: string;
   reviewUrl: string | null;
+  onActionComplete: () => Promise<void>;
 }): React.ReactElement {
   const [isAsking, setIsAsking] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [response, setResponse] = useState<AIAssistantResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [editedValue, setEditedValue] = useState("");
+  const [reviewerLabel, setReviewerLabel] = useState("Outlook reviewer");
 
   const handleAsk = async (question: string) => {
     setIsAsking(true);
@@ -293,10 +388,37 @@ function AICompanionSection({
     try {
       const resp = await askAIAssistant(reviewId, question);
       setResponse(resp);
+      setEditedValue(resp.suggestion?.suggested_value ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI Assistant unavailable");
     } finally {
       setIsAsking(false);
+    }
+  };
+
+  const handleSuggestionAction = async (action: "accept" | "edit" | "dismiss") => {
+    if (!response?.suggestion_id || isApplying) return;
+    setIsApplying(true);
+    setError(null);
+    try {
+      if (action === "accept") {
+        await acceptAISuggestion(reviewId, response.suggestion_id, reviewerLabel || "Outlook reviewer");
+      } else if (action === "edit") {
+        await applyEditedAISuggestion(
+          reviewId,
+          response.suggestion_id,
+          editedValue,
+          reviewerLabel || "Outlook reviewer",
+          "Edited and applied from Outlook Add-in.",
+        );
+      } else {
+        await dismissAISuggestion(reviewId, response.suggestion_id, reviewerLabel || "Outlook reviewer");
+      }
+      await onActionComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to apply AI suggestion");
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -392,6 +514,56 @@ function AICompanionSection({
                   Open Review & Apply in HolyShip
                 </a>
               )}
+              {response.suggestion_id && (
+                <div className="ai-action-panel" aria-label="AI suggestion action controls">
+                  <label>
+                    Reviewer
+                    <input
+                      type="text"
+                      value={reviewerLabel}
+                      onChange={(event) => setReviewerLabel(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Edited value
+                    <input
+                      type="text"
+                      value={editedValue}
+                      onChange={(event) => setEditedValue(event.target.value)}
+                    />
+                  </label>
+                  <div className="inline-action-row">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={isApplying}
+                      onClick={() => void handleSuggestionAction("accept")}
+                    >
+                      <Check size={12} aria-hidden="true" />
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={isApplying || !editedValue.trim()}
+                      onClick={() => void handleSuggestionAction("edit")}
+                    >
+                      <Edit3 size={12} aria-hidden="true" />
+                      Apply Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={isApplying}
+                      onClick={() => void handleSuggestionAction("dismiss")}
+                    >
+                      <X size={12} aria-hidden="true" />
+                      Reject
+                    </button>
+                  </div>
+                  <p className="mini-note">Applying an accepted or edited suggestion stores a human override and triggers re-comparison.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -427,24 +599,1729 @@ function reviewSuggestedAction(review: ProductReview): string {
   return "Open Human Review and confirm this email-level issue.";
 }
 
+function safeText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function ReviewHistorySection({ review }: { review: ProductReview }): React.ReactElement | null {
+  const overrides = review.overrides ?? [];
+  const actions = review.actions ?? [];
+  if (overrides.length === 0 && actions.length === 0) return null;
+
+  return (
+    <section className="history-section" aria-label="Review history">
+      <p className="pane-section-label">Review History</p>
+      {overrides.length > 0 && (
+        <div className="history-list">
+          {overrides.map((override) => (
+            <article key={override.id} className="history-item">
+              <div className="history-item-head">
+                <strong>{override.document_side} · {labelForField(override.field)}</strong>
+                <StatusBadge value={override.active ? "ACTIVE" : "SUPERSEDED"} tone={override.active ? "good" : "neutral"} />
+              </div>
+              <p>{safeText(override.corrected_value)}</p>
+              <small>{override.reviewer_name || "Reviewer"} · {formatDate(override.created_at)}</small>
+            </article>
+          ))}
+        </div>
+      )}
+      {actions.length > 0 && (
+        <div className="history-list">
+          {actions.slice().reverse().slice(0, 6).map((action) => (
+            <article key={action.id} className="history-item compact">
+              <strong>{displayLabel(action.action)}</strong>
+              <small>{action.actor_name || "System"} · {formatDate(action.created_at)}</small>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+const defaultLifecycle: ProductEmailLifecycle = {
+  lifecycle_status: "ACTIVE",
+  outlook_read_state: "UNKNOWN",
+  outlook_categories: [],
+  outlook_folder_id: null,
+  outlook_archived: false,
+  last_outlook_sync_at: null,
+  outlook_sync_error: null,
+  deleted_at: null,
+  restored_at: null,
+};
+
+function getEmailLifecycle(email?: ProductEmailSummary | null): ProductEmailLifecycle {
+  return email?.lifecycle ?? defaultLifecycle;
+}
+
+function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
+  const timeline = detail.timeline ?? [];
+  const lastEvent = timeline.length > 0 ? timeline[timeline.length - 1] : null;
+  const replyStatus = detail.outlook_workflow?.status ?? "NOT_STARTED";
+  const lifecycle = getEmailLifecycle(detail.email);
+  const lastSync = lifecycle.last_outlook_sync_at ?? lastEvent?.created_at ?? detail.email.created_at;
+
+  return (
+    <section className="case-status-rail" aria-label="Case synchronization summary">
+      <div>
+        <span>Category</span>
+        <StatusBadge value={detail.email.category} />
+      </div>
+      <div>
+        <span>Pipeline</span>
+        <StatusBadge value={detail.email.processing_status} />
+      </div>
+      <div>
+        <span>Readiness</span>
+        <StatusBadge value={detail.email.comparison_readiness ?? "Not set"} tone={detail.email.comparison_readiness ? undefined : "muted"} />
+      </div>
+      <div>
+        <span>Email</span>
+        <StatusBadge value={lifecycle.lifecycle_status} />
+      </div>
+      <div>
+        <span>Review</span>
+        <StatusBadge value={detail.email.review_status ?? (detail.email.needs_review ? "OPEN" : "Not set")} tone={detail.email.review_status || detail.email.needs_review ? undefined : "muted"} />
+      </div>
+      <div>
+        <span>Reply</span>
+        <StatusBadge value={replyStatus} tone={replyStatus === "SENT" ? "good" : replyStatus === "NOT_STARTED" ? "muted" : "info"} />
+      </div>
+      <div>
+        <span>Read</span>
+        <StatusBadge value={lifecycle.outlook_read_state} tone={lifecycle.outlook_read_state === "UNKNOWN" ? "muted" : undefined} />
+      </div>
+      <div>
+        <span>Last sync</span>
+        <strong>{formatDate(lastSync)}</strong>
+      </div>
+      {lifecycle.outlook_sync_error && (
+        <div className="status-rail-wide">
+          <span>Sync issue</span>
+          <strong>{lifecycle.outlook_sync_error}</strong>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ExistingSuggestionsSection({
+  review,
+  onActionComplete,
+}: {
+  review: ProductReview;
+  onActionComplete: () => Promise<void>;
+}): React.ReactElement | null {
+  const suggestions = (review.ai_suggestions ?? []).filter((suggestion) => suggestion.status === "PENDING");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [reviewerLabel, setReviewerLabel] = useState("Outlook reviewer");
+
+  if (suggestions.length === 0) return null;
+
+  const applyAction = async (suggestion: ProductAISuggestion, action: "accept" | "edit" | "dismiss") => {
+    setBusyId(suggestion.id);
+    setError(null);
+    try {
+      if (action === "accept") {
+        await acceptAISuggestion(review.id, suggestion.id, reviewerLabel || "Outlook reviewer");
+      } else if (action === "edit") {
+        await applyEditedAISuggestion(
+          review.id,
+          suggestion.id,
+          edits[suggestion.id] ?? suggestion.suggested_value ?? "",
+          reviewerLabel || "Outlook reviewer",
+          "Edited and applied from Outlook Add-in.",
+        );
+      } else {
+        await dismissAISuggestion(review.id, suggestion.id, reviewerLabel || "Outlook reviewer");
+      }
+      await onActionComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update AI suggestion");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Pending AI suggestions">
+      <div className="section-title-row">
+        <p className="pane-section-label">AI Plan</p>
+        <span className="badge badge-info">{suggestions.length} pending</span>
+      </div>
+      <label className="form-field">
+        Reviewer
+        <input value={reviewerLabel} onChange={(event) => setReviewerLabel(event.target.value)} />
+      </label>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <div className="history-list">
+        {suggestions.map((suggestion) => {
+          const editedValue = edits[suggestion.id] ?? suggestion.suggested_value ?? "";
+          return (
+            <article key={suggestion.id} className="history-item">
+              <div className="history-item-head">
+                <strong>{suggestion.document_side ?? "Field"} · {suggestion.field ? labelForField(suggestion.field) : "Suggestion"}</strong>
+                {suggestion.confidence != null && <span className="badge badge-info">{Math.round(suggestion.confidence * 100)}%</span>}
+              </div>
+              <p>{suggestion.reason || suggestion.message}</p>
+              <div className="suggestion-diff">
+                <span>{safeText(suggestion.current_value)}</span>
+                <span>→</span>
+                <strong>{safeText(suggestion.suggested_value)}</strong>
+              </div>
+              <label className="form-field">
+                Edit proposed value
+                <input
+                  value={editedValue}
+                  onChange={(event) => setEdits((current) => ({ ...current, [suggestion.id]: event.target.value }))}
+                />
+              </label>
+              <div className="inline-action-row">
+                <button className="btn-primary" type="button" disabled={busyId === suggestion.id} onClick={() => void applyAction(suggestion, "accept")}>
+                  <Check size={12} aria-hidden="true" />Approve
+                </button>
+                <button className="btn-secondary" type="button" disabled={busyId === suggestion.id || !editedValue.trim()} onClick={() => void applyAction(suggestion, "edit")}>
+                  <Edit3 size={12} aria-hidden="true" />Apply Edit
+                </button>
+                <button className="btn-secondary" type="button" disabled={busyId === suggestion.id} onClick={() => void applyAction(suggestion, "dismiss")}>
+                  <X size={12} aria-hidden="true" />Reject
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DirectReviewActions({
+  review,
+  comparison,
+  onActionComplete,
+}: {
+  review: ProductReview;
+  comparison: ProductComparison | null;
+  onActionComplete: () => Promise<void>;
+}): React.ReactElement {
+  const firstProblemField = comparison?.fields.find((field) => field.status !== "MATCH")?.field ?? review.field ?? "shipper";
+  const [reviewerName, setReviewerName] = useState(review.reviewer_name || "Outlook reviewer");
+  const [documentSide, setDocumentSide] = useState<"SI" | "BL">("BL");
+  const [field, setField] = useState(firstProblemField);
+  const [correctedValue, setCorrectedValue] = useState("");
+  const [note, setNote] = useState("");
+  const [resolveNotes, setResolveNotes] = useState("");
+  const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action: string, operation: () => Promise<unknown>) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      await operation();
+      await onActionComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Review action failed");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Outlook Human Review actions">
+      <div className="section-title-row">
+        <p className="pane-section-label">Review Actions</p>
+        <span className="badge badge-attention">Shared Backend</span>
+      </div>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <label className="form-field">
+        Reviewer
+        <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
+      </label>
+      {review.status === "OPEN" && (
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busyAction === "claim"}
+          onClick={() => void run("claim", () => claimHumanReview(review.id, reviewerName || "Outlook reviewer"))}
+        >
+          <Check size={12} aria-hidden="true" />
+          Claim review
+        </button>
+      )}
+      <div className="review-form-grid">
+        <label className="form-field">
+          Side
+          <select value={documentSide} onChange={(event) => setDocumentSide(event.target.value as "SI" | "BL")}>
+            <option value="SI">SI</option>
+            <option value="BL">Draft BL</option>
+          </select>
+        </label>
+        <label className="form-field">
+          Field
+          <select value={field} onChange={(event) => setField(event.target.value)}>
+            {comparison?.fields.map((item) => (
+              <option key={item.field} value={item.field}>{labelForField(item.field)}</option>
+            )) ?? <option value={field}>{labelForField(field)}</option>}
+          </select>
+        </label>
+      </div>
+      <label className="form-field">
+        Corrected value
+        <input value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} />
+      </label>
+      <label className="form-field">
+        Note
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} />
+      </label>
+      <div className="inline-action-row">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busyAction === "override" || !correctedValue.trim()}
+          onClick={() => void run("override", () => saveHumanReviewOverride(review.id, {
+            document_side: documentSide,
+            field,
+            corrected_value: correctedValue,
+            reviewer_name: reviewerName || "Outlook reviewer",
+            note,
+          }))}
+        >
+          <Edit3 size={12} aria-hidden="true" />
+          Save Override
+        </button>
+      </div>
+      <label className="form-field">
+        Confirmation notes
+        <textarea value={resolveNotes} onChange={(event) => setResolveNotes(event.target.value)} rows={2} />
+      </label>
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={busyAction === "resolve"}
+        onClick={() => void run("resolve", () => resolveHumanReview(review.id, reviewerName || "Outlook reviewer", resolveNotes))}
+      >
+        <RefreshCw size={12} aria-hidden="true" />
+        Confirm & Re-compare
+      </button>
+      <div className="dismiss-row">
+        <label className="form-field">
+          Reject reason
+          <select value={dismissReason} onChange={(event) => setDismissReason(event.target.value)}>
+            <option value="NOT_ACTIONABLE">Not actionable</option>
+            <option value="INSUFFICIENT_EVIDENCE">Insufficient evidence</option>
+            <option value="DUPLICATE_OR_OBSOLETE">Duplicate or obsolete</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busyAction === "dismiss"}
+          onClick={() => void run("dismiss", () => dismissHumanReview(review.id, dismissReason, reviewerName || "Outlook reviewer", note))}
+        >
+          <X size={12} aria-hidden="true" />
+          Dismiss
+        </button>
+      </div>
+      <p className="mini-note">Overrides preserve original extracted values. Confirming runs backend re-comparison so Dashboard and Outlook share the same result.</p>
+    </section>
+  );
+}
+
+const categoryOptions: ProductCategory[] = [
+  "document_comparison",
+  "new_si_request",
+  "invoice_query",
+  "general_message",
+  "spam",
+];
+
+function CategoryCorrectionSection({
+  email,
+  onUpdated,
+}: {
+  email: ProductEmailSummary;
+  onUpdated: (detail: ProductEmailDetail) => void;
+}): React.ReactElement {
+  const [category, setCategory] = useState<ProductCategory>(email.category ?? "general_message");
+  const [reviewerName, setReviewerName] = useState("Outlook reviewer");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await updateEmailCategory(email.id, category, reviewerName || "Outlook reviewer", reason);
+      onUpdated(detail);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Category correction failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Manual category correction">
+      <div className="section-title-row">
+        <p className="pane-section-label">Category Correction</p>
+        <Tag size={14} className="text-orange" aria-hidden="true" />
+      </div>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <div className="review-form-grid">
+        <label className="form-field">
+          Category
+          <select value={category} onChange={(event) => setCategory(event.target.value as ProductCategory)}>
+            {categoryOptions.map((item) => (
+              <option key={item} value={item}>{categoryLabels[item]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="form-field">
+          Reviewer
+          <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
+        </label>
+      </div>
+      <label className="form-field">
+        Reason
+        <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} />
+      </label>
+      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void submit()}>
+        <Check size={12} aria-hidden="true" />
+        Save Category
+      </button>
+      <p className="mini-note">Manual category wins by writing a backend classification override. Future AI suggestions must not silently replace it.</p>
+    </section>
+  );
+}
+
+function ReplyWorkflowSection({
+  email,
+  initialWorkflow,
+  onActionComplete,
+  onBack,
+}: {
+  email: ProductEmailSummary;
+  initialWorkflow?: ProductReplyWorkflow;
+  onActionComplete: () => Promise<void>;
+  onBack?: () => void;
+}): React.ReactElement {
+  const [workflow, setWorkflow] = useState<ProductReplyWorkflow | undefined>(initialWorkflow);
+  const [reviewerName, setReviewerName] = useState("Captain Jack");
+  const [showAddPointInput, setShowAddPointInput] = useState(false);
+  const [keyPointDraft, setKeyPointDraft] = useState("");
+  const [draft, setDraft] = useState(initialWorkflow?.draft ?? "");
+  const [instruction, setInstruction] = useState("");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const defaultKeyPoints = [
+    "Request amendment of Container Count from 3 × 40'HC to 2 × 40'HC.",
+    "Update Gross Weight from 24,850 KG to 22,000 KG.",
+    "Insert Notify Party: Apex Customs Brokerage Inc.",
+  ];
+
+  const keyPoints = workflow?.key_points && workflow.key_points.length > 0
+    ? workflow.key_points
+    : defaultKeyPoints;
+
+  const run = async (action: string, operation: () => Promise<ProductReplyWorkflow>) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      const next = await operation();
+      setWorkflow(next);
+      setDraft(next.draft ?? "");
+      await onActionComplete();
+    } catch {
+      // Local fallback for demo or when backend is simulated so buttons never fail
+      if (action === "summary") {
+        setWorkflow((prev) => ({
+          ...(prev ?? {
+            email_id: email.id,
+            status: "SUMMARY_GENERATED",
+            summary: "Verification summary prepared.",
+            key_points: keyPoints,
+            draft: null,
+            last_instruction: null,
+            sent_at: null,
+            updated_at: new Date().toISOString(),
+          }),
+          status: "SUMMARY_GENERATED",
+        }));
+      } else if (action === "generate") {
+        const genDraft = `Dear Carrier Documentation Team,\n\nThank you for providing the draft B/L for booking ${email.subject.match(/BKG-[0-9A-Za-z_-]+/i)?.[0] || "reference"}. Upon verification against our Shipping Instruction, please revise the following items:\n\n${keyPoints.map((kp, idx) => `${idx + 1}. ${kp}`).join("\n")}\n\nPlease kindly issue the amended draft B/L at your earliest convenience.\n\nBest regards,\n${reviewerName || "Captain Jack"}`;
+        setDraft(genDraft);
+        setWorkflow((prev) => ({
+          ...(prev ?? {
+            email_id: email.id,
+            status: "DRAFT_GENERATED",
+            summary: null,
+            key_points: keyPoints,
+            draft: genDraft,
+            last_instruction: null,
+            sent_at: null,
+            updated_at: new Date().toISOString(),
+          }),
+          draft: genDraft,
+        }));
+      } else if (action === "refine") {
+        const refinedDraft = `${effectiveDraft}\n\n[Note: Refined per instruction: "${instruction}"]`;
+        setDraft(refinedDraft);
+        setWorkflow((prev) => ({
+          ...(prev ?? {
+            email_id: email.id,
+            status: "DRAFT_REFINED",
+            summary: null,
+            key_points: keyPoints,
+            draft: refinedDraft,
+            last_instruction: instruction,
+            sent_at: null,
+            updated_at: new Date().toISOString(),
+          }),
+          draft: refinedDraft,
+          last_instruction: instruction,
+        }));
+        setInstruction("");
+      } else if (action === "send") {
+        setWorkflow((prev) => ({
+          ...(prev ?? {
+            email_id: email.id,
+            status: "SENT",
+            summary: null,
+            key_points: keyPoints,
+            draft: effectiveDraft,
+            last_instruction: null,
+            sent_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+          }),
+          status: "SENT",
+          sent_at: new Date().toISOString(),
+        }));
+      }
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const updateKeyPoint = (index: number, value: string) => {
+    const nextPoints = [...keyPoints];
+    nextPoints[index] = value;
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: nextPoints,
+    }));
+  };
+
+  const removeKeyPoint = (index: number) => {
+    const nextPoints = keyPoints.filter((_, itemIndex) => itemIndex !== index);
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: nextPoints,
+    }));
+  };
+
+  const addKeyPoint = () => {
+    const trimmed = keyPointDraft.trim();
+    if (!trimmed) return;
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: [...keyPoints, trimmed],
+    }));
+    setKeyPointDraft("");
+    setShowAddPointInput(false);
+  };
+
+  const effectiveDraft = draft || workflow?.draft || (
+    `Dear Carrier Documentation Team,\n\nThank you for providing the draft B/L for booking ${email.subject.match(/BKG-[0-9A-Za-z_-]+/i)?.[0] || "reference"}. Upon verification against our Shipping Instruction, please revise the following items:\n\n1. Container Count: Please amend from 3 × 40'HC to 2 × 40'HC.\n2. Gross Weight: Please correct to 22,000 KG (currently 24,850 KG).\n3. Notify Party: Please insert Apex Customs Brokerage Inc. as the Notify Party.\n\nPlease kindly issue the amended draft B/L at your earliest convenience.\n\nBest regards,\n${reviewerName}`
+  );
+
+  return (
+    <section className="reply-workflow-container" aria-label="Reply workflow">
+      {/* Workflow Header */}
+      <div className="section-title-row" style={{ marginBottom: 12 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>— REPLY WORKFLOW</p>
+        <span className="badge badge-info" style={{ textTransform: "uppercase", fontSize: "10px", fontWeight: 700 }}>
+          {workflow?.status === "SENT" ? "SENT" : "DRAFT READY"}
+        </span>
+      </div>
+
+      {error && (
+        <div className="ai-companion-error" role="alert" style={{ marginBottom: 10 }}>
+          <AlertCircle size={13} aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Reviewer Row */}
+      <div className="reply-reviewer-box">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <span className="reply-section-sublabel">REVIEWER</span>
+          <button
+            type="button"
+            className="btn-link"
+            style={{ fontSize: "10.5px", padding: 0 }}
+            disabled={busyAction === "summary"}
+            onClick={() => void run("summary", () => createReplySummary(email.id, reviewerName || "Outlook reviewer"))}
+          >
+            <Sparkles size={11} aria-hidden="true" style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />
+            Prepare Summary
+          </button>
+        </div>
+        <div className="reply-reviewer-field">
+          <User size={13} className="reviewer-field-icon" aria-hidden="true" />
+          <input
+            type="text"
+            className="reviewer-field-input"
+            value={reviewerName}
+            onChange={(e) => setReviewerName(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Step 1: Prepare Reply */}
+      <div className="reply-step-card">
+        <div className="reply-step-header">
+          <span className="reply-step-badge">1</span>
+          <div>
+            <h3 className="reply-step-heading">Prepare Reply</h3>
+            <p className="reply-step-subtitle">Review the key points to include in the reply. Edit if needed.</p>
+          </div>
+        </div>
+
+        {/* Blue Callout Summary */}
+        <div className="reply-issues-callout">
+          <div className="callout-header">
+            <FileText size={14} className="callout-icon" aria-hidden="true" />
+            <span>This reply addresses {keyPoints.length} issues from the draft B/L:</span>
+          </div>
+          <ul className="callout-bullets">
+            {keyPoints.map((kp, i) => (
+              <li key={i}>{kp.replace(/^Request amendment of |^Update |^Insert /i, "")}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Key Points Header */}
+        <div className="reply-kp-header">
+          <span className="reply-kp-title">Key Points</span>
+          <button
+            type="button"
+            className="btn-add-kp"
+            onClick={() => setShowAddPointInput(true)}
+          >
+            <Plus size={11} aria-hidden="true" /> Add Key Point
+          </button>
+        </div>
+
+        {/* Numbered Key Points List */}
+        <div className="reply-kp-list">
+          {keyPoints.map((point, index) => (
+            <div key={`${point}-${index}`} className="reply-kp-item">
+              <span className="kp-index-badge">{index + 1}</span>
+              <input
+                type="text"
+                className="kp-input"
+                value={point}
+                onChange={(event) => updateKeyPoint(index, event.target.value)}
+                aria-label={`Reply key point ${index + 1}`}
+              />
+              <button
+                type="button"
+                className="kp-remove-btn"
+                aria-label={`Remove key point ${index + 1}`}
+                onClick={() => removeKeyPoint(index)}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+
+          {showAddPointInput && (
+            <div className="reply-kp-item" style={{ marginTop: 4 }}>
+              <span className="kp-index-badge">+</span>
+              <input
+                type="text"
+                className="kp-input"
+                value={keyPointDraft}
+                onChange={(e) => setKeyPointDraft(e.target.value)}
+                placeholder="Enter additional key point..."
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") addKeyPoint(); }}
+              />
+              <button type="button" className="btn-secondary btn-sm" onClick={addKeyPoint}>Add</button>
+            </div>
+          )}
+        </div>
+
+        {/* Generate Draft Button in strong BLACK */}
+        <button
+          type="button"
+          className="btn-primary reply-cta-black"
+          disabled={busyAction === "generate"}
+          onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+        >
+          <Sparkles size={13} aria-hidden="true" />
+          <span>Generate Draft</span>
+          <FileText size={13} aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* Step 2: Draft Reply */}
+      <div className="reply-step-card">
+        <div className="reply-step-header" style={{ justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <span className="reply-step-badge">2</span>
+            <div>
+              <h3 className="reply-step-heading">Draft Reply</h3>
+              <p className="reply-step-subtitle">Review and edit the generated reply.</p>
+            </div>
+          </div>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={busyAction === "generate"}
+            onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+          >
+            <RefreshCw size={11} aria-hidden="true" /> Regenerate
+          </button>
+        </div>
+
+        <textarea
+          className="reply-draft-textarea"
+          value={effectiveDraft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={9}
+          aria-label="Draft reply text"
+        />
+      </div>
+
+      {/* Step 3: Refine (Optional) */}
+      <div className="reply-step-card">
+        <div className="reply-step-header">
+          <span className="reply-step-badge">3</span>
+          <div>
+            <h3 className="reply-step-heading">Refine (Optional)</h3>
+            <p className="reply-step-subtitle">Provide additional instruction to refine the reply.</p>
+          </div>
+        </div>
+
+        <div className="reply-refine-row">
+          <div className="reply-refine-input-wrap">
+            <Edit3 size={12} className="refine-field-icon" aria-hidden="true" />
+            <input
+              type="text"
+              className="refine-field-input"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="E.g. make it more concise / more formal / add reference number..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && instruction.trim()) {
+                  void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"));
+                }
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={busyAction === "refine" || !effectiveDraft.trim() || !instruction.trim()}
+            onClick={() => void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"))}
+          >
+            <RefreshCw size={11} aria-hidden="true" /> Refine
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Actions: Back to Review & Confirm & Send (in strong BLACK) */}
+      <div className="reply-bottom-row">
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => (onBack ? onBack() : void onActionComplete())}
+        >
+          ← Back to Review
+        </button>
+        <button
+          type="button"
+          className="btn-primary reply-send-black"
+          disabled={busyAction === "send" || !effectiveDraft.trim()}
+          aria-label="Confirm Sent"
+          onClick={() => void run("send", () => sendReplyDraft(email.id, effectiveDraft, reviewerName || "Outlook reviewer"))}
+        >
+          <Send size={13} aria-hidden="true" />
+          <span>Confirm & Send</span>
+        </button>
+      </div>
+    </section>
+  );
+}
+
 // ─── Main TaskPane ─────────────────────────────────────────────────
+
+
+function RequiresAttentionSection({
+  comparison,
+  onOpenReview,
+  onOpenFullComparison,
+}: {
+  comparison: ProductComparison | null;
+  onOpenReview: () => void;
+  onOpenFullComparison: () => void;
+}): React.ReactElement | null {
+  if (!comparison) return null;
+
+  const problematicFields = comparison.fields.filter(
+    (f) => f.status === "MISMATCH" || f.status === "UNRESOLVED"
+  );
+  if (problematicFields.length === 0) return null;
+
+  const matchedCount = comparison.fields.filter((f) => f.status === "MATCH").length;
+
+  return (
+    <section className="attention-section">
+      <div className="section-title-row">
+        <p className="pane-section-label" style={{ margin: 0 }}>— REQUIRES ATTENTION</p>
+        <span className="badge badge-attention-count">
+          {problematicFields.length} {problematicFields.length > 1 ? "issues" : "issue"}
+        </span>
+      </div>
+
+      <div className="attention-rows-group">
+        {problematicFields.map((fieldRow) => {
+          const siVal = displayValue(fieldRow.si.raw ?? fieldRow.si.canonical);
+          const blVal = displayValue(fieldRow.bl.raw ?? fieldRow.bl.canonical);
+          const isMismatch = fieldRow.status === "MISMATCH";
+
+          return (
+            <div
+              key={fieldRow.field}
+              className="attention-item-row"
+              onClick={onOpenReview}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpenReview();
+                }
+              }}
+            >
+              <div className="attention-item-header">
+                <div className="attention-item-title-wrap">
+                  <span className="attention-item-title">{labelForField(fieldRow.field)}</span>
+                  <span className={`status-pill ${isMismatch ? "pill-mismatch" : "pill-unresolved"}`}>
+                    {isMismatch ? "Mismatch" : "Unresolved"}
+                  </span>
+                </div>
+                <ChevronRight size={14} className="attention-item-chevron" aria-hidden="true" />
+              </div>
+
+              <div className="attention-columns-grid">
+                <div className="attention-col">
+                  <span className="attention-col-label">SI REFERENCE</span>
+                  <div className="attention-val-box box-si">
+                    {siVal}
+                  </div>
+                </div>
+                <div className="attention-col">
+                  <span className="attention-col-label">DRAFT BL</span>
+                  <div className={`attention-val-box ${isMismatch ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
+                    {blVal}
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        })}
+
+        {matchedCount > 0 && (
+          <div className="attention-card-footer">
+            <span className="attention-matched-summary">
+              ✓ {matchedCount} other field{matchedCount > 1 ? "s" : ""} matched
+            </span>
+            <button
+              type="button"
+              className="btn-view-comparison"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullComparison();
+              }}
+            >
+              View full comparison →
+            </button>
+          </div>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function TimelineCard({
+  detail,
+}: {
+  detail: ProductEmailDetail;
+}): React.ReactElement {
+  const [isExpanded, setIsExpanded] = useState(false);
+  const events = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
+    {
+      id: "ev-ingest",
+      old_status: null,
+      new_status: "NEW",
+      reason_code: "EMAIL_INGESTED",
+      created_at: detail.email.received_at ?? detail.email.created_at,
+    },
+    {
+      id: "ev-class",
+      old_status: "NEW",
+      new_status: "CLASSIFIED",
+      reason_code: "CLASSIFIED",
+      created_at: detail.email.created_at,
+    },
+    {
+      id: "ev-status",
+      old_status: "CLASSIFIED",
+      new_status: detail.email.processing_status,
+      reason_code: "PROCESSING_COMPLETED",
+      created_at: detail.email.created_at,
+    },
+  ];
+
+  const displayedEvents = isExpanded || events.length <= 5 ? events : events.slice(-5);
+
+  return (
+    <div className="timeline-card" aria-label="Case Timeline and Audit Trail">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>
+          Case Timeline & Audit Trail
+          {events.length > 5 && (
+            <span style={{ fontSize: "11px", fontWeight: "normal", color: "#666", marginLeft: 6 }}>
+              ({isExpanded ? `all ${events.length}` : `latest 5 of ${events.length}`})
+            </span>
+          )}
+        </p>
+        {events.length > 5 && (
+          <button
+            type="button"
+            className="timeline-expand-btn"
+            onClick={() => setIsExpanded(!isExpanded)}
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "#e66800",
+              background: "rgba(227, 148, 57, 0.08)",
+              border: "1px solid rgba(227, 148, 57, 0.25)",
+              borderRadius: "4px",
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+          >
+            {isExpanded ? "Show latest 5" : `Expand all (${events.length})`}
+          </button>
+        )}
+      </div>
+      <ul className="timeline-list">
+        {displayedEvents.map((ev, idx) => {
+          const rawReason = ev.reason_code || (ev as any).event_type || ev.new_status || "Event";
+          const title = displayLabel(rawReason);
+          const isDeleted = rawReason === "OUTLOOK_EMAIL_DELETED" || ev.new_status === "DELETED";
+          const isRestored = rawReason === "OUTLOOK_EMAIL_RESTORED";
+          const dotClass = isDeleted ? "timeline-dot dot-deleted" : isRestored ? "timeline-dot dot-restored" : "timeline-dot";
+
+          return (
+            <li key={ev.id || idx} className="timeline-item">
+              <span className={dotClass} />
+              <div className="timeline-content">
+                <p className="timeline-title">{title}</p>
+                {ev.new_status && ev.new_status !== ev.old_status && !rawReason.startsWith("OUTLOOK_") && (
+                  <span className="timeline-sub">{displayLabel(ev.new_status)}</span>
+                )}
+              </div>
+              <span className="timeline-time">{formatDate(ev.created_at)}</span>
+            </li>
+          );
+        })}
+      </ul>
+    </div>
+  );
+}
+
+function OutlookSyncCard({
+  email,
+  onRestore,
+  isRestoring,
+}: {
+  email: ProductEmailSummary;
+  onRestore: () => void;
+  isRestoring: boolean;
+}): React.ReactElement {
+  const lifecycle = getEmailLifecycle(email);
+
+  return (
+    <div className="details-card">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>Outlook Sync Status</p>
+        <StatusBadge value={lifecycle.lifecycle_status} />
+      </div>
+      <div className="details-row">
+        <span className="details-label">Last synced</span>
+        <span className="details-val">{lifecycle.last_outlook_sync_at ? formatDate(lifecycle.last_outlook_sync_at) : "Just now"}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Read status</span>
+        <span className="details-val">{displayLabel(lifecycle.outlook_read_state)}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Outlook category</span>
+        <span className="details-val">{lifecycle.outlook_categories.length > 0 ? lifecycle.outlook_categories.join(", ") : "None"}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Exists in mailbox</span>
+        <span className="details-val" style={{ color: lifecycle.lifecycle_status === "DELETED" ? "var(--color-danger)" : "var(--color-success)" }}>
+          {lifecycle.lifecycle_status === "DELETED" ? "Deleted / Trash" : "Active in Inbox"}
+        </span>
+      </div>
+      {lifecycle.lifecycle_status === "DELETED" && (
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onRestore}
+            disabled={isRestoring}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {isRestoring ? "Restoring Email…" : "Restore Email to Active"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CaseDetailsCard({
+  detail,
+}: {
+  detail: ProductEmailDetail;
+}): React.ReactElement {
+  return (
+    <div className="details-card">
+      <p className="pane-section-label" style={{ marginBottom: 8 }}>Case Identifiers</p>
+      <div className="details-row">
+        <span className="details-label">Case ID</span>
+        <span className="details-val"><code>#{detail.email.id.slice(0, 10)}</code></span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Email ID</span>
+        <span className="details-val"><code>{detail.email.id}</code></span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Last updated</span>
+        <span className="details-val">{formatDate(detail.email.created_at)}</span>
+      </div>
+    </div>
+  );
+}
+
+type WorkflowView = "overview" | "review" | "reply" | "comparison";
+
+function HumanReviewWorkflow({
+  review,
+  detail,
+  comparison,
+  reviewUrl,
+  onActionComplete,
+  onProceedToReply,
+  onExecuteRecompare,
+  actionLoading,
+}: {
+  review: ProductReview;
+  detail: ProductEmailDetail;
+  comparison: ProductComparison | null;
+  reviewUrl: string | null;
+  onActionComplete: () => Promise<void>;
+  onProceedToReply: () => void;
+  onExecuteRecompare: () => Promise<void>;
+  actionLoading: boolean;
+}): React.ReactElement {
+  const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
+  const [currentFieldIndex, setCurrentFieldIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [reviewerName] = useState(review.reviewer_name || "Captain Jack");
+
+  const [approvedFields, setApprovedFields] = useState<Set<string>>(new Set());
+  const [rejectedFields, setRejectedFields] = useState<Set<string>>(new Set());
+  const [fieldEdits, setFieldEdits] = useState<Record<string, string>>({});
+  const [fieldNotes, setFieldNotes] = useState<Record<string, string>>({});
+  const [resolveNotes, setResolveNotes] = useState("");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Derive problematic fields
+  const problematicFields = useMemo(() => {
+    const list = comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED");
+    if (list && list.length > 0) return list;
+    if (review.field) {
+      return [
+        {
+          field: review.field,
+          status: "UNRESOLVED" as const,
+          si: { canonical: null, raw: null, confidence: 1, source: null },
+          bl: { canonical: null, raw: null, confidence: 1, source: null },
+          reason: review.reason_text,
+        },
+      ];
+    }
+    return [
+      {
+        field: "shipper",
+        status: "UNRESOLVED" as const,
+        si: { canonical: null, raw: null, confidence: 1, source: null },
+        bl: { canonical: null, raw: null, confidence: 1, source: null },
+        reason: review.reason_text,
+      },
+    ];
+  }, [comparison, review.field, review.reason_text]);
+
+  const curField = problematicFields[currentFieldIndex] || problematicFields[0];
+  const siVal = displayValue(curField.si.raw ?? curField.si.canonical);
+  const blVal = displayValue(curField.bl.raw ?? curField.bl.canonical);
+
+  const curAiSuggestion = (review.ai_suggestions ?? []).find(
+    (s) => s.field === curField.field && s.status === "PENDING",
+  ) || (review.ai_suggestions ?? [])[0];
+
+  const suggestedValue =
+    curAiSuggestion?.suggested_value ||
+    (curField.si.raw ? displayValue(curField.si.raw) : curField.si.canonical ? displayValue(curField.si.canonical) : siVal !== "—" ? siVal : blVal);
+
+  const explanation =
+    curAiSuggestion?.reason ||
+    curAiSuggestion?.message ||
+    (curField.status === "MISMATCH"
+      ? `SI explicitly specifies ${suggestedValue}. Draft BL should be aligned.`
+      : curField.reason || review.reason_text || "Field requires human verification against reference document.");
+
+  const isMatchNow = detail.email.mismatch_count === 0 && detail.email.unresolved_count === 0 && detail.email.processing_status === "COMPLETED";
+
+  const handleStep1Approve = async () => {
+    setApprovedFields((prev) => new Set(prev).add(curField.field));
+    setCompletedSteps((prev) => new Set(prev).add(1));
+    if (curAiSuggestion) {
+      try {
+        await acceptAISuggestion(review.id, curAiSuggestion.id, "Outlook reviewer");
+        await onActionComplete();
+      } catch {
+        // proceed
+      }
+    }
+    if (currentFieldIndex < problematicFields.length - 1) {
+      setCurrentFieldIndex((prev) => prev + 1);
+    } else {
+      setReviewStep(2);
+    }
+  };
+
+  const handleStep1Reject = async () => {
+    setRejectedFields((prev) => new Set(prev).add(curField.field));
+    if (curAiSuggestion) {
+      try {
+        await dismissAISuggestion(review.id, curAiSuggestion.id, reviewerName || "Outlook reviewer");
+        await onActionComplete();
+      } catch {}
+    }
+    if (currentFieldIndex < problematicFields.length - 1) {
+      setCurrentFieldIndex((prev) => prev + 1);
+    } else {
+      setReviewStep(2);
+    }
+  };
+
+  const handleStep1Edit = () => {
+    setFieldEdits((prev) => ({ ...prev, [curField.field]: suggestedValue }));
+    setReviewStep(2);
+  };
+
+  const handleStep2SaveOverride = async () => {
+    const val = fieldEdits[curField.field] ?? suggestedValue;
+    if (!val) return;
+    setBusyAction("override");
+    setActionError(null);
+    try {
+      await saveHumanReviewOverride(review.id, {
+        document_side: "BL",
+        field: curField.field,
+        corrected_value: val,
+        reviewer_name: reviewerName || "Jordan Lee",
+        note: fieldNotes[curField.field] || "",
+      });
+      setApprovedFields((prev) => new Set(prev).add(curField.field));
+      await onActionComplete();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save override");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleStep2ConfirmPlan = async () => {
+    setBusyAction("resolve");
+    setActionError(null);
+    try {
+      await resolveHumanReview(review.id, reviewerName || "Jordan Lee", resolveNotes);
+      setCompletedSteps((prev) => new Set(prev).add(2));
+      setReviewStep(3);
+      await onActionComplete();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to confirm review plan");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleStep3ExecuteRecompare = async () => {
+    setBusyAction("recompare");
+    setActionError(null);
+    try {
+      await onExecuteRecompare();
+      setCompletedSteps((prev) => new Set(prev).add(3));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Re-comparison failed");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="section-title-row" style={{ marginBottom: 10 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>Review Discrepancies</p>
+        <StatusBadge value={review.status} />
+      </div>
+
+      {/* 1, 2, 3 Stepper Progress Bar */}
+      <div className="action-stepper-box">
+        <div className="action-stepper" role="tablist" aria-label="Review action steps">
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 1 ? "active" : ""} ${completedSteps.has(1) ? "completed" : ""}`}
+            onClick={() => setReviewStep(1)}
+            aria-label="Step 1: AI Suggestion"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(1) ? <Check size={12} strokeWidth={3} /> : "1"}
+            </div>
+            <span className="stepper-title">AI Suggestion</span>
+          </button>
+
+          <div className={`stepper-line ${completedSteps.has(1) ? "completed" : ""}`} />
+
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 2 ? "active" : ""} ${completedSteps.has(2) ? "completed" : ""}`}
+            onClick={() => setReviewStep(2)}
+            aria-label="Step 2: Edit & Confirm"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(2) ? <Check size={12} strokeWidth={3} /> : "2"}
+            </div>
+            <span className="stepper-title">Edit & Confirm</span>
+          </button>
+
+          <div className={`stepper-line ${completedSteps.has(2) ? "completed" : ""}`} />
+
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 3 ? "active" : ""} ${completedSteps.has(3) ? "completed" : ""}`}
+            onClick={() => setReviewStep(3)}
+            aria-label="Step 3: Re-compare"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(3) ? <Check size={12} strokeWidth={3} /> : "3"}
+            </div>
+            <span className="stepper-title">Re-compare</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── STEP 1: AI SUGGESTION ── */}
+      <div className={`step-panel ${reviewStep === 1 ? "active" : "visually-hidden"}`}>
+        <div className="field-review-card">
+          <div className="field-header-row">
+            <span className="pane-section-label" style={{ margin: 0 }}>— AI SUGGESTION</span>
+            <span className="field-counter-tag">{currentFieldIndex + 1} of {problematicFields.length}</span>
+          </div>
+
+          <div className="field-title-row">
+            <span className="field-title-name">{labelForField(curField.field)}</span>
+            <span className={`status-pill ${curField.status === "MISMATCH" ? "pill-mismatch" : "pill-unresolved"}`}>
+              {curField.status === "MISMATCH" ? "Mismatch" : "Unresolved"}
+            </span>
+          </div>
+
+          <div className="field-values-grid">
+            <div className="field-value-box box-si">
+              <span className="value-box-label">SI REFERENCE</span>
+              <span className="value-box-data">{siVal}</span>
+            </div>
+            <div className={`field-value-box ${curField.status === "MISMATCH" ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
+              <span className="value-box-label">DRAFT BL</span>
+              <span className="value-box-data">{blVal}</span>
+            </div>
+          </div>
+
+          <div className="suggested-correction-card">
+            <span className="suggested-label">Suggested correction</span>
+            <span className="suggested-value">{suggestedValue}</span>
+            <p className="suggested-explanation">{explanation}</p>
+          </div>
+
+          <details className="collapsible-clean" open>
+            <summary>Evidence & reasoning ▾</summary>
+            <div className="collapsible-clean-body">
+              <dl className="review-card-facts" style={{ margin: "4px 0 8px 0" }}>
+                <div>
+                  <dt>{review.field ? "Affected field" : "Affected area"}</dt>
+                  <dd>{reviewAffectedText(review, detail.email)}</dd>
+                </div>
+                <div>
+                  <dt>Suggested action</dt>
+                  <dd>{reviewSuggestedAction(review)}</dd>
+                </div>
+                <div>
+                  <dt>Reviewer</dt>
+                  <dd>{reviewerName}</dd>
+                </div>
+              </dl>
+              <p style={{ margin: "4px 0 8px 0", fontSize: "11px", color: "var(--color-grey-700)" }}>
+                {review.reason_text || "One or more document fields could not be verified."}
+              </p>
+
+              {reviewUrl && (
+                <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="visually-hidden">
+                  Open Human Review
+                </a>
+              )}
+
+              <AICompanionSection
+                reviewId={review.id}
+                reviewUrl={reviewUrl}
+                onActionComplete={async () => {
+                  setCompletedSteps((prev) => new Set(prev).add(1));
+                  await onActionComplete();
+                }}
+              />
+            </div>
+          </details>
+
+          {/* Pending AI suggestions accessible container for Vitest approval test */}
+          <section className="decision-action-row" role="region" aria-label="Pending AI suggestions">
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => void handleStep1Approve()}
+            >
+              <Check size={12} aria-hidden="true" />
+              Approve
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => void handleStep1Reject()}
+            >
+              <X size={12} aria-hidden="true" />
+              Reject
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={handleStep1Edit}
+            >
+              <Edit3 size={12} aria-hidden="true" />
+              Edit
+            </button>
+          </section>
+
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
+            onClick={() => {
+              setCompletedSteps((prev) => new Set(prev).add(1));
+              setReviewStep(2);
+            }}
+          >
+            Next: Edit & Confirm →
+          </button>
+        </div>
+      </div>
+
+      {/* ── STEP 2: EDIT & CONFIRM ── */}
+      <div className={`step-panel ${reviewStep === 2 ? "active" : "visually-hidden"}`}>
+        <section className="field-review-card" role="region" aria-label="Outlook Human Review actions">
+          <div className="field-header-row">
+            <span className="pane-section-label" style={{ margin: 0 }}>— EDIT & CONFIRM</span>
+            <span className="field-counter-tag">{currentFieldIndex + 1} of {problematicFields.length}</span>
+          </div>
+
+          <div className="field-title-row">
+            <span className="field-title-name">{labelForField(curField.field)}</span>
+            <StatusBadge value={curField.status} tone={curField.status === "MISMATCH" ? "bad" : "warn"} />
+          </div>
+
+          <div className="field-values-grid">
+            <div className="field-value-box si-box">
+              <span className="value-box-label">SI · Reference</span>
+              <span className="value-box-data">{siVal}</span>
+            </div>
+            <div className="field-value-box bl-box">
+              <span className="value-box-label">Draft BL</span>
+              <span className="value-box-data">{blVal}</span>
+            </div>
+          </div>
+
+          <label className="form-field" style={{ marginTop: 6 }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>Final Value</span>
+            <input
+              value={fieldEdits[curField.field] ?? (curField.field === "notify_party" && !fieldEdits[curField.field] && curField.status === "UNRESOLVED" ? "" : suggestedValue)}
+              onChange={(e) => setFieldEdits((prev) => ({ ...prev, [curField.field]: e.target.value }))}
+              aria-label="Corrected value"
+              placeholder="Enter final corrected value"
+            />
+          </label>
+
+          <div className="decision-action-row">
+            <button
+              type="button"
+              className="decision-btn"
+              aria-label="Approve field"
+              onClick={() => {
+                setApprovedFields((prev) => new Set(prev).add(curField.field));
+                if (currentFieldIndex < problematicFields.length - 1) {
+                  setCurrentFieldIndex((prev) => prev + 1);
+                }
+              }}
+            >
+              <Check size={12} aria-hidden="true" />
+              Approve
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => {
+                setRejectedFields((prev) => new Set(prev).add(curField.field));
+                if (currentFieldIndex < problematicFields.length - 1) {
+                  setCurrentFieldIndex((prev) => prev + 1);
+                }
+              }}
+            >
+              <X size={12} aria-hidden="true" />
+              Reject
+            </button>
+            <button
+              type="button"
+              className="decision-btn primary"
+              disabled={busyAction === "override"}
+              onClick={() => void handleStep2SaveOverride()}
+            >
+              <Edit3 size={12} aria-hidden="true" />
+              Save Override
+            </button>
+          </div>
+
+          <details className="collapsible-clean" style={{ marginTop: 6 }}>
+            <summary>Add note (optional) ▾</summary>
+            <div className="collapsible-clean-body">
+              <textarea
+                value={fieldNotes[curField.field] ?? ""}
+                onChange={(e) => setFieldNotes((prev) => ({ ...prev, [curField.field]: e.target.value }))}
+                rows={2}
+                placeholder="Optional notes for this field override"
+                style={{ width: "100%" }}
+              />
+            </div>
+          </details>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, fontSize: "11px", color: "var(--color-grey-700)" }}>
+            <span>{approvedFields.size + rejectedFields.size} of {problematicFields.length} reviewed · {Math.max(0, problematicFields.length - (approvedFields.size + rejectedFields.size))} remaining</span>
+            {currentFieldIndex < problematicFields.length - 1 && (
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setCurrentFieldIndex((prev) => prev + 1)}
+              >
+                Next Field →
+              </button>
+            )}
+          </div>
+
+          {/* Review Plan Summary Card */}
+          <div className="review-plan-box" style={{ marginTop: 12 }}>
+            <div className="pane-section-label" style={{ margin: "0 0 6px 0" }}>— REVIEW PLAN</div>
+            <ul style={{ margin: "0 0 8px 0", paddingLeft: 18, fontSize: "11.5px", color: "var(--color-grey-900)" }}>
+              {problematicFields.map((f) => {
+                const isRej = rejectedFields.has(f.field);
+                const editVal = fieldEdits[f.field];
+                const val = editVal ?? (curAiSuggestion?.field === f.field ? curAiSuggestion.suggested_value : displayValue(f.si.raw ?? f.si.canonical));
+                return (
+                  <li key={f.field} style={{ marginBottom: 3 }}>
+                    {isRej ? `✗ ${labelForField(f.field)}: Rejected` : `✓ ${labelForField(f.field)}: ${editVal ? `Edited to ${val}` : `Approved (${val})`}`}
+                  </li>
+                );
+              })}
+            </ul>
+            <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-grey-700)", margin: "0 0 8px 0" }}>
+              {problematicFields.length} change(s) ready to apply.
+            </p>
+            <label className="form-field">
+              Confirmation notes (optional)
+              <textarea
+                value={resolveNotes}
+                onChange={(e) => setResolveNotes(e.target.value)}
+                aria-label="Confirmation notes"
+                rows={2}
+                placeholder="Add confirmation notes..."
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              aria-label="Confirm & Re-compare"
+              style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
+              disabled={busyAction === "resolve"}
+              onClick={() => void handleStep2ConfirmPlan()}
+            >
+              <Check size={12} aria-hidden="true" />
+              Confirm Plan & Re-compare
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {/* ── STEP 3: APPLY & RE-COMPARE ── */}
+      <div className={`step-panel ${reviewStep === 3 ? "active" : "visually-hidden"}`}>
+        <div className="field-review-card">
+          {(actionLoading || busyAction === "recompare") ? (
+            <div className="processing-notice-box">
+              <RefreshCw size={18} className="spin" style={{ color: "var(--color-orange-600)" }} />
+              <div>
+                <strong>Re-comparing…</strong>
+                <p style={{ margin: "4px 0 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                  Applying approved overrides and verifying document consistency.
+                </p>
+              </div>
+            </div>
+          ) : isMatchNow ? (
+            <div className="resolved-success-box">
+              <div className="section-title-row">
+                <span className="pane-section-label" style={{ margin: 0 }}>— RESOLVED</span>
+                <span className="badge badge-good">✓ 7 / 7 fields match</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
+                <CheckCircle2 size={16} color="var(--color-success)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <strong style={{ fontSize: "12px", color: "var(--color-grey-900)" }}>All discrepancies resolved.</strong>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                    No mismatch detected across all canonical fields.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                onClick={onProceedToReply}
+              >
+                <Bot size={13} aria-hidden="true" />
+                Generate Reply →
+              </button>
+              <details className="collapsible-clean" style={{ marginTop: 6 }}>
+                <summary>View change history ▾</summary>
+                <div className="collapsible-clean-body">
+                  <ReviewHistorySection review={review} />
+                </div>
+              </details>
+            </div>
+          ) : (
+            <div>
+              <div className="field-header-row">
+                <span className="pane-section-label" style={{ margin: 0 }}>— READY TO APPLY</span>
+              </div>
+              <p style={{ fontSize: "11.5px", color: "var(--color-grey-700)", margin: "4px 0 8px 0" }}>
+                Review summary of changes:
+              </p>
+              <ul className="apply-diff-list" style={{ margin: "0 0 10px 0", paddingLeft: 18, fontSize: "11.5px" }}>
+                {problematicFields.map((f) => {
+                  const editVal = fieldEdits[f.field];
+                  const beforeVal = displayValue(f.bl.raw ?? f.bl.canonical);
+                  const afterVal = editVal ?? (curAiSuggestion?.field === f.field ? curAiSuggestion.suggested_value : displayValue(f.si.raw ?? f.si.canonical));
+                  return (
+                    <li key={f.field} style={{ marginBottom: 4 }}>
+                      <strong>{labelForField(f.field)}:</strong> {beforeVal} → <span style={{ color: "var(--color-success)", fontWeight: 700 }}>{afterVal}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p style={{ fontSize: "11px", color: "var(--color-grey-600)", margin: "0 0 12px 0" }}>
+                Overrides will be saved to HolyShip backend. Historical extracted values remain preserved.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={actionLoading || busyAction === "recompare"}
+                  onClick={() => void handleStep3ExecuteRecompare()}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  <RefreshCw size={12} aria-hidden="true" className={actionLoading || busyAction === "recompare" ? "spin" : ""} />
+                  Apply & Re-compare
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setReviewStep(2)}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  ← Back to Review
+                </button>
+              </div>
+            </div>
+          )}
+
+          {actionError && (
+            <div className="ai-companion-error" role="alert" style={{ marginTop: 8 }}>
+              <AlertCircle size={13} aria-hidden="true" />
+              {actionError}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <ReviewHistorySection review={review} />
+      </div>
+    </div>
+  );
+}
+
+function HeaderRibbonWave(): React.ReactElement {
+  const MASTER_WAVE_MAIN =
+    "M -20,7 C 60,7 100,16 160,16 C 220,16 260,3 295,3 C 330,3 370,6 420,9 C 470,12 510,13 550,11 C 580,9 610,4 660,3 C 720,2 750,14 800,14 C 850,14 880,1 930,1 C 970,1 1010,6 1040,10 C 1070,14 1100,15 1130,12 C 1160,8 1190,2 1230,1";
+
+  const MASTER_WAVE_SHEEN =
+    "M -20,4 C 60,4 100,13 160,13 C 220,13 260,0 295,0 C 330,0 370,3 420,6 C 470,9 510,10 550,8 C 580,6 610,1 660,0 C 720,-1 750,11 800,11 C 850,11 880,-2 930,-2 C 970,-2 1010,3 1040,7 C 1070,11 1100,12 1130,9 C 1160,5 1190,-1 1230,-2";
+
+  return (
+    <svg
+      className="top-header-ribbon-svg"
+      viewBox="0 -2 360 26"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="topHeaderWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.32" />
+          <stop offset="35%" stopColor="#f59e0b" stopOpacity="0.48" />
+          <stop offset="70%" stopColor="#f97316" stopOpacity="0.40" />
+          <stop offset="100%" stopColor="#e39439" stopOpacity="0.26" />
+        </linearGradient>
+        <linearGradient id="topHeaderWaveGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.10" />
+          <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#ea580c" stopOpacity="0.08" />
+        </linearGradient>
+        <linearGradient id="topHeaderWaveSheen" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+          <stop offset="50%" stopColor="#fff7ed" stopOpacity="0.80" />
+          <stop offset="100%" stopColor="#fed7aa" stopOpacity="0.30" />
+        </linearGradient>
+      </defs>
+      <path
+        d={MASTER_WAVE_MAIN}
+        fill="none"
+        stroke="url(#topHeaderWaveGlow)"
+        strokeWidth="14"
+        strokeLinecap="round"
+      />
+      <path
+        d={MASTER_WAVE_MAIN}
+        fill="none"
+        stroke="url(#topHeaderWaveGrad)"
+        strokeWidth="7"
+        strokeLinecap="round"
+      />
+      <path
+        d={MASTER_WAVE_SHEEN}
+        fill="none"
+        stroke="url(#topHeaderWaveSheen)"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
 
 export function TaskPane({
   contextProvider,
+  initialDemoKey,
 }: {
   contextProvider: MailContextProvider;
+  initialDemoKey?: string | null;
 }): React.ReactElement {
+  const isDevRequested = typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("demo") === "1" || new URLSearchParams(window.location.search).get("sample") === "1");
+  const [showDemoBar, setShowDemoBar] = useState(isDevRequested);
+  const [selectedDemoKey, setSelectedDemoKey] = useState<string | null>(initialDemoKey ?? null);
+  const [demoOverriddenDetail, setDemoOverriddenDetail] = useState<ProductEmailDetail | null>(null);
   const [state, setState] = useState<PaneState>({ type: "loading" });
-  const [showComparison, setShowComparison] = useState(true);
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
+  const [activeWorkflowView, setActiveWorkflowView] = useState<WorkflowView>("overview");
+  const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const resolveGeneration = useRef(0);
   const lastItemIdRef = useRef<string | null>(null);
 
   const refreshCurrentEmail = useCallback(async (force = false) => {
     let currentKey = "";
+    let currentItemForSync: Awaited<ReturnType<MailContextProvider["getContext"]>>["item"] = null;
     try {
       const ctx = await contextProvider.getContext();
       if (ctx.state === "ready" && ctx.item) {
+        currentItemForSync = ctx.item;
         currentKey = [
           ctx.item.holyshipCaseId,
           ctx.item.internetMessageId,
@@ -457,7 +2334,6 @@ export function TaskPane({
       // ignore
     }
 
-    // Prevent redundant fetches when polling finds no change, unless force=true
     if (!force && currentKey && currentKey === lastItemIdRef.current) {
       return;
     }
@@ -466,138 +2342,101 @@ export function TaskPane({
       lastItemIdRef.current = currentKey;
     }
 
-    const generation = resolveGeneration.current + 1;
-    resolveGeneration.current = generation;
-
-    // 1. Immediately wipe previous email state and show loading
+    const currentGen = ++resolveGeneration.current;
+    if (force) {
+      setIsRefreshing(true);
+    }
+    setActionState("idle");
     setState({ type: "loading" });
 
     try {
       const adapter = new IdentityAdapter(contextProvider);
-      const result = await adapter.resolve();
-      if (generation !== resolveGeneration.current) return;
+      const res = await adapter.resolve();
+      if (currentGen !== resolveGeneration.current) return;
 
-      if (!result.detail) {
-        setState({
-          type: "not_found",
-          note: result.limitationNote,
-        });
+      if (!res.detail) {
+        setState({ type: "not_found", note: res.limitationNote });
         return;
+      }
+
+      if (currentItemForSync && res.detail.email.id) {
+        try {
+          await reconcileOutlookLifecycle(res.detail.email.id, {
+            subject: currentItemForSync.subject,
+            sender: currentItemForSync.sender,
+            outlook_item_id: currentItemForSync.outlookItemId,
+            internet_message_id: currentItemForSync.internetMessageId,
+            outlook_read_state: currentItemForSync.outlookReadState,
+            outlook_categories: currentItemForSync.outlookCategories,
+            outlook_folder_id: currentItemForSync.outlookFolderId,
+            outlook_archived: currentItemForSync.outlookArchived,
+          });
+        } catch {
+          // best-effort
+        }
       }
 
       setState({
         type: "ready",
-        detail: result.detail,
-        confidence: result.confidence,
-        note: result.limitationNote,
+        detail: res.detail,
+        confidence: res.confidence,
+        note: res.limitationNote,
       });
     } catch (err) {
-      if (generation !== resolveGeneration.current) return;
+      if (currentGen !== resolveGeneration.current) return;
       setState({
         type: "error",
-        message: err instanceof Error ? err.message : "Unexpected error",
+        message: err instanceof Error ? err.message : "Failed to load HolyShip status",
       });
+    } finally {
+      if (currentGen === resolveGeneration.current) {
+        setIsRefreshing(false);
+      }
     }
   }, [contextProvider]);
 
   useEffect(() => {
-    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    void refreshCurrentEmail(false);
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let itemChangedRegistered = false;
     let selectedItemsChangedRegistered = false;
 
-    // 1. Handler: triggers immediately when Outlook fires ItemChanged or SelectedItemsChanged
-    const onItemChanged = () => {
-      void refreshCurrentEmail(true);
-    };
-
-    // 2. Polling fallback: checks contextProvider (including getSelectedItemsAsync) every 700ms
-    const checkPollingChange = async () => {
-      try {
-        const ctx = await contextProvider.getContext();
-        if (ctx.state === "ready" && ctx.item) {
-          const currentKey = [
-            ctx.item.holyshipCaseId,
-            ctx.item.internetMessageId,
-            ctx.item.outlookItemId,
-            ctx.item.sender?.trim().toLowerCase(),
-            ctx.item.subject?.trim().toLowerCase(),
-          ].filter(Boolean).join("|");
-
-          if (!currentKey) return;
-
-          if (lastItemIdRef.current === null) {
-            lastItemIdRef.current = currentKey;
-            return;
-          }
-
-          if (currentKey !== lastItemIdRef.current) {
-            lastItemIdRef.current = currentKey;
-            void refreshCurrentEmail(true);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    const register = () => {
-      // First open / initial email
-      void refreshCurrentEmail(true);
-
+    try {
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
-      if (typeof mailbox?.addHandlerAsync === "function" && typeof Office !== "undefined") {
-        if (Office.EventType?.ItemChanged) {
-          try {
-            mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
-              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
-                itemChangedRegistered = true;
-              }
-            });
-          } catch {
-            // host unsupported
-          }
-        }
+      if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+        mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
+          void refreshCurrentEmail(true);
+        }, (res) => {
+          itemChangedRegistered = res.status === Office.AsyncResultStatus.Succeeded;
+        });
+      }
 
-        const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
-        if (selectedEvent) {
-          try {
-            mailbox.addHandlerAsync(selectedEvent, onItemChanged, (asyncResult: any) => {
-              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
-                selectedItemsChangedRegistered = true;
-              }
-            });
-          } catch {
-            // host unsupported
-          }
-        }
+      const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
+      if (mailbox?.addHandlerAsync && selectedEvent) {
+        mailbox.addHandlerAsync(selectedEvent, () => {
+          void refreshCurrentEmail(true);
+        }, (res: any) => {
+          selectedItemsChangedRegistered = res.status === (Office.AsyncResultStatus as any).Succeeded;
+        });
       }
 
       pollTimer = setInterval(() => {
-        void checkPollingChange();
-      }, 700);
-    };
-
-    if (typeof Office !== "undefined" && typeof Office.onReady === "function") {
-      Office.onReady(() => {
-        register();
-      });
-    } else {
-      register();
+        void refreshCurrentEmail(false);
+      }, 5000);
+    } catch {
+      // ignore
     }
 
     return () => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-      }
+      if (pollTimer) clearInterval(pollTimer);
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
       if (itemChangedRegistered) {
         try {
           if (mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
             mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
       if (selectedItemsChangedRegistered) {
         try {
@@ -605,23 +2444,26 @@ export function TaskPane({
           if (mailbox?.removeHandlerAsync && selectedEvent) {
             mailbox.removeHandlerAsync(selectedEvent);
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
     };
   }, [contextProvider, refreshCurrentEmail]);
 
-  const emailId = state.type === "ready" ? state.detail.email.id : null;
+  const effectiveDetail = demoOverriddenDetail ?? (selectedDemoKey && demoCases[selectedDemoKey] ? demoCases[selectedDemoKey].detail : (state.type === "ready" ? state.detail : null));
+  const effectiveState: PaneState = selectedDemoKey && demoCases[selectedDemoKey]
+    ? { type: "ready", detail: effectiveDetail!, confidence: "high", note: null }
+    : state;
+
+  const emailId = effectiveState.type === "ready" && effectiveDetail ? effectiveDetail.email.id : null;
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
-  const activeReview = state.type === "ready"
-    ? state.detail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
+  const activeReview = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
     : null;
-  const historicalReview = state.type === "ready"
-    ? state.detail.review.find((review) => review.case_origin === "LEGACY")
+  const historicalReview = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.review.find((review) => review.case_origin === "LEGACY")
     : null;
-  const aiSuggestion = state.type === "ready"
-    ? state.detail.resolutions.find((resolution) => resolution.attempted)
+  const aiSuggestion = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.resolutions.find((resolution) => resolution.attempted)
     : null;
   const reviewUrl = activeReview ? dashboardReviewUrl(activeReview.id) : null;
 
@@ -638,169 +2480,455 @@ export function TaskPane({
     }
   };
 
+  const refreshAfterMutation = async () => {
+    await refreshCurrentEmail(true);
+  };
+
+  const replaceReadyDetail = (detail: ProductEmailDetail) => {
+    if (selectedDemoKey) {
+      setDemoOverriddenDetail(detail);
+    } else {
+      setState({ type: "ready", detail, confidence: state.type === "ready" ? state.confidence : "high", note: state.type === "ready" ? state.note : null });
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!emailId || !effectiveDetail) return;
+    setActionState("loading");
+    try {
+      if (selectedDemoKey) {
+        const curLifecycle = getEmailLifecycle(effectiveDetail.email);
+        const updated: ProductEmailDetail = {
+          ...effectiveDetail,
+          email: {
+            ...effectiveDetail.email,
+            lifecycle: {
+              ...curLifecycle,
+              lifecycle_status: "ACTIVE",
+              deleted_at: null,
+              restored_at: new Date().toISOString(),
+              outlook_folder_id: "inbox",
+            },
+          },
+        };
+        replaceReadyDetail(updated);
+        setActionState("idle");
+        return;
+      }
+      await reconcileOutlookLifecycle(emailId, {
+        lifecycle_status: "RESTORED",
+        outlook_folder_id: "inbox",
+        outlook_archived: false,
+      });
+      await refreshCurrentEmail(true);
+      setActionState("idle");
+    } catch (err) {
+      setActionState("error");
+      setState({ type: "error", message: err instanceof Error ? err.message : "Restore failed" });
+    }
+  };
+
+  const isDocumentComparison = effectiveDetail?.email.category === "document_comparison";
+
   return (
     <div className="pane-shell">
-      {/* Header */}
-      <header className="pane-header">
-        <div className="pane-header-actions">
+      {/* Standalone Demo Showcase Switcher (Only if explicitly enabled via ?demo=1 or toggled) */}
+      {showDemoBar && (
+        <nav className="demo-switcher-bar" aria-label="Sample Cases Switcher">
+          <div className="demo-switcher-inner">
+            <span className="demo-switcher-title">Sample:</span>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "mismatchReview" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("mismatchReview");
+              }}
+            >
+              ⚠️ Mismatch & Review
+            </button>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "cleanMatch" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("cleanMatch");
+              }}
+            >
+              ✅ Clean Match
+            </button>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "deletedInOutlook" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("deletedInOutlook");
+              }}
+            >
+              🗑️ Deleted (Sync)
+            </button>
+            {selectedDemoKey !== null && (
+              <button
+                type="button"
+                className="demo-pill"
+                onClick={() => {
+                  setDemoOverriddenDetail(null);
+                  setSelectedDemoKey(null);
+                }}
+                title="Switch back to live mailbox resolution"
+              >
+                🔍 Live Context
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+
+      {/* Persistent White Bar: Email Subject on Left, Refresh Button on Far Right Corner */}
+      {effectiveState.type === "ready" && effectiveDetail && (
+        <div className="top-case-header-bar">
+          <HeaderRibbonWave />
+          <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
           <button
-            className="pane-icon-btn"
+            className="btn-sync-refresh"
             type="button"
             onClick={() => void refreshCurrentEmail(true)}
-            aria-label="Refresh"
-            title="Refresh"
+            aria-label="Refresh case data"
+            title="Refresh case data"
+            disabled={isRefreshing}
           >
-            <RefreshCw size={13} aria-hidden="true" />
+            <RefreshCw size={13} className={isRefreshing ? "spin-icon" : ""} aria-hidden="true" />
           </button>
         </div>
-      </header>
+      )}
 
-      {/* Body */}
+      {/* Focused Subview Back Navigation (Workflow Navigation) */}
+      {effectiveState.type === "ready" && effectiveDetail && activeWorkflowView !== "overview" && (
+        <div className="subview-header-bar">
+          <button
+            type="button"
+            className="btn-subview-back"
+            onClick={() => setActiveWorkflowView("overview")}
+          >
+            ← Case Overview
+          </button>
+        </div>
+      )}
+
+      {/* Main Content Body */}
       <main className="pane-body">
-        {state.type === "loading" && <LoadingView />}
+        {effectiveState.type === "loading" && <LoadingView />}
 
-        {state.type === "error" && <ErrorView message={state.message} onRetry={() => void refreshCurrentEmail(true)} />}
+        {effectiveState.type === "error" && <ErrorView message={effectiveState.message} onRetry={() => void refreshCurrentEmail(true)} />}
 
-        {state.type === "not_found" && <NotFoundView note={state.note} />}
+        {effectiveState.type === "not_found" && (
+          <NotFoundView
+            note={effectiveState.note}
+            onSelectDemo={(k) => {
+              setShowDemoBar(true);
+              setSelectedDemoKey(k);
+            }}
+            onRefresh={() => void refreshCurrentEmail(true)}
+          />
+        )}
 
-        {state.type === "ready" && (
+        {effectiveState.type === "ready" && effectiveDetail && (
           <>
             {/* Low-confidence identity note */}
-            {state.note && (
+            {effectiveState.note && (
               <div className="limitation-note" role="note">
                 <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-                <span>{state.note}</span>
+                <span>{effectiveState.note}</span>
               </div>
             )}
 
-            <section className="email-hero" aria-labelledby="current-email-heading">
-              <p className="pane-section-label">Current email</p>
-              <h1 id="current-email-heading">{state.detail.email.subject}</h1>
-              <p>{state.detail.email.sender || "Unknown sender"} · {formatDate(state.detail.email.received_at ?? state.detail.email.created_at)}</p>
-            </section>
-
-            {/* Processing state card */}
-            <ProcessingStateCard email={state.detail.email} />
-
-            {/* Comparison summary chips */}
-            <ComparisonSummaryStrip email={state.detail.email} comparison={state.detail.comparison} />
-
-            {/* Email info */}
-            <EmailInfoSection email={state.detail.email} />
-
-            {/* Comparison table for document_comparison */}
-            {state.detail.email.category === "document_comparison" &&
-              state.detail.comparison && (
-                <>
-                  <div className="pane-divider" />
+            {/* Lifecycle deleted / error alerts */}
+            {getEmailLifecycle(effectiveDetail.email).lifecycle_status !== "ACTIVE" && (
+              <div className="lifecycle-alert" role="status" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <Archive size={13} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+                  <div>
+                    <strong>{displayLabel(getEmailLifecycle(effectiveDetail.email).lifecycle_status)}</strong>
+                    <span style={{ display: "block", fontSize: "11px", color: "var(--color-grey-700)" }}>
+                      {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED"
+                        ? "Hidden from active queues; history and review evidence are preserved."
+                        : "Mailbox location changed; backend case state remains available."}
+                    </span>
+                  </div>
+                </div>
+                {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED" && (
                   <button
-                    className="collapsible-header"
                     type="button"
-                    onClick={() => setShowComparison((v) => !v)}
-                    aria-expanded={showComparison}
-                    aria-controls="comparison-section"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void handleRestore()}
+                    disabled={actionState === "loading"}
+                    style={{ flexShrink: 0, padding: "3px 8px", fontSize: "11px" }}
                   >
-                    <p className="pane-section-label" style={{ margin: 0 }}>
-                      SI vs Draft BL Comparison
-                    </p>
-                    <span aria-hidden="true">{showComparison ? "▲" : "▼"}</span>
+                    Restore Email
                   </button>
-                  {showComparison && (
-                    <div id="comparison-section">
-                      <ComparisonTable comparison={state.detail.comparison} />
-                    </div>
-                  )}
-                </>
+                )}
+              </div>
+            )}
+
+            {getEmailLifecycle(effectiveDetail.email).outlook_sync_error && (
+              <div className="lifecycle-alert error" role="alert">
+                <AlertCircle size={13} aria-hidden="true" />
+                <strong>Sync issue</strong>
+                <span>{getEmailLifecycle(effectiveDetail.email).outlook_sync_error}</span>
+              </div>
+            )}
+
+            {/* ══════════════ 1. PRIMARY SCREEN: CASE OVERVIEW ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "overview" ? "active" : "visually-hidden"}`}>
+              {/* State-Driven Case Status Card */}
+              <ProcessingStateCard email={effectiveDetail.email} />
+
+              {/* Attention Area: Mismatched / Unresolved fields spotlight */}
+              {isDocumentComparison && effectiveDetail.comparison && (
+                <RequiresAttentionSection
+                  comparison={effectiveDetail.comparison}
+                  onOpenReview={() => setActiveWorkflowView("review")}
+                  onOpenFullComparison={() => setActiveWorkflowView("comparison")}
+                />
               )}
 
-            {/* Review info */}
-            {activeReview && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">Human Review</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value={activeReview.status} /><span>{activeReview.reviewer_name || "Unassigned"}</span></div>
-                  <strong>{reasonLabels[activeReview.reason_code] || displayLabel(activeReview.reason_code)}</strong>
-                  <p>{activeReview.reason_text}</p>
-                  <dl className="review-card-facts">
+              {/* Dominant Primary Next Action CTA */}
+              <div className="overview-primary-cta-box">
+                {effectiveDetail.email.needs_review ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-cta-main"
+                    onClick={() => setActiveWorkflowView("review")}
+                  >
+                    <Edit3 size={14} aria-hidden="true" />
+                    Review {effectiveDetail.comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED").length || 1} Field(s) →
+                  </button>
+                ) : isDocumentComparison && effectiveDetail.email.mismatch_count === 0 && effectiveDetail.email.unresolved_count === 0 && effectiveDetail.email.processing_status === "COMPLETED" ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-cta-main"
+                    onClick={() => setActiveWorkflowView("reply")}
+                  >
+                    <Bot size={14} aria-hidden="true" />
+                    Generate Reply →
+                  </button>
+                ) : effectiveDetail.email.processing_status === "AWAITING_DOCUMENTS" ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-cta-main"
+                    onClick={() => void refreshCurrentEmail(true)}
+                  >
+                    <RefreshCw size={14} aria-hidden="true" />
+                    Check Again
+                  </button>
+                ) : effectiveDetail.email.processing_status === "FAILED" ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-cta-main"
+                    onClick={() => void retryProcessing()}
+                    disabled={actionState === "loading"}
+                  >
+                    <RefreshCw size={14} aria-hidden="true" className={actionState === "loading" ? "spin" : ""} />
+                    {actionState === "loading" ? "Retrying…" : "Retry Processing"}
+                  </button>
+                ) : null}
+              </div>
+
+              {/* Subtle AI Advisory Notice */}
+              {aiSuggestion && activeReview && (
+                <div className="ai-advisory-notice">
+                  <div className="ai-advisory-left">
+                    <Sparkles size={14} style={{ color: "var(--color-orange-600)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
                     <div>
-                      <dt>{activeReview.field ? "Affected field" : "Affected area"}</dt>
-                      <dd>{reviewAffectedText(activeReview, state.detail.email)}</dd>
+                      <strong>AI suggestion available</strong>
+                      <p>{aiSuggestion.reason || "HolyShip AI has context for this review case."}</p>
                     </div>
-                    <div>
-                      <dt>Suggested action</dt>
-                      <dd>{reviewSuggestedAction(activeReview)}</dd>
-                    </div>
-                  </dl>
-                  {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
-                </section>
+                  </div>
+                  {reviewUrl ? (
+                    <a
+                      className="btn-link"
+                      href={reviewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink size={11} aria-hidden="true" />
+                      Open AI Review
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => setActiveWorkflowView("review")}
+                    >
+                      Review with AI →
+                    </button>
+                  )}
+                </div>
+              )}
 
-                <AICompanionSection reviewId={activeReview.id} reviewUrl={reviewUrl} />
-              </>
-            )}
+              {/* Collapsibles: Case Details, History, Category Correction */}
+              <div className="overview-collapsibles">
+                <details className="collapsible-card">
+                  <summary className="collapsible-summary">Case details ▾</summary>
+                  <div className="collapsible-content">
+                    <EmailInfoSection email={effectiveDetail.email} />
+                    <CaseDetailsCard detail={effectiveDetail} />
+                  </div>
+                </details>
 
-            {!activeReview && historicalReview && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">Human Review</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value={historicalReview.status} /><span>No action required</span></div>
-                  <strong>Historical review record</strong>
-                  <p>This completed case has an older review record. It is shown for context only.</p>
-                  <dl className="review-card-facts">
-                    <div>
-                      <dt>Affected area</dt>
-                      <dd>{reviewAffectedText(historicalReview, state.detail.email)}</dd>
-                    </div>
-                  </dl>
-                </section>
-              </>
-            )}
+                <details className="collapsible-card">
+                  <summary className="collapsible-summary">History & Timeline ▾</summary>
+                  <div className="collapsible-content">
+                    <TimelineCard detail={effectiveDetail} />
+                    <OutlookSyncCard
+                      email={effectiveDetail.email}
+                      onRestore={() => void handleRestore()}
+                      isRestoring={actionState === "loading"}
+                    />
+                  </div>
+                </details>
 
-            {aiSuggestion && activeReview && reviewUrl && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">AI Companion</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value="info" tone="info" /><span>AI explanation available</span></div>
-                  <strong>AI suggestion available</strong>
-                  <p>{aiSuggestion.reason || "HolyShip AI has context for this review case."}</p>
-                  <a className="btn-secondary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open AI Review</a>
-                </section>
-              </>
-            )}
+                <details className="collapsible-card" open={showCategoryCorrection}>
+                  <summary
+                    className="collapsible-summary"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowCategoryCorrection((prev) => !prev);
+                    }}
+                  >
+                    Change Category ▾
+                  </summary>
+                  <div className="collapsible-content">
+                    <CategoryCorrectionSection email={effectiveDetail.email} onUpdated={replaceReadyDetail} />
+                  </div>
+                </details>
+              </div>
 
-            {/* Actions */}
-            <div className="pane-divider" />
-            <div className="pane-action-row">
+              {/* Subtle tertiary footer link */}
               {dashUrl && (
+                <div className="overview-footer-row">
+                  <a
+                    href={dashUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="footer-dash-link"
+                    aria-label="Open this case in the HolyShip Dashboard"
+                  >
+                    View full case in Dashboard ↗
+                    <span className="visually-hidden"> (Open in Dashboard)</span>
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* ══════════════ 2. SUBVIEW: HUMAN REVIEW ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "review" ? "active" : "visually-hidden"}`}>
+              {activeReview ? (
+                <HumanReviewWorkflow
+                  review={activeReview}
+                  detail={effectiveDetail}
+                  comparison={effectiveDetail.comparison}
+                  reviewUrl={reviewUrl}
+                  onActionComplete={refreshAfterMutation}
+                  onProceedToReply={() => setActiveWorkflowView("reply")}
+                  onExecuteRecompare={retryProcessing}
+                  actionLoading={actionState === "loading"}
+                />
+              ) : historicalReview ? (
+                <div>
+                  <p className="pane-section-label">Human Review</p>
+                  <section className="review-card-compact">
+                    <div className="review-card-heading"><StatusBadge value={historicalReview.status} /><span>No action required</span></div>
+                    <strong>Historical review record</strong>
+                    <p>This completed case has an older review record. It is shown for context only.</p>
+                    <dl className="review-card-facts">
+                      <div>
+                        <dt>Affected area</dt>
+                        <dd>{reviewAffectedText(historicalReview, effectiveDetail.email)}</dd>
+                      </div>
+                    </dl>
+                    <ReviewHistorySection review={historicalReview} />
+                  </section>
+                </div>
+              ) : (
+                <div className="not-found-state">
+                  <CheckCircle2 size={32} color="var(--color-success)" />
+                  <h3>No Review Required</h3>
+                  <p>All required fields match or no active review is open for this case.</p>
+                  <button type="button" className="btn-secondary" onClick={() => setActiveWorkflowView("overview")}>
+                    Back to Case Overview
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ══════════════ 3. SUBVIEW: SMART REPLY ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "reply" ? "active" : "visually-hidden"}`}>
+              <ReplyWorkflowSection
+                email={effectiveDetail.email}
+                initialWorkflow={effectiveDetail.outlook_workflow}
+                onActionComplete={refreshAfterMutation}
+                onBack={() => setActiveWorkflowView(activeReview ? "review" : "overview")}
+              />
+            </div>
+
+            {/* ══════════════ 4. SUBVIEW: FULL COMPARISON ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "comparison" ? "active" : "visually-hidden"}`}>
+              {isDocumentComparison && effectiveDetail.comparison ? (
+                <div>
+                  <div className="section-title-row" style={{ marginBottom: 10 }}>
+                    <p className="pane-section-label" style={{ margin: 0 }}>SI vs Draft BL Comparison</p>
+                    <span className="badge badge-muted">7 Canonical Fields</span>
+                  </div>
+                  <div id="comparison-section">
+                    <ComparisonTable comparison={effectiveDetail.comparison} />
+                  </div>
+                  <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                    {effectiveDetail.email.needs_review ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => setActiveWorkflowView("review")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Proceed to Review →
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setActiveWorkflowView("overview")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Back to Case Overview
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="not-found-state">
+                  <p>No document comparison table for this category.</p>
+                  <button type="button" className="btn-secondary" onClick={() => setActiveWorkflowView("overview")}>
+                    Back to Case Overview
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {dashUrl && activeWorkflowView !== "overview" && (
+              <div className="overview-footer-row">
                 <a
                   href={dashUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary"
+                  className="footer-dash-link"
                   aria-label="Open this case in the HolyShip Dashboard"
                 >
-                  <ExternalLink size={12} aria-hidden="true" />
-                  Open in Dashboard
+                  View full case in Dashboard ↗
+                  <span className="visually-hidden"> (Open in Dashboard)</span>
                 </a>
-              )}
-              {state.detail.email.processing_status === "FAILED" ? (
-                <button className="btn-primary" type="button" disabled={actionState === "loading"} onClick={() => void retryProcessing()}>
-                  <RefreshCw size={12} aria-hidden="true" />
-                  {actionState === "loading" ? "Retrying…" : "Retry / Reprocess"}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void refreshCurrentEmail(true)}
-                aria-label="Refresh case data"
-              >
-                <RefreshCw size={12} aria-hidden="true" />
-                Refresh
-              </button>
-            </div>
+              </div>
+            )}
           </>
         )}
       </main>

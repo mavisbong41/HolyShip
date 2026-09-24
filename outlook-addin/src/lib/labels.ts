@@ -72,12 +72,24 @@ export const reasonLabels: Record<string, string> = {
   READINESS_UNRESOLVED: "Document readiness unclear",
   NOT_ACTIONABLE: "Not actionable",
   OCR_BACKEND_UNAVAILABLE: "Document processing unavailable",
+  OUTLOOK_EMAIL_DELETED: "Mailbox item deleted",
+  OUTLOOK_EMAIL_RESTORED: "Mailbox item restored",
+  OUTLOOK_EMAIL_ARCHIVED: "Mailbox item archived",
+  OUTLOOK_LIFECYCLE_RECONCILED: "Lifecycle synchronized",
+  OUTLOOK_READ_STATE_SYNCED: "Read state synchronized",
+  OUTLOOK_CATEGORY_SYNCED: "Category synchronized",
+  OUTLOOK_FOLDER_SYNCED: "Folder synchronized",
+  OUTLOOK_ARCHIVE_STATE_SYNCED: "Archive state synchronized",
 };
 
 export type SemanticTone = "neutral" | "good" | "warn" | "bad" | "attention" | "info" | "muted";
 
 export function semanticTone(value: string): SemanticTone {
   if (value === "FAILED" || value === "MISMATCH") return "bad";
+  if (value === "DELETED") return "bad";
+  if (value === "ARCHIVED") return "muted";
+  if (value === "UNREAD") return "info";
+  if (value === "READ") return "neutral";
   if (value === "AWAITING_DOCUMENTS") return "info";
   if (value === "UNRESOLVED") return "warn";
   if (value === "BLOCKED" || value === "OPEN" || value === "IN_REVIEW") return "attention";
@@ -87,6 +99,12 @@ export function semanticTone(value: string): SemanticTone {
 }
 
 export function displayLabel(value: string): string {
+  if (value === "DELETED") return "Deleted";
+  if (value === "ARCHIVED") return "Archived";
+  if (value === "ACTIVE") return "Active";
+  if (value === "READ") return "Read";
+  if (value === "UNREAD") return "Unread";
+  if (value === "UNKNOWN") return "Unknown";
   if (value in statusLabels) return statusLabels[value as ProcessingStatus];
   if (value in categoryLabels) return categoryLabels[value as ProductCategory];
   if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];

@@ -40,6 +40,8 @@ export type ComparisonReadiness =
 
 export type FieldStatus = "MATCH" | "MISMATCH" | "UNRESOLVED";
 export type ComparisonState = "COMPLETED" | "BLOCKED";
+export type EmailLifecycleStatus = "ACTIVE" | "DELETED" | "ARCHIVED";
+export type OutlookReadState = "READ" | "UNREAD" | "UNKNOWN";
 
 export interface ProductValue {
   raw: unknown | null;
@@ -113,6 +115,19 @@ export interface ProductEmailSummary {
   review_id?: string | null;
   review_status: string | null;
   review_reason: string | null;
+  lifecycle?: ProductEmailLifecycle;
+}
+
+export interface ProductEmailLifecycle {
+  lifecycle_status: EmailLifecycleStatus;
+  outlook_read_state: OutlookReadState;
+  outlook_categories: string[];
+  outlook_folder_id: string | null;
+  outlook_archived: boolean;
+  last_outlook_sync_at: string | null;
+  outlook_sync_error: string | null;
+  deleted_at: string | null;
+  restored_at: string | null;
 }
 
 export interface ProductEmailDetail {
@@ -127,6 +142,18 @@ export interface ProductEmailDetail {
   timeline: ProductTimelineEvent[];
   review: ProductReview[];
   resolutions: ProductResolution[];
+  outlook_workflow?: ProductReplyWorkflow;
+}
+
+export interface ProductReplyWorkflow {
+  email_id: string;
+  status: string;
+  summary: string | null;
+  key_points: string[];
+  draft: string | null;
+  last_instruction: string | null;
+  sent_at: string | null;
+  updated_at: string;
 }
 
 export interface ProductAttachment {
@@ -216,7 +243,32 @@ export interface ProductReview {
   age_minutes?: number;
   comparison: ProductComparison | null;
   resolutions: ProductResolution[];
+  overrides?: ProductReviewOverride[];
+  actions?: ProductReviewAction[];
   ai_suggestions?: ProductAISuggestion[];
+  created_at: string;
+}
+
+export interface ProductReviewOverride {
+  id: string;
+  document_side: "SI" | "BL";
+  field: CanonicalField | string;
+  original_field_id: string;
+  corrected_value: unknown;
+  corrected_canonical_value: unknown;
+  reviewer_name?: string | null;
+  note?: string | null;
+  active: boolean;
+  supersedes_override_id?: string | null;
+  ai_suggestion_id?: string | null;
+  created_at: string;
+}
+
+export interface ProductReviewAction {
+  id: string;
+  action: string;
+  actor_name?: string | null;
+  details: Record<string, unknown>;
   created_at: string;
 }
 

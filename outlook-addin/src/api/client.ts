@@ -1,4 +1,14 @@
-import type { AIAssistantResponse, EmailQueuePage, ProductEmailDetail } from "../types/product";
+import type {
+  AIAssistantResponse,
+  EmailQueuePage,
+  EmailLifecycleStatus,
+  OutlookReadState,
+  ProductCategory,
+  ProductEmailDetail,
+  ProductReplyWorkflow,
+  ProductReview,
+} from "../types/product";
+import type { MailContextItem } from "../types/context";
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -70,6 +80,19 @@ export async function reprocessEmail(emailId: string): Promise<{ email_id: strin
   return request(`/emails/${emailId}/reprocess`, { method: "POST" });
 }
 
+export async function updateEmailCategory(
+  emailId: string,
+  category: ProductCategory,
+  reviewerName?: string,
+  reason?: string,
+): Promise<ProductEmailDetail> {
+  return request<ProductEmailDetail>(`/emails/${emailId}/category`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, reviewer_name: reviewerName, reason }),
+  });
+}
+
 /**
  * Ask the HolyShip AI Review Assistant for grounded case reasoning.
  */
@@ -81,6 +104,173 @@ export async function askAIAssistant(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question }),
+  });
+}
+
+export async function claimHumanReview(reviewId: string, reviewerName: string): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function saveHumanReviewOverride(
+  reviewId: string,
+  payload: {
+    document_side: "SI" | "BL";
+    field: string;
+    corrected_value: unknown;
+    corrected_canonical_value?: unknown;
+    reviewer_name?: string;
+    note?: string;
+  },
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/overrides`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resolveHumanReview(
+  reviewId: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, notes }),
+  });
+}
+
+export async function dismissHumanReview(
+  reviewId: string,
+  reason: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, reason, notes }),
+  });
+}
+
+export async function acceptAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  reviewerLabel: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_label: reviewerLabel }),
+  });
+}
+
+export async function applyEditedAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  value: string,
+  reviewerLabel: string,
+  note?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/apply-edited`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, reviewer_label: reviewerLabel, note }),
+  });
+}
+
+export async function dismissAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  reviewerLabel: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_label: reviewerLabel }),
+  });
+}
+
+export async function createReplySummary(
+  emailId: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function generateReplyDraft(
+  emailId: string,
+  keyPoints: string[],
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key_points: keyPoints, reviewer_name: reviewerName }),
+  });
+}
+
+export async function refineReplyDraft(
+  emailId: string,
+  draft: string,
+  instruction: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/refine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draft, instruction, reviewer_name: reviewerName }),
+  });
+}
+
+export async function sendReplyDraft(
+  emailId: string,
+  finalMessage: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ final_message: finalMessage, reviewer_name: reviewerName }),
+  });
+}
+
+export async function reconcileOutlookLifecycle(
+  emailId: string,
+  item: Partial<MailContextItem> & { lifecycle_status?: EmailLifecycleStatus | "RESTORED" },
+): Promise<void> {
+  const folder = (item.outlookFolderId || "").toLowerCase();
+  const isDeletedFolder =
+    folder.includes("deleted") ||
+    folder.includes("trash") ||
+    folder === "deleteditems" ||
+    folder === "deleted items" ||
+    folder === "trashbin";
+
+  const lifecycleStatus =
+    item.lifecycle_status ?? (isDeletedFolder ? "DELETED" : "ACTIVE");
+
+  await request(`/outlook/reconcile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email_id: emailId,
+      lifecycle_status: lifecycleStatus,
+      outlook_read_state: (item.outlookReadState ?? "UNKNOWN") as OutlookReadState,
+      outlook_categories: item.outlookCategories ?? [],
+      outlook_folder_id: item.outlookFolderId ?? undefined,
+      outlook_archived: item.outlookArchived ?? undefined,
+      actor_name: "Outlook Add-in",
+    }),
   });
 }
 

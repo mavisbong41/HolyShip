@@ -12,6 +12,14 @@ export interface MailContextItem {
   sender: string | null;
   /** Email subject */
   subject: string | null;
+  /** Best-effort Outlook read state, when exposed by the host */
+  outlookReadState?: "READ" | "UNREAD" | "UNKNOWN";
+  /** Outlook native categories/tags, when exposed by the host */
+  outlookCategories?: string[];
+  /** Current Outlook folder id, when exposed by the host */
+  outlookFolderId?: string | null;
+  /** Best-effort archive state, when exposed by the host */
+  outlookArchived?: boolean | null;
 }
 
 export type MailContextLoadState = "loading" | "ready" | "unavailable";
