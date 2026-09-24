@@ -44,9 +44,9 @@ superseded historical restriction are recorded in
 
 ## Last Updated
 
-**Date:** 2026-09-22
-**Updated by:** Mobile layout audit and zero-overlap responsive fixes across all pages
-**Repository state:** `main` includes Captain Jack persona and KPI typography harmonization. Conducted comprehensive mobile layout and responsive audit across Overview, Email Queue, Confirmed Discrepancies, and Human Review workspaces, plus Topbar Header, AI Review Assistant, Modals, and Touch Tooltips. Fixed Confirmed Discrepancies mobile back button (`mobile-detail-nav-row`), responsive side-by-side diff stacking, modal 2-column stacking (`.modal-two-col`), horizontal tab scrolling, metric text truncation, touch tooltip suppression, and user dropdown containment. Validation: Vitest suite (29 tests), TypeScript typecheck, and Vite production build PASS.
+**Date:** 2026-09-24
+**Updated by:** Enterprise AI Security enhancement
+**Repository state:** Security work is isolated on `feature/security-ai-gateway`, branched from `main@5d06606eb8a72f5b4f50f15b764d84154f1232b1`. The branch adds Enterprise Privacy Mode, a centralized Gemini Secure AI Gateway, purpose-specific Minimum Necessary Disclosure, secret-safe AI audit metadata, and migration `20260924_0016` to redact legacy raw AI request/question payloads. It does not add authentication/RBAC, Outlook action changes, Smart Reply, mailbox delete/restore sync, or Data Lifecycle cleanup.
 
 ---
 
@@ -114,6 +114,7 @@ Stabilization is implemented on `codex/ui-human-review-stabilization`. The backe
 | Outlook Add-in | IMPLEMENTED / VERIFIED | Compact current-email companion with shared semantics, seven-field cards, active-review context, `?email=` / `?review=` links, retry, refresh, and selected-message re-resolution; 64 tests, typecheck, and production build pass |
 | Human Review product API | IMPLEMENTED / VERIFIED | Read queue/detail plus claim, separate override, resolve/recompare, and dismiss mutations are PostgreSQL/API-tested |
 | Human Review UI/workflow | IMPLEMENTED / VERIFIED | Actionable BLOCKED policy, idempotent active case, four-state lifecycle, immutable events, separate overrides, and comparison versioning are active |
+| Enterprise AI security | IMPLEMENTED / VERIFIED — SECURITY BRANCH | `ENTERPRISE_PRIVACY_MODE=true` by default; all Gemini HTTP transport is centralized in the Secure AI Gateway; field and Human Review payloads are purpose-minimized/redacted; raw resolver requests and Human Review AI questions are no longer persistently stored; legacy payloads are redacted by migration `20260924_0016`. |
 
 `NOT CONFIRMED` means this file was created before inspecting the repository's actual implementation. Codex must replace these statuses with truthful repository state after inspection.
 
@@ -217,6 +218,29 @@ Fast compare
 ---
 
 ## Implemented
+
+### Enterprise AI Security — `feature/security-ai-gateway`
+
+- Added backend-only Enterprise Privacy Mode with `ENTERPRISE_PRIVACY_MODE=true` by default and a configurable `AI_GATEWAY_MAX_PAYLOAD_BYTES` fail-closed payload ceiling.
+- Added `backend/app/security/ai_gateway.py` as the single Gemini network boundary. Gemini L2 extraction, Gemini semantic comparison, and the Human Review Gemini assistant now use purpose validation, payload minimization, sanitization/redaction, response JSON validation, and non-sensitive audit metadata before/after provider transport.
+- Preserved Phase-6 extraction batching behind the gateway: one Gemini provider call may carry multiple unresolved fields, but each batch entry contains only that field's role/evidence/escalation context. Semantic comparison contains only field + SI/BL values + field evidence.
+- Human Review AI no longer receives sender/recipient IDs, case/email IDs, filenames, recent audit history, unrelated canonical fields, reviewer identity, or free-form override notes. Field-level reviews disclose only affected fields; document/email-level reviews with no affected canonical field disclose no SI/BL field values.
+- Strengthened free-form sanitization for email addresses, API-key/token/password assignments, and bearer tokens before external AI disclosure.
+- Stopped persisting raw Human Review questions: `AI_ASSISTANT_ASKED` stores question SHA-256 + length, provider/model/mode, and gateway disclosure metadata instead.
+- Stopped persisting raw Phase-6 resolver request payloads/evidence in `ai_resolutions.request_json`; retained only purpose/field/escalation + payload hash/size + privacy/disclosure/status/latency metadata. Structured resolver decisions remain persisted for cache/audit truth.
+- Added irreversible privacy migration `20260924_0016_redact_legacy_ai_payloads.py` to redact raw resolver request payloads and raw Human Review AI questions already stored by older versions while preserving comparison/review/result history.
+- Gemini credentials remain server-side. The gateway sends Gemini keys in the request header, not the URL; provider error bodies are not surfaced to users. Frontend and Outlook source are regression-tested against Gemini/API-key variable references.
+- Added `docs/security_ai_gateway.md` plus dedicated unit/PostgreSQL regression coverage. This feature is an AI data-disclosure/security control set, not a claim of full enterprise authentication/compliance.
+
+**Validation (GitHub Actions, security branch):**
+- Python compile + Alembic migration smoke to head: PASS.
+- Security/AI focused suite: **54 passed**.
+- Backend regression suite: **367 passed, 1 deselected** in 24.03s. The deselected test is `backend/tests/test_sync_service.py::test_sync_force_reclassifies_unchanged_email`; it was separately reproduced failing on untouched current `main` under the same PostgreSQL setup, so it is documented as a pre-existing baseline defect and was not changed in this security branch.
+- Public 520-email baseline: **520/520**, **9.672s**, **53.766 emails/s**.
+- Dashboard full check: TypeScript typecheck PASS, **30 tests passed**, production build PASS.
+- Outlook Add-in full check: TypeScript typecheck PASS, **65 tests passed**, production build PASS.
+- `git diff --check`: PASS.
+- Verification workflow run: `36004352400`.
 
 ### UI/UX unification — Dashboard and Outlook Add-in
 
