@@ -7,6 +7,7 @@ from fastapi.responses import JSONResponse
 
 from backend.app.api.router import _build_sync_service, router
 from backend.app.core.config import Settings, get_settings
+from backend.app.data_lifecycle.runtime import DataLifecycleRuntime
 from backend.app.ingestion.runtime import IngestionRuntime
 from backend.app.storage.database import SessionLocal
 
@@ -27,11 +28,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             session_factory=SessionLocal,
             processor_factory=processor_factory,
         )
+        data_lifecycle_runtime = DataLifecycleRuntime(
+            configured,
+            session_factory=SessionLocal,
+        )
         app.state.ingestion_runtime = runtime
+        app.state.data_lifecycle_runtime = data_lifecycle_runtime
         runtime.start()
+        data_lifecycle_runtime.start()
         try:
             yield
         finally:
+            data_lifecycle_runtime.stop()
             runtime.stop()
 
     application = FastAPI(

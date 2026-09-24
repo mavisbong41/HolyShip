@@ -702,3 +702,34 @@ class AISuggestionRecord(Base):
 
     review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="ai_suggestions")
 
+
+class DataLifecycleRunRecord(Base):
+    """Append-only summary for scheduled retention cleanup runs."""
+
+    __tablename__ = "data_lifecycle_runs"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    started_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+    completed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
+    dry_run: Mapped[bool] = mapped_column(Boolean, nullable=False, default=True)
+    status: Mapped[str] = mapped_column(String(50), nullable=False, default="STARTED", index=True)
+    policy: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    summary: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    error_message: Mapped[str | None] = mapped_column(Text, nullable=True)
+
+
+class AuditEventRecord(Base):
+    """Append-only audit event for cross-feature business traceability."""
+
+    __tablename__ = "audit_events"
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    event_type: Mapped[str] = mapped_column(String(120), nullable=False, index=True)
+    actor_type: Mapped[str] = mapped_column(String(50), nullable=False, default="SYSTEM", index=True)
+    actor_name: Mapped[str | None] = mapped_column(String(255), nullable=True)
+    source: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    entity_type: Mapped[str] = mapped_column(String(80), nullable=False, index=True)
+    entity_id: Mapped[uuid.UUID | None] = mapped_column(UUID(as_uuid=True), nullable=True, index=True)
+    metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
+
