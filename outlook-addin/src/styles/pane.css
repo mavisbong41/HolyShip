@@ -998,6 +998,41 @@ button:disabled {
   white-space: nowrap;
 }
 
+.case-status-rail .status-rail-wide {
+  grid-column: 1 / -1;
+}
+
+.case-status-rail .status-rail-wide strong {
+  white-space: normal;
+}
+
+.lifecycle-alert {
+  display: grid;
+  grid-template-columns: auto auto 1fr;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 10px;
+  border: 1px solid var(--color-grey-200);
+  border-left: 3px solid var(--color-warn);
+  background: var(--color-white);
+  border-radius: var(--radius-sm);
+  color: var(--color-grey-900);
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.lifecycle-alert.error {
+  border-left-color: var(--color-danger);
+}
+
+.lifecycle-alert strong {
+  font-size: 12px;
+}
+
+.lifecycle-alert span {
+  color: var(--color-grey-600);
+}
+
 .section-title-row,
 .inline-action-row,
 .dismiss-row {

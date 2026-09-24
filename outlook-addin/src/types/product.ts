@@ -40,6 +40,8 @@ export type ComparisonReadiness =
 
 export type FieldStatus = "MATCH" | "MISMATCH" | "UNRESOLVED";
 export type ComparisonState = "COMPLETED" | "BLOCKED";
+export type EmailLifecycleStatus = "ACTIVE" | "DELETED" | "ARCHIVED";
+export type OutlookReadState = "READ" | "UNREAD" | "UNKNOWN";
 
 export interface ProductValue {
   raw: unknown | null;
@@ -113,6 +115,19 @@ export interface ProductEmailSummary {
   review_id?: string | null;
   review_status: string | null;
   review_reason: string | null;
+  lifecycle?: ProductEmailLifecycle;
+}
+
+export interface ProductEmailLifecycle {
+  lifecycle_status: EmailLifecycleStatus;
+  outlook_read_state: OutlookReadState;
+  outlook_categories: string[];
+  outlook_folder_id: string | null;
+  outlook_archived: boolean;
+  last_outlook_sync_at: string | null;
+  outlook_sync_error: string | null;
+  deleted_at: string | null;
+  restored_at: string | null;
 }
 
 export interface ProductEmailDetail {

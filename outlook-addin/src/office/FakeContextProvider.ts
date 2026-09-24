@@ -21,6 +21,10 @@ export class FakeCurrentMailContextProvider implements MailContextProvider {
           internetMessageId: item?.internetMessageId ?? "<fake-msg-id@example.com>",
           sender: item?.sender ?? "shipper@example.com",
           subject: item?.subject ?? "Draft BL for BKG-20240501 for checking",
+          outlookReadState: item?.outlookReadState ?? "UNREAD",
+          outlookCategories: item?.outlookCategories ?? ["BL_COMPARISON"],
+          outlookFolderId: item?.outlookFolderId ?? "inbox",
+          outlookArchived: item?.outlookArchived ?? false,
         },
         error: null,
       };

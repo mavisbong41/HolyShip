@@ -61,6 +61,29 @@ export class OfficeCurrentMailContextProvider implements MailContextProvider {
       const outlookItemId = selectedItem?.itemId || item?.itemId || null;
       const subject = selectedItem?.subject || item?.subject || null;
       const sender = item?.from?.emailAddress || null;
+      const outlookReadState = typeof (item as any)?.isRead === "boolean"
+        ? ((item as any).isRead ? "READ" : "UNREAD")
+        : "UNKNOWN";
+      let outlookCategories: string[] = [];
+      try {
+        const categoriesApi = (item as any)?.categories;
+        if (categoriesApi && typeof categoriesApi.getAsync === "function") {
+          outlookCategories = await new Promise<string[]>((resolve) => {
+            categoriesApi.getAsync((asyncResult: any) => {
+              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded && Array.isArray(asyncResult.value)) {
+                resolve(asyncResult.value.map((entry: any) => String(entry?.displayName ?? entry)).filter(Boolean));
+              } else {
+                resolve([]);
+              }
+            });
+          });
+        }
+      } catch {
+        outlookCategories = [];
+      }
+      const outlookFolderId = typeof (item as any)?.parentFolderId === "string"
+        ? (item as any).parentFolderId
+        : null;
 
       return {
         state: "ready",
@@ -70,6 +93,10 @@ export class OfficeCurrentMailContextProvider implements MailContextProvider {
           internetMessageId,
           sender,
           subject,
+          outlookReadState,
+          outlookCategories,
+          outlookFolderId,
+          outlookArchived: null,
         },
         error: null,
       };

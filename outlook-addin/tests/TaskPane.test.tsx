@@ -546,5 +546,42 @@ describe("TaskPane", () => {
 
       expect(await screen.findByRole("alert")).toHaveTextContent("AI service timeout");
     });
+
+    it("renders deleted lifecycle banner and sync rail status", async () => {
+      const deletedDetail = {
+        ...fixtures.cleanMatch,
+        email: {
+          ...fixtures.cleanMatch.email,
+          lifecycle: {
+            lifecycle_status: "DELETED",
+            outlook_read_state: "READ",
+            outlook_categories: ["BL_COMPARISON"],
+            outlook_folder_id: "trash",
+            outlook_archived: false,
+            last_outlook_sync_at: "2024-05-01T12:00:00Z",
+            outlook_sync_error: null,
+            deleted_at: "2024-05-01T12:00:00Z",
+            restored_at: null,
+          },
+        },
+      };
+      setupAdapter({ detail: deletedDetail as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+      await waitFor(() => {
+        expect(screen.getByRole("status")).toHaveTextContent("Hidden from active queues; history and review evidence are preserved.");
+      });
+      expect(screen.getAllByText("Deleted").length).toBeGreaterThanOrEqual(2);
+    });
+
+    it("triggers best-effort lifecycle reconciliation on email resolution", async () => {
+      const mockReconcile = vi.spyOn(clientModule, "reconcileOutlookLifecycle").mockResolvedValue(undefined);
+      setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+      await waitFor(() => {
+        expect(mockReconcile).toHaveBeenCalledWith("email-001", expect.objectContaining({
+          subject: expect.stringContaining("Draft BL"),
+        }));
+      });
+    });
   });
 });

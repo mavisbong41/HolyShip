@@ -1,6 +1,7 @@
 import {
   AlertCircle,
   AlertTriangle,
+  Archive,
   Bot,
   CheckCircle2,
   Check,
@@ -28,6 +29,7 @@ import {
   dismissAISuggestion,
   dismissHumanReview,
   generateReplyDraft,
+  reconcileOutlookLifecycle,
   refineReplyDraft,
   reprocessEmail,
   resolveHumanReview,
@@ -574,10 +576,28 @@ function ReviewHistorySection({ review }: { review: ProductReview }): React.Reac
   );
 }
 
+const defaultLifecycle: ProductEmailLifecycle = {
+  lifecycle_status: "ACTIVE",
+  outlook_read_state: "UNKNOWN",
+  outlook_categories: [],
+  outlook_folder_id: null,
+  outlook_archived: false,
+  last_outlook_sync_at: null,
+  outlook_sync_error: null,
+  deleted_at: null,
+  restored_at: null,
+};
+
+function getEmailLifecycle(email?: ProductEmailSummary | null): ProductEmailLifecycle {
+  return email?.lifecycle ?? defaultLifecycle;
+}
+
 function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
   const timeline = detail.timeline ?? [];
   const lastEvent = timeline.length > 0 ? timeline[timeline.length - 1] : null;
   const replyStatus = detail.outlook_workflow?.status ?? "NOT_STARTED";
+  const lifecycle = getEmailLifecycle(detail.email);
+  const lastSync = lifecycle.last_outlook_sync_at ?? lastEvent?.created_at ?? detail.email.created_at;
 
   return (
     <section className="case-status-rail" aria-label="Case synchronization summary">
@@ -594,6 +614,10 @@ function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.React
         <StatusBadge value={detail.email.comparison_readiness ?? "Not set"} tone={detail.email.comparison_readiness ? undefined : "muted"} />
       </div>
       <div>
+        <span>Email</span>
+        <StatusBadge value={lifecycle.lifecycle_status} />
+      </div>
+      <div>
         <span>Review</span>
         <StatusBadge value={detail.email.review_status ?? (detail.email.needs_review ? "OPEN" : "Not set")} tone={detail.email.review_status || detail.email.needs_review ? undefined : "muted"} />
       </div>
@@ -602,9 +626,19 @@ function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.React
         <StatusBadge value={replyStatus} tone={replyStatus === "SENT" ? "good" : replyStatus === "NOT_STARTED" ? "muted" : "info"} />
       </div>
       <div>
-        <span>Last sync</span>
-        <strong>{formatDate(lastEvent?.created_at ?? detail.email.created_at)}</strong>
+        <span>Read</span>
+        <StatusBadge value={lifecycle.outlook_read_state} tone={lifecycle.outlook_read_state === "UNKNOWN" ? "muted" : undefined} />
       </div>
+      <div>
+        <span>Last sync</span>
+        <strong>{formatDate(lastSync)}</strong>
+      </div>
+      {lifecycle.outlook_sync_error && (
+        <div className="status-rail-wide">
+          <span>Sync issue</span>
+          <strong>{lifecycle.outlook_sync_error}</strong>
+        </div>
+      )}
     </section>
   );
 }
@@ -1073,9 +1107,11 @@ export function TaskPane({
 
   const refreshCurrentEmail = useCallback(async (force = false) => {
     let currentKey = "";
+    let currentItemForSync: Awaited<ReturnType<MailContextProvider["getContext"]>>["item"] = null;
     try {
       const ctx = await contextProvider.getContext();
       if (ctx.state === "ready" && ctx.item) {
+        currentItemForSync = ctx.item;
         currentKey = [
           ctx.item.holyshipCaseId,
           ctx.item.internetMessageId,
@@ -1114,6 +1150,12 @@ export function TaskPane({
           note: result.limitationNote,
         });
         return;
+      }
+
+      if (currentItemForSync) {
+        void reconcileOutlookLifecycle(result.detail.email.id, currentItemForSync).catch(() => {
+          // Best-effort sync; the pane still renders backend truth and exposes manual refresh.
+        });
       }
 
       setState({
@@ -1309,6 +1351,26 @@ export function TaskPane({
               <div className="limitation-note" role="note">
                 <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
                 <span>{state.note}</span>
+              </div>
+            )}
+
+            {getEmailLifecycle(state.detail.email).lifecycle_status !== "ACTIVE" && (
+              <div className="lifecycle-alert" role="status">
+                <Archive size={13} aria-hidden="true" />
+                <strong>{displayLabel(getEmailLifecycle(state.detail.email).lifecycle_status)}</strong>
+                <span>
+                  {getEmailLifecycle(state.detail.email).lifecycle_status === "DELETED"
+                    ? "Hidden from active queues; history and review evidence are preserved."
+                    : "Mailbox location changed; backend case state remains available."}
+                </span>
+              </div>
+            )}
+
+            {getEmailLifecycle(state.detail.email).outlook_sync_error && (
+              <div className="lifecycle-alert error" role="alert">
+                <AlertCircle size={13} aria-hidden="true" />
+                <strong>Sync issue</strong>
+                <span>{getEmailLifecycle(state.detail.email).outlook_sync_error}</span>
               </div>
             )}
 

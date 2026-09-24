@@ -1,11 +1,13 @@
 import type {
   AIAssistantResponse,
   EmailQueuePage,
+  OutlookReadState,
   ProductCategory,
   ProductEmailDetail,
   ProductReplyWorkflow,
   ProductReview,
 } from "../types/product";
+import type { MailContextItem } from "../types/context";
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -238,6 +240,25 @@ export async function sendReplyDraft(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ final_message: finalMessage, reviewer_name: reviewerName }),
+  });
+}
+
+export async function reconcileOutlookLifecycle(
+  emailId: string,
+  item: MailContextItem,
+): Promise<void> {
+  await request(`/outlook/reconcile`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      email_id: emailId,
+      lifecycle_status: "ACTIVE",
+      outlook_read_state: (item.outlookReadState ?? "UNKNOWN") as OutlookReadState,
+      outlook_categories: item.outlookCategories ?? [],
+      outlook_folder_id: item.outlookFolderId ?? undefined,
+      outlook_archived: item.outlookArchived ?? undefined,
+      actor_name: "Outlook Add-in",
+    }),
   });
 }
 

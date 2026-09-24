@@ -78,6 +78,10 @@ export type SemanticTone = "neutral" | "good" | "warn" | "bad" | "attention" | "
 
 export function semanticTone(value: string): SemanticTone {
   if (value === "FAILED" || value === "MISMATCH") return "bad";
+  if (value === "DELETED") return "bad";
+  if (value === "ARCHIVED") return "muted";
+  if (value === "UNREAD") return "info";
+  if (value === "READ") return "neutral";
   if (value === "AWAITING_DOCUMENTS") return "info";
   if (value === "UNRESOLVED") return "warn";
   if (value === "BLOCKED" || value === "OPEN" || value === "IN_REVIEW") return "attention";
@@ -87,6 +91,12 @@ export function semanticTone(value: string): SemanticTone {
 }
 
 export function displayLabel(value: string): string {
+  if (value === "DELETED") return "Deleted";
+  if (value === "ARCHIVED") return "Archived";
+  if (value === "ACTIVE") return "Active";
+  if (value === "READ") return "Read";
+  if (value === "UNREAD") return "Unread";
+  if (value === "UNKNOWN") return "Unknown";
   if (value in statusLabels) return statusLabels[value as ProcessingStatus];
   if (value in categoryLabels) return categoryLabels[value as ProductCategory];
   if (value in readinessLabels) return readinessLabels[value as ComparisonReadiness];

@@ -24,6 +24,17 @@ const baseSummary: ProductEmailSummary = {
   needs_review: false,
   review_status: null,
   review_reason: null,
+  lifecycle: {
+    lifecycle_status: 'ACTIVE',
+    outlook_read_state: 'UNREAD',
+    outlook_categories: [],
+    outlook_folder_id: null,
+    outlook_archived: false,
+    last_outlook_sync_at: null,
+    outlook_sync_error: null,
+    deleted_at: null,
+    restored_at: null,
+  },
 };
 
 const baseClassification: ProductClassification = {
