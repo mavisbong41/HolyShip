@@ -1,7 +1,7 @@
 """Add Outlook email lifecycle synchronisation fields.
 
 Revision ID: 20260925_0017
-Revises: 20260924_0016
+Revises: 20260924_0017
 """
 
 from alembic import op
@@ -10,7 +10,7 @@ from sqlalchemy.dialects import postgresql
 
 
 revision = "20260925_0017"
-down_revision = "20260924_0016"
+down_revision = "20260924_0017"
 branch_labels = None
 depends_on = None
 
