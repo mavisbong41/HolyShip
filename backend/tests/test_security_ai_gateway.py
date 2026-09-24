@@ -461,12 +461,17 @@ def test_gemini_network_calls_are_centralized_in_gateway():
     assert gateway_source.count("urllib.request.urlopen") == 1
 
     gateway_path = Path("backend/app/security/ai_gateway.py")
+    config_path = Path("backend/app/core/config.py")
     for path in Path("backend/app").rglob("*.py"):
-        if path == gateway_path:
+        if path in {gateway_path, config_path}:
             continue
         source = path.read_text(encoding="utf-8", errors="ignore")
         assert "generativelanguage.googleapis.com" not in source
         assert '"x-goog-api-key"' not in source
+
+    config_source = config_path.read_text(encoding="utf-8")
+    assert "generativelanguage.googleapis.com" in config_source
+    assert "urllib.request.urlopen" not in config_source
 
 
 def test_frontend_sources_do_not_reference_gemini_api_secrets():
