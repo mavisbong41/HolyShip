@@ -143,6 +143,8 @@ def _queue_statement(
     review_status: str | None,
     comparison_state: str | None,
     has_mismatch: bool | None,
+    has_unresolved: bool | None = None,
+    is_processing: bool | None = None,
     search: str | None,
     received_from: datetime | None,
     received_to: datetime | None,
@@ -216,6 +218,14 @@ def _queue_statement(
         filters.append(comparison.c.comparison_state == comparison_state)
     if has_mismatch is not None:
         filters.append(comparison.c.mismatch_found.is_(has_mismatch))
+    if has_unresolved is True:
+        filters.append(_json_length(comparison.c.unresolved_fields) > 0)
+    elif has_unresolved is False:
+        filters.append(_json_length(comparison.c.unresolved_fields) == 0)
+    if is_processing is True:
+        filters.append(EmailMessageRecord.processing_status.notin_(["COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"]))
+    elif is_processing is False:
+        filters.append(EmailMessageRecord.processing_status.in_(["COMPLETED", "AWAITING_DOCUMENTS", "BLOCKED", "FAILED"]))
     if needs_review is not None:
         filters.append(needs_review_value.is_(needs_review))
     if search:
@@ -288,6 +298,8 @@ def list_email_queue(
     review_status: str | None = None,
     comparison_state: str | None = None,
     has_mismatch: bool | None = None,
+    has_unresolved: bool | None = None,
+    is_processing: bool | None = None,
     search: str | None = None,
     received_from: datetime | None = None,
     received_to: datetime | None = None,
@@ -302,6 +314,8 @@ def list_email_queue(
         review_status=review_status,
         comparison_state=comparison_state,
         has_mismatch=has_mismatch,
+        has_unresolved=has_unresolved,
+        is_processing=is_processing,
         search=search,
         received_from=received_from,
         received_to=received_to,
