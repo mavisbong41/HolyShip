@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import re
 from typing import Any
@@ -59,6 +60,7 @@ class AIReviewService:
             context,
             q_clean,
         )
+        gateway_audit = dict(getattr(self.provider, "last_audit_metadata", {}) or {})
 
         try:
             parsed = json.loads(_clean_json_str(raw_text))
@@ -111,6 +113,7 @@ class AIReviewService:
                     "evidence_refs": suggestion_record.evidence_refs,
                     "provider_name": provider_name,
                     "provider_model": provider_model,
+                    "ai_gateway": gateway_audit,
                 },
             )
 
@@ -118,10 +121,12 @@ class AIReviewService:
             case_id=case.id,
             action="AI_ASSISTANT_ASKED",
             details={
-                "question": q_clean,
+                "question_sha256": hashlib.sha256(q_clean.encode("utf-8")).hexdigest(),
+                "question_length": len(q_clean),
                 "mode": safe_response.mode,
                 "provider_name": provider_name,
                 "provider_model": provider_model,
+                "ai_gateway": gateway_audit,
             },
         )
         self.session.flush()
