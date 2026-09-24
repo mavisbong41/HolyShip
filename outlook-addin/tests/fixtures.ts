@@ -145,6 +145,7 @@ const mismatchComparison: ProductComparison = {
     if (f.field === "notify_party") {
       return {
         ...f,
+        si: { raw: "Apex Customs Brokerage Inc.", canonical: "Apex Customs Brokerage Inc.", normalized: "apex customs brokerage inc" },
         bl: { raw: null, canonical: null, normalized: null },
         status: "UNRESOLVED" as const,
         reason_code: "FIELD_MISSING_IN_BL",

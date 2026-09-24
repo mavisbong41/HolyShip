@@ -1337,7 +1337,7 @@ function RequiresAttentionSection({
   onOpenReview: () => void;
   onOpenFullComparison: () => void;
 }): React.ReactElement | null {
-  if (!comparison || !comparison.mismatch_found) return null;
+  if (!comparison) return null;
 
   const problematicFields = comparison.fields.filter(
     (f) => f.status === "MISMATCH" || f.status === "UNRESOLVED"
@@ -1790,16 +1790,18 @@ function HumanReviewWorkflow({
 
           <div className="field-title-row">
             <span className="field-title-name">{labelForField(curField.field)}</span>
-            <StatusBadge value={curField.status} tone={curField.status === "MISMATCH" ? "bad" : "warn"} />
+            <span className={`status-pill ${curField.status === "MISMATCH" ? "pill-mismatch" : "pill-unresolved"}`}>
+              {curField.status === "MISMATCH" ? "Mismatch" : "Unresolved"}
+            </span>
           </div>
 
           <div className="field-values-grid">
             <div className="field-value-box box-si">
-              <span className="value-box-label">SI · Reference</span>
+              <span className="value-box-label">SI REFERENCE</span>
               <span className="value-box-data">{siVal}</span>
             </div>
             <div className={`field-value-box ${curField.status === "MISMATCH" ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
-              <span className="value-box-label">Draft BL</span>
+              <span className="value-box-label">DRAFT BL</span>
               <span className="value-box-data">{blVal}</span>
             </div>
           </div>
@@ -2138,6 +2140,63 @@ function HumanReviewWorkflow({
   );
 }
 
+function HeaderRibbonWave(): React.ReactElement {
+  const MASTER_WAVE_MAIN =
+    "M -20,7 C 60,7 100,16 160,16 C 220,16 260,3 295,3 C 330,3 370,6 420,9 C 470,12 510,13 550,11 C 580,9 610,4 660,3 C 720,2 750,14 800,14 C 850,14 880,1 930,1 C 970,1 1010,6 1040,10 C 1070,14 1100,15 1130,12 C 1160,8 1190,2 1230,1";
+
+  const MASTER_WAVE_SHEEN =
+    "M -20,4 C 60,4 100,13 160,13 C 220,13 260,0 295,0 C 330,0 370,3 420,6 C 470,9 510,10 550,8 C 580,6 610,1 660,0 C 720,-1 750,11 800,11 C 850,11 880,-2 930,-2 C 970,-2 1010,3 1040,7 C 1070,11 1100,12 1130,9 C 1160,5 1190,-1 1230,-2";
+
+  return (
+    <svg
+      className="top-header-ribbon-svg"
+      viewBox="0 -2 360 26"
+      preserveAspectRatio="none"
+      aria-hidden="true"
+    >
+      <defs>
+        <linearGradient id="topHeaderWaveGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.32" />
+          <stop offset="35%" stopColor="#f59e0b" stopOpacity="0.48" />
+          <stop offset="70%" stopColor="#f97316" stopOpacity="0.40" />
+          <stop offset="100%" stopColor="#e39439" stopOpacity="0.26" />
+        </linearGradient>
+        <linearGradient id="topHeaderWaveGlow" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#e39439" stopOpacity="0.10" />
+          <stop offset="50%" stopColor="#f59e0b" stopOpacity="0.18" />
+          <stop offset="100%" stopColor="#ea580c" stopOpacity="0.08" />
+        </linearGradient>
+        <linearGradient id="topHeaderWaveSheen" x1="0%" y1="0%" x2="100%" y2="0%">
+          <stop offset="0%" stopColor="#ffffff" stopOpacity="0.45" />
+          <stop offset="50%" stopColor="#fff7ed" stopOpacity="0.80" />
+          <stop offset="100%" stopColor="#fed7aa" stopOpacity="0.30" />
+        </linearGradient>
+      </defs>
+      <path
+        d={MASTER_WAVE_MAIN}
+        fill="none"
+        stroke="url(#topHeaderWaveGlow)"
+        strokeWidth="14"
+        strokeLinecap="round"
+      />
+      <path
+        d={MASTER_WAVE_MAIN}
+        fill="none"
+        stroke="url(#topHeaderWaveGrad)"
+        strokeWidth="7"
+        strokeLinecap="round"
+      />
+      <path
+        d={MASTER_WAVE_SHEEN}
+        fill="none"
+        stroke="url(#topHeaderWaveSheen)"
+        strokeWidth="1.2"
+        strokeLinecap="round"
+      />
+    </svg>
+  );
+}
+
 export function TaskPane({
   contextProvider,
   initialDemoKey,
@@ -2431,6 +2490,7 @@ export function TaskPane({
       {/* Persistent White Bar: Email Subject on Left, Refresh Button on Far Right Corner */}
       {effectiveState.type === "ready" && effectiveDetail && (
         <div className="top-case-header-bar">
+          <HeaderRibbonWave />
           <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
           <button
             className="btn-sync-refresh"
