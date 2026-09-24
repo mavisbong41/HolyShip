@@ -53,8 +53,8 @@ Implemented controls:
 - centralized Gemini Secure AI Gateway for Human Review AI plus L2 extraction/semantic resolution;
 - purpose-specific Minimum Necessary Disclosure;
 - free-form email/API-key/Bearer-token redaction;
-- provider allowlist, optional exact-model allowlist, and outbound endpoint-host allowlist;
-- production defaults permit only Gemini/Google to `generativelanguage.googleapis.com`;
+- provider allowlist, optional exact-model allowlist, outbound endpoint-host allowlist, and HTTPS-only external AI transport in Privacy Mode;
+- production defaults permit only Gemini/Google to `generativelanguage.googleapis.com`, and the Gemini host is bound to the Gemini/Google provider path;
 - OpenAI/custom/http_json paths fail closed by default under Enterprise Privacy Mode;
 - explicitly approved custom L2 providers still receive minimized field-only payloads before transport;
 - API keys stay backend-only and Gemini keys are never placed in request URLs;
@@ -67,10 +67,10 @@ Implemented controls:
 Final verification (GitHub Actions run `36010376697`):
 - Python compile: PASS.
 - Alembic migration smoke through `20260924_0016`: PASS.
-- Security-focused suite: **60 passed**.
-- Full backend regression: **373 passed, 1 deselected**.
+- Security-focused suite: **64 passed**.
+- Full backend regression: **377 passed, 1 deselected**.
 - The deselected force-sync assertion was run separately on both branch and `main`; both failed identically (`branch_rc=1 main_rc=1`), confirming it is a pre-existing main-baseline issue.
-- Public baseline: **520 emails**, **18.113 s**, **28.708 emails/s**.
+- Public baseline: **520 emails**, **16.973 s**, **30.638 emails/s**.
 - Dashboard: typecheck + **30 tests** + production build PASS.
 - Outlook Add-in: typecheck + **65 tests** + production build PASS.
 - `git diff --check`: PASS.
