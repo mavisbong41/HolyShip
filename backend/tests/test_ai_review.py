@@ -27,6 +27,7 @@ from backend.app.ai_review.service import AIReviewService
 from backend.app.core.config import Settings
 from backend.app.main import app
 from backend.app.review.service import ReviewConflictError
+from backend.app.security.ai_gateway import SecureAIGateway
 from backend.app.storage.models import (
     AISuggestionRecord,
     ComparisonResultRecord,
@@ -240,7 +241,11 @@ def test_gemini_provider_api_call_and_error_handling():
 
 
 def test_openai_provider_api_call_and_error_handling():
-    provider = OpenAIProvider(api_key="test_openai_key", model="gpt-4o-mini")
+    provider = OpenAIProvider(
+        api_key="test_openai_key",
+        model="gpt-4o-mini",
+        gateway=SecureAIGateway(enterprise_privacy_mode=False),
+    )
     ctx = {"case_id": "123", "subject": "Test"}
 
     mock_openai_resp = {
