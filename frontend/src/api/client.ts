@@ -71,6 +71,8 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
   appendParam(params, "review_status", filters.review_status);
   appendParam(params, "comparison_state", filters.comparison_state);
   appendParam(params, "has_mismatch", filters.has_mismatch);
+  appendParam(params, "has_unresolved", filters.has_unresolved);
+  appendParam(params, "is_processing", filters.is_processing);
   appendParam(params, "lifecycle_status", filters.lifecycle_status);
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "skip", filters.skip ?? 0);

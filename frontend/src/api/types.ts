@@ -383,6 +383,8 @@ export interface QueueFilters {
   review_status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED" | "";
   comparison_state?: "COMPLETED" | "BLOCKED" | "";
   has_mismatch?: "true" | "false" | "";
+  has_unresolved?: "true" | "false" | "";
+  is_processing?: "true" | "false" | "";
   lifecycle_status?: EmailLifecycleStatus | "";
   search?: string;
   skip?: number;

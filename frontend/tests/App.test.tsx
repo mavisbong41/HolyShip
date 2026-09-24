@@ -104,6 +104,40 @@ describe("HolyShip dashboard", () => {
     });
   });
 
+  it("navigates to queue with corresponding filters when clicking overview cards and alerts", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+
+    // Click "Emails with BL vs SI mismatch" alert row
+    await user.click(screen.getByText("Emails with BL vs SI mismatch"));
+
+    // Verify it navigated to Queue and fetched with has_mismatch=true
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("has_mismatch=true"),
+        expect.anything(),
+      );
+    });
+    expect(screen.getByText("Verification: BL vs SI Mismatch ✕")).toBeInTheDocument();
+
+    // Navigate back to overview
+    await user.click(screen.getByRole("button", { name: "Overview" }));
+    await screen.findByText("Shipping document operations, at a glance.");
+
+    // Click "Missing documents" alert row
+    await user.click(screen.getByText("Missing documents"));
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("status=AWAITING_DOCUMENTS"),
+        expect.anything(),
+      );
+    });
+    expect(screen.getByText("Status: Waiting for Documents ✕")).toBeInTheDocument();
+  });
+
   it("renders deleted lifecycle banner and restores email from case inspector", async () => {
     const deletedDetail: ProductEmailDetail = {
       ...demoDetail,
