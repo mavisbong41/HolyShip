@@ -184,7 +184,8 @@ export interface ProductSyncStatus {
   archived_count: number;
   unread_count: number;
   sync_error_count: number;
-  last_sync_at: string | null;
+  last_outlook_sync_at?: string | null;
+  last_sync_at?: string | null;
   healthy: boolean;
 }
 
