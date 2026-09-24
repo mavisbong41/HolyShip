@@ -574,6 +574,41 @@ function ReviewHistorySection({ review }: { review: ProductReview }): React.Reac
   );
 }
 
+function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
+  const timeline = detail.timeline ?? [];
+  const lastEvent = timeline.length > 0 ? timeline[timeline.length - 1] : null;
+  const replyStatus = detail.outlook_workflow?.status ?? "NOT_STARTED";
+
+  return (
+    <section className="case-status-rail" aria-label="Case synchronization summary">
+      <div>
+        <span>Category</span>
+        <StatusBadge value={detail.email.category} />
+      </div>
+      <div>
+        <span>Pipeline</span>
+        <StatusBadge value={detail.email.processing_status} />
+      </div>
+      <div>
+        <span>Readiness</span>
+        <StatusBadge value={detail.email.comparison_readiness ?? "Not set"} tone={detail.email.comparison_readiness ? undefined : "muted"} />
+      </div>
+      <div>
+        <span>Review</span>
+        <StatusBadge value={detail.email.review_status ?? (detail.email.needs_review ? "OPEN" : "Not set")} tone={detail.email.review_status || detail.email.needs_review ? undefined : "muted"} />
+      </div>
+      <div>
+        <span>Reply</span>
+        <StatusBadge value={replyStatus} tone={replyStatus === "SENT" ? "good" : replyStatus === "NOT_STARTED" ? "muted" : "info"} />
+      </div>
+      <div>
+        <span>Last sync</span>
+        <strong>{formatDate(lastEvent?.created_at ?? detail.email.created_at)}</strong>
+      </div>
+    </section>
+  );
+}
+
 function ExistingSuggestionsSection({
   review,
   onActionComplete,
@@ -1283,22 +1318,25 @@ export function TaskPane({
               <p>{state.detail.email.sender || "Unknown sender"} · {formatDate(state.detail.email.received_at ?? state.detail.email.created_at)}</p>
             </section>
 
+            <CaseStatusRail detail={state.detail} />
+
             {/* Processing state card */}
             <ProcessingStateCard email={state.detail.email} />
 
             {/* Comparison summary chips */}
             <ComparisonSummaryStrip email={state.detail.email} comparison={state.detail.comparison} />
 
-            {/* Email info */}
-            <EmailInfoSection email={state.detail.email} />
-
-            <CategoryCorrectionSection email={state.detail.email} onUpdated={replaceReadyDetail} />
-
-            <ReplyWorkflowSection
-              email={state.detail.email}
-              initialWorkflow={state.detail.outlook_workflow}
-              onActionComplete={refreshAfterMutation}
-            />
+            <div className="operational-grid" aria-label="Outlook operational workflow">
+              <section className="ops-panel">
+                <EmailInfoSection email={state.detail.email} />
+              </section>
+              <CategoryCorrectionSection email={state.detail.email} onUpdated={replaceReadyDetail} />
+              <ReplyWorkflowSection
+                email={state.detail.email}
+                initialWorkflow={state.detail.outlook_workflow}
+                onActionComplete={refreshAfterMutation}
+              />
+            </div>
 
             {/* Comparison table for document_comparison */}
             {state.detail.email.category === "document_comparison" &&
