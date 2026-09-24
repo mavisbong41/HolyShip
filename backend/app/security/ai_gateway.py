@@ -6,6 +6,7 @@ import re
 import time
 import urllib.error
 import urllib.request
+from urllib.parse import urlparse
 from dataclasses import dataclass
 from typing import Any
 
@@ -66,17 +67,50 @@ class SecureAIGateway:
         self,
         *,
         enterprise_privacy_mode: bool = True,
+        allowed_providers: set[str] | frozenset[str] | None = None,
+        allowed_models: set[str] | frozenset[str] | None = None,
+        allowed_endpoint_hosts: set[str] | frozenset[str] | None = None,
         max_payload_bytes: int = 65536,
     ) -> None:
         if max_payload_bytes < 1024:
             raise ValueError("max_payload_bytes must be at least 1024")
         self.enterprise_privacy_mode = enterprise_privacy_mode
+        self.allowed_providers = {
+            value.strip().lower()
+            for value in (allowed_providers or {"gemini", "google"})
+            if value and value.strip()
+        }
+        self.allowed_models = {
+            value.strip()
+            for value in (allowed_models or set())
+            if value and value.strip()
+        }
+        self.allowed_endpoint_hosts = {
+            value.strip().lower()
+            for value in (allowed_endpoint_hosts or {"generativelanguage.googleapis.com"})
+            if value and value.strip()
+        }
         self.max_payload_bytes = max_payload_bytes
 
     @classmethod
     def from_settings(cls, settings: Settings) -> "SecureAIGateway":
         return cls(
             enterprise_privacy_mode=settings.enterprise_privacy_mode,
+            allowed_providers={
+                value.strip()
+                for value in settings.ai_gateway_allowed_providers.split(",")
+                if value.strip()
+            },
+            allowed_models={
+                value.strip()
+                for value in settings.ai_gateway_allowed_models.split(",")
+                if value.strip()
+            },
+            allowed_endpoint_hosts={
+                value.strip()
+                for value in settings.ai_gateway_allowed_endpoint_hosts.split(",")
+                if value.strip()
+            },
             max_payload_bytes=settings.ai_gateway_max_payload_bytes,
         )
 
@@ -87,11 +121,18 @@ class SecureAIGateway:
         data: dict[str, Any],
         feature: str,
         model: str,
+        provider: str = "gemini",
+        endpoint: str | None = None,
     ) -> tuple[dict[str, Any], dict[str, Any]]:
         if purpose not in _ALLOWED_PURPOSES:
             raise AIGatewayPolicyError(f"Unsupported AI purpose: {purpose}")
         if not isinstance(data, dict):
             raise AIGatewayPolicyError("AI gateway input must be a mapping")
+        self.enforce_provider_policy(
+            provider=provider,
+            model=model,
+            endpoint=endpoint,
+        )
 
         if purpose == PURPOSE_FIELD_EXTRACTION:
             minimized = self._minimize_field_extraction(data)
@@ -115,7 +156,7 @@ class SecureAIGateway:
         audit = {
             "purpose": purpose,
             "feature": feature,
-            "provider": "gemini",
+            "provider": provider,
             "model": model,
             "privacy_mode": self.enterprise_privacy_mode,
             "payload_sha256": hashlib.sha256(encoded).hexdigest(),
@@ -144,11 +185,14 @@ class SecureAIGateway:
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
 
+        resolved_endpoint = self._gemini_url(endpoint, model)
         minimized, audit = self.prepare_payload(
             purpose=purpose,
             data=data,
             feature=feature,
             model=model,
+            provider="gemini",
+            endpoint=resolved_endpoint,
         )
 
         request_payload: dict[str, Any] = {
@@ -182,7 +226,7 @@ class SecureAIGateway:
             "x-goog-api-key": api_key,
         }
         request = urllib.request.Request(
-            self._gemini_url(endpoint, model),
+            resolved_endpoint,
             data=body,
             headers=headers,
             method="POST",
@@ -216,6 +260,32 @@ class SecureAIGateway:
                 "latency_ms": latency_ms,
             },
         )
+
+    def enforce_provider_policy(
+        self,
+        *,
+        provider: str,
+        model: str,
+        endpoint: str | None = None,
+    ) -> None:
+        """Fail closed on unapproved external AI destinations in privacy mode."""
+        if not self.enterprise_privacy_mode:
+            return
+        normalized_provider = (provider or "").strip().lower()
+        if normalized_provider not in self.allowed_providers:
+            raise AIGatewayPolicyError(
+                f"AI provider {provider!r} is not approved by Enterprise Privacy Mode"
+            )
+        if self.allowed_models and model not in self.allowed_models:
+            raise AIGatewayPolicyError(
+                f"AI model {model!r} is not approved by Enterprise Privacy Mode"
+            )
+        if endpoint:
+            host = (urlparse(endpoint).hostname or "").strip().lower()
+            if not host or host not in self.allowed_endpoint_hosts:
+                raise AIGatewayPolicyError(
+                    f"AI endpoint host {host or '<missing>'!r} is not approved by Enterprise Privacy Mode"
+                )
 
     def _minimize_field_extraction(self, data: dict[str, Any]) -> dict[str, Any]:
         batch = data.get("requests")
