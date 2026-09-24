@@ -180,6 +180,48 @@ describe("HolyShip dashboard", () => {
     });
   });
 
+  it("renders latest 5 timeline events by default and toggles full timeline expansion", async () => {
+    const detailWithLongTimeline: ProductEmailDetail = {
+      ...demoDetail,
+      timeline: [
+        { id: "ev-1", old_status: null, new_status: "NEW", reason_code: "EMAIL_INGESTED", created_at: "2026-09-21T10:00:00Z" },
+        { id: "ev-2", old_status: "NEW", new_status: "QUEUED", reason_code: "QUEUED_FOR_CLASSIFICATION", created_at: "2026-09-21T10:01:00Z" },
+        { id: "ev-3", old_status: "QUEUED", new_status: "CLASSIFYING", reason_code: "CLASSIFICATION_STARTED", created_at: "2026-09-21T10:02:00Z" },
+        { id: "ev-4", old_status: "CLASSIFYING", new_status: "CLASSIFIED", reason_code: "CLASSIFICATION_COMPLETED", created_at: "2026-09-21T10:03:00Z" },
+        { id: "ev-5", old_status: "CLASSIFIED", new_status: "EXTRACTING", reason_code: "DOCUMENT_ROUTED", created_at: "2026-09-21T10:04:00Z" },
+        { id: "ev-6", old_status: "EXTRACTING", new_status: "COMPARING", reason_code: "DOCUMENTS_EXTRACTED", created_at: "2026-09-21T10:05:00Z" },
+        { id: "ev-7", old_status: "COMPARING", new_status: "COMPLETED", reason_code: "COMPARISON_COMPLETED", created_at: "2026-09-21T10:06:00Z" },
+      ],
+    };
+    setupFetch({ detail: detailWithLongTimeline });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    await user.click(await screen.findByRole("button", { name: "Please verify draft BL details" }));
+
+    // Verify it indicates latest 5 of 7
+    expect(await screen.findByText(/latest 5 of 7/i)).toBeInTheDocument();
+    const expandBtn = screen.getByRole("button", { name: /expand all/i });
+    expect(expandBtn).toBeInTheDocument();
+
+    // Oldest event should not be in the DOM
+    expect(screen.queryByText("EMAIL_INGESTED")).not.toBeInTheDocument();
+    // Latest event should be visible
+    expect(screen.getByText("COMPARISON_COMPLETED")).toBeInTheDocument();
+
+    // Click to expand
+    await user.click(expandBtn);
+    expect(screen.getByText(/all 7 events/i)).toBeInTheDocument();
+    expect(screen.getByText("EMAIL_INGESTED")).toBeInTheDocument();
+
+    // Collapse back
+    await user.click(screen.getByRole("button", { name: /show latest 5/i }));
+    expect(screen.getByText(/latest 5 of 7/i)).toBeInTheDocument();
+    expect(screen.queryByText("EMAIL_INGESTED")).not.toBeInTheDocument();
+  });
+
   it("renders the seven backend comparison fields without local comparison decisions", async () => {
     setupFetch();
     const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });

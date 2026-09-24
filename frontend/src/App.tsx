@@ -6,8 +6,10 @@ import {
   ArrowUpRight,
   Check,
   CheckCircle2,
+  ChevronDown,
   ChevronLeft,
   ChevronRight,
+  ChevronUp,
   CircleCheck,
   ClipboardList,
   Clock,
@@ -1499,6 +1501,12 @@ function EmailDetailContent({
   onReprocess: (emailId: string) => void;
   onRestoreEmail?: (emailId: string) => void;
 }) {
+  const [isTimelineExpanded, setIsTimelineExpanded] = useState(false);
+
+  useEffect(() => {
+    setIsTimelineExpanded(false);
+  }, [detail.email.id]);
+
   const latestFailure = [...detail.timeline].reverse().find((event) => event.new_status === "FAILED");
   return (
     <div>
@@ -1764,19 +1772,68 @@ function EmailDetailContent({
       </div>
 
       <div className="detail-section">
-        <h3>Processing Timeline</h3>
-        {detail.timeline.length ? <div className="timeline">
-          {detail.timeline.map((event) => (
-            <div className="timeline-row" key={event.id}>
-              <span />
-              <div>
-                <strong>{(statusLabels as Record<string, string>)[event.new_status] || event.new_status}</strong>
-                <p>{displayLabel(event.reason_code)} · {formatDate(event.created_at)}</p>
-                <small className="technical-code">{event.reason_code}</small>
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+          <h3 style={{ margin: 0 }}>
+            Processing Timeline
+            {detail.timeline.length > 5 && (
+              <span style={{ fontSize: "11px", fontWeight: "normal", color: "var(--color-grey-500)", marginLeft: "8px" }}>
+                ({isTimelineExpanded ? `all ${detail.timeline.length} events` : `latest 5 of ${detail.timeline.length}`})
+              </span>
+            )}
+          </h3>
+          {detail.timeline.length > 5 && (
+            <button
+              type="button"
+              className="timeline-expand-btn"
+              onClick={() => setIsTimelineExpanded(!isTimelineExpanded)}
+              style={{
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "4px",
+                fontSize: "12px",
+                fontWeight: 600,
+                color: "#e66800",
+                background: "rgba(227, 148, 57, 0.08)",
+                border: "1px solid rgba(227, 148, 57, 0.25)",
+                borderRadius: "6px",
+                padding: "3px 10px",
+                cursor: "pointer",
+                transition: "all 120ms ease",
+              }}
+            >
+              {isTimelineExpanded ? (
+                <>
+                  <ChevronUp size={13} />
+                  <span>Show latest 5</span>
+                </>
+              ) : (
+                <>
+                  <ChevronDown size={13} />
+                  <span>Expand all ({detail.timeline.length})</span>
+                </>
+              )}
+            </button>
+          )}
+        </div>
+        {detail.timeline.length ? (
+          <div className="timeline">
+            {(isTimelineExpanded || detail.timeline.length <= 5
+              ? detail.timeline
+              : detail.timeline.slice(-5)
+            ).map((event) => (
+              <div className="timeline-row" key={event.id}>
+                <span />
+                <div>
+                  <strong>{(statusLabels as Record<string, string>)[event.new_status] || event.new_status}</strong>
+                  <p>{displayLabel(event.reason_code)} · {formatDate(event.created_at)}</p>
+                  <small className="technical-code">{event.reason_code}</small>
+                </div>
               </div>
-            </div>
-          ))}
-        </div> : <EmptyState title="No events yet" body="Processing and review events will appear here as the case advances." />}
+            ))}
+          </div>
+        ) : (
+          <EmptyState title="No events yet" body="Processing and review events will appear here as the case advances." />
+        )}
       </div>
     </div>
   );
