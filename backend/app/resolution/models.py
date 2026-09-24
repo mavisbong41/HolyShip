@@ -48,6 +48,7 @@ class ProviderResolution:
     value: Any = None
     normalized_value: Any = None
     equivalent: bool | None = None
+    audit_metadata: dict[str, Any] = field(default_factory=dict)
 
     def __post_init__(self) -> None:
         if not isinstance(self.field, CanonicalField):
