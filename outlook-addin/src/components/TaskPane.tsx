@@ -52,8 +52,8 @@ import type {
   ProductAISuggestion,
   ProductCategory,
   ProductReplyWorkflow,
+  ProductEmailLifecycle,
 } from "../types/product";
-import { canonicalFields } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
@@ -327,7 +327,7 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
   );
 }
 
-function ComparisonSummaryStrip({
+export function ComparisonSummaryStrip({
   email,
   comparison,
 }: {
@@ -657,7 +657,7 @@ function getEmailLifecycle(email?: ProductEmailSummary | null): ProductEmailLife
   return email?.lifecycle ?? defaultLifecycle;
 }
 
-function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
+export function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
   const timeline = detail.timeline ?? [];
   const lastEvent = timeline.length > 0 ? timeline[timeline.length - 1] : null;
   const replyStatus = detail.outlook_workflow?.status ?? "NOT_STARTED";
@@ -708,7 +708,7 @@ function CaseStatusRail({ detail }: { detail: ProductEmailDetail }): React.React
   );
 }
 
-function ExistingSuggestionsSection({
+export function ExistingSuggestionsSection({
   review,
   onActionComplete,
 }: {
@@ -800,7 +800,7 @@ function ExistingSuggestionsSection({
   );
 }
 
-function DirectReviewActions({
+export function DirectReviewActions({
   review,
   comparison,
   onActionComplete,
@@ -1733,7 +1733,7 @@ function HumanReviewWorkflow({
     curAiSuggestion?.message ||
     (curField.status === "MISMATCH"
       ? `SI explicitly specifies ${suggestedValue}. Draft BL should be aligned.`
-      : curField.reason || review.reason_text || "Field requires human verification against reference document.");
+      : (curField as any).reason || review.reason_text || "Field requires human verification against reference document.");
 
   const isMatchNow = detail.email.mismatch_count === 0 && detail.email.unresolved_count === 0 && detail.email.processing_status === "COMPLETED";
 
@@ -2308,8 +2308,6 @@ export function TaskPane({
   const [state, setState] = useState<PaneState>({ type: "loading" });
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
   const [activeWorkflowView, setActiveWorkflowView] = useState<WorkflowView>("overview");
-  const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
-  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const resolveGeneration = useRef(0);
