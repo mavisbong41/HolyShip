@@ -466,3 +466,77 @@ def test_v1_sync_status_endpoint(client):
         assert data["active_count"] == 8
         assert data["deleted_count"] == 2
         assert data["unread_count"] == 3
+
+
+@pytest.mark.req("SYNC-06")
+@pytest.mark.req("LIFE-07")
+def test_v1_outlook_reconcile_idempotent_delete_avoids_duplicate_audit_events(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-del-idem",
+        source_type="GRAPH",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    record.lifecycle_status = "DELETED"
+    record.outlook_read_state = "READ"
+    record.outlook_categories = []
+    record.outlook_archived = False
+    mock_session.get.return_value = record
+
+    resp = tc.post(
+        "/api/v1/outlook/reconcile",
+        json={
+            "email_id": str(email_id),
+            "lifecycle_status": "DELETED",
+            "actor_name": "Outlook sync",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["lifecycle"]["lifecycle_status"] == "DELETED"
+    assert data["action"] == "OUTLOOK_LIFECYCLE_RECONCILED"
+
+
+@pytest.mark.req("SYNC-06")
+@pytest.mark.req("LIFE-07")
+def test_v1_outlook_reconcile_idempotent_restore_avoids_duplicate_audit_events(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-res-idem",
+        source_type="GRAPH",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    record.lifecycle_status = "ACTIVE"
+    record.outlook_read_state = "READ"
+    record.outlook_categories = []
+    record.outlook_archived = False
+    mock_session.get.return_value = record
+
+    resp = tc.post(
+        "/api/v1/outlook/reconcile",
+        json={
+            "email_id": str(email_id),
+            "lifecycle_status": "RESTORED",
+            "actor_name": "Outlook sync",
+        },
+    )
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["lifecycle"]["lifecycle_status"] == "ACTIVE"
+    assert data["action"] == "OUTLOOK_LIFECYCLE_RECONCILED"

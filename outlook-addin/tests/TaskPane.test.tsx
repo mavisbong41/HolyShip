@@ -46,6 +46,7 @@ class MutableMailContextProvider implements MailContextProvider {
 describe("TaskPane", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    vi.restoreAllMocks();
     const testGlobal = globalThis as unknown as { Office?: unknown };
     delete testGlobal.Office;
     setupAdapter({ detail: null, strategy: "not_resolved", confidence: "none", limitationNote: "Test: not found" });
@@ -582,6 +583,94 @@ describe("TaskPane", () => {
           subject: expect.stringContaining("Draft BL"),
         }));
       });
+    });
+
+    it("restores email with explicit RESTORED lifecycle status", async () => {
+      const mockReconcile = vi.spyOn(clientModule, "reconcileOutlookLifecycle").mockResolvedValue(undefined);
+      const user = userEvent.setup();
+      const deletedDetail = {
+        ...fixtures.cleanMatch,
+        email: {
+          ...fixtures.cleanMatch.email,
+          lifecycle: {
+            lifecycle_status: "DELETED",
+            outlook_read_state: "READ",
+            outlook_categories: [],
+            outlook_folder_id: "trash",
+            outlook_archived: false,
+            last_outlook_sync_at: "2024-05-01T12:00:00Z",
+            outlook_sync_error: null,
+            deleted_at: "2024-05-01T12:00:00Z",
+            restored_at: null,
+          },
+        },
+      };
+      setupAdapter({ detail: deletedDetail as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Restore Email")).toBeInTheDocument();
+      });
+
+      const restoreBtn = screen.getByRole("button", { name: "Restore Email" });
+      await user.click(restoreBtn);
+
+      await waitFor(() => {
+        expect(mockReconcile).toHaveBeenCalledWith("email-001", expect.objectContaining({
+          lifecycle_status: "RESTORED",
+          outlook_folder_id: "inbox",
+        }));
+      });
+      mockReconcile.mockRestore();
+    });
+
+    it("renders lifecycle audit events in timeline card", async () => {
+      const detailWithLifecycleAudit = {
+        ...fixtures.cleanMatch,
+        timeline: [
+          {
+            id: "ev-1",
+            old_status: "NEW",
+            new_status: "COMPLETED",
+            reason_code: "OUTLOOK_EMAIL_DELETED",
+            created_at: "2024-05-01T12:00:00Z",
+          },
+          {
+            id: "ev-2",
+            old_status: "COMPLETED",
+            new_status: "COMPLETED",
+            reason_code: "OUTLOOK_EMAIL_RESTORED",
+            created_at: "2024-05-01T12:05:00Z",
+          },
+        ],
+      };
+      setupAdapter({ detail: detailWithLifecycleAudit as any, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByText("Mailbox item deleted")).toBeInTheDocument();
+        expect(screen.getByText("Mailbox item restored")).toBeInTheDocument();
+      });
+    });
+
+    it("detects deleted items folder in reconcileOutlookLifecycle", async () => {
+      const fetchSpy = vi.fn().mockResolvedValue({
+        ok: true,
+        json: async () => ({ email_id: "email-001", action: "OUTLOOK_EMAIL_DELETED", lifecycle: {} }),
+      });
+      vi.stubGlobal("fetch", fetchSpy);
+
+      await clientModule.reconcileOutlookLifecycle("email-001", {
+        outlookFolderId: "DeletedItems",
+      } as any);
+
+      expect(fetchSpy).toHaveBeenCalledWith(
+        expect.stringContaining("/outlook/reconcile"),
+        expect.objectContaining({
+          body: expect.stringContaining('"lifecycle_status":"DELETED"'),
+        }),
+      );
+      vi.unstubAllGlobals();
     });
   });
 });
