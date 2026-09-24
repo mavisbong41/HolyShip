@@ -36,6 +36,9 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/events")) {
       return jsonResponse([]);
     }
+    if (url.includes("/outlook/reconcile")) {
+      return jsonResponse({ email_id: "22222222-2222-4222-8222-222222222222", action: "OUTLOOK_EMAIL_RESTORED" });
+    }
     return jsonResponse({ detail: "Not found" }, false, 404);
   });
   vi.stubGlobal("fetch", fetchMock);
@@ -78,6 +81,67 @@ describe("HolyShip dashboard", () => {
       expect(fetchMock).toHaveBeenCalledWith(
         expect.stringContaining("status=COMPLETED"),
         expect.anything(),
+      );
+    });
+  });
+
+  it("filters queue by lifecycle status", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    expect(await screen.findByText("Please verify draft BL details")).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText("Filter by lifecycle"), "DELETED");
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("lifecycle_status=DELETED"),
+        expect.anything(),
+      );
+    });
+  });
+
+  it("renders deleted lifecycle banner and restores email from case inspector", async () => {
+    const deletedDetail: ProductEmailDetail = {
+      ...demoDetail,
+      email: {
+        ...demoDetail.email,
+        lifecycle: {
+          lifecycle_status: "DELETED",
+          outlook_read_state: "READ",
+          outlook_categories: ["BL_COMPARISON"],
+          outlook_folder_id: "trash",
+          outlook_archived: false,
+          last_outlook_sync_at: "2026-09-21T10:23:00+08:00",
+          outlook_sync_error: null,
+          deleted_at: "2026-09-21T10:23:00+08:00",
+          restored_at: null,
+        },
+      },
+    };
+    const fetchMock = setupFetch({ detail: deletedDetail });
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    render(<App />);
+
+    await screen.findByText("Shipping document operations, at a glance.");
+    await user.click(screen.getByRole("button", { name: "Email Queue" }));
+    await user.click(await screen.findByRole("button", { name: "Please verify draft BL details" }));
+
+    expect(await screen.findByText("Mailbox item deleted")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /restore email/i })).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: /restore email/i }));
+
+    await waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledWith(
+        expect.stringContaining("/outlook/reconcile"),
+        expect.objectContaining({
+          method: "POST",
+          body: expect.stringContaining('"lifecycle_status":"RESTORED"'),
+        }),
       );
     });
   });

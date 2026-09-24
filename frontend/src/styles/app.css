@@ -1498,6 +1498,23 @@ button:disabled {
   box-shadow: inset 3px 0 0 var(--color-info);
 }
 
+.queue-table tbody tr.deleted-row {
+  opacity: 0.65;
+  background: rgba(18, 18, 18, 0.02);
+}
+
+.queue-table tbody tr.deleted-row td strong {
+  text-decoration: line-through;
+  color: var(--color-grey-600);
+}
+
+.unread-dot {
+  color: var(--color-info);
+  font-size: 13px;
+  line-height: 1;
+  display: inline-block;
+}
+
 .table-link {
   display: block;
   max-width: 260px;

@@ -38,6 +38,8 @@ export type ComparisonReadiness =
 export type FieldStatus = "MATCH" | "MISMATCH" | "UNRESOLVED";
 export type ComparisonState = "COMPLETED" | "BLOCKED";
 export type LoadState = "idle" | "loading" | "ready" | "error";
+export type EmailLifecycleStatus = "ACTIVE" | "DELETED" | "ARCHIVED";
+export type OutlookReadState = "READ" | "UNREAD" | "UNKNOWN";
 
 export interface ProductEvidence {
   document_id: string | null;
@@ -140,6 +142,18 @@ export interface ProductTimelineEvent {
   created_at: string;
 }
 
+export interface ProductEmailLifecycle {
+  lifecycle_status: EmailLifecycleStatus;
+  outlook_read_state: OutlookReadState;
+  outlook_categories: string[];
+  outlook_folder_id: string | null;
+  outlook_archived: boolean;
+  last_outlook_sync_at: string | null;
+  outlook_sync_error: string | null;
+  deleted_at: string | null;
+  restored_at: string | null;
+}
+
 export interface ProductEmailSummary {
   id: string;
   external_message_id: string;
@@ -160,6 +174,30 @@ export interface ProductEmailSummary {
   review_id?: string | null;
   review_status: string | null;
   review_reason: string | null;
+  lifecycle?: ProductEmailLifecycle;
+}
+
+export interface ProductSyncStatus {
+  total_emails: number;
+  active_count: number;
+  deleted_count: number;
+  archived_count: number;
+  unread_count: number;
+  sync_error_count: number;
+  last_sync_at: string | null;
+  healthy: boolean;
+}
+
+export interface OutlookReconcileRequest {
+  email_id?: string;
+  external_message_id?: string;
+  lifecycle_status?: EmailLifecycleStatus | "RESTORED";
+  outlook_read_state?: OutlookReadState;
+  outlook_categories?: string[];
+  outlook_folder_id?: string;
+  outlook_archived?: boolean;
+  outlook_sync_error?: string;
+  actor_name?: string;
 }
 
 export interface EmailQueuePage {
@@ -182,6 +220,9 @@ export interface ProductSummary {
   human_review_open_count?: number;
   failed_count?: number;
   processing_count?: number;
+  deleted_count?: number;
+  unread_count?: number;
+  sync_error_count?: number;
 }
 
 export interface ProductResolution {
@@ -341,6 +382,7 @@ export interface QueueFilters {
   review_status?: "OPEN" | "IN_REVIEW" | "RESOLVED" | "DISMISSED" | "";
   comparison_state?: "COMPLETED" | "BLOCKED" | "";
   has_mismatch?: "true" | "false" | "";
+  lifecycle_status?: EmailLifecycleStatus | "";
   search?: string;
   skip?: number;
   limit?: number;

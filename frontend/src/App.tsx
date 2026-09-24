@@ -22,6 +22,7 @@ import {
   MoreHorizontal,
   LogOut,
   RefreshCw,
+  RotateCcw,
   Search,
   ShieldAlert,
   ShipWheel,
@@ -49,6 +50,7 @@ import {
   resolveDiscrepancy,
   saveDiscrepancyOverride,
   recompareDiscrepancy,
+  reconcileOutlookLifecycle,
 } from "./api/client";
 import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
 import { MetricCard } from "./components/common/MetricCard";
@@ -56,6 +58,7 @@ import { ConfirmedDiscrepanciesPageView } from "./components/discrepancies/Confi
 import type {
   DiscrepancyPage,
   DiscrepancyQueueFilters,
+  EmailLifecycleStatus,
   EmailQueuePage,
   HumanReviewAnalytics,
   HumanReviewPage,
@@ -838,6 +841,7 @@ function QueuePage({
   onSelect,
   onOpenReview,
   onReprocess,
+  onRestoreEmail,
   onCloseDetail,
   onPage,
   onGoToPage,
@@ -852,6 +856,7 @@ function QueuePage({
   onSelect: (email: ProductEmailSummary) => void;
   onOpenReview: (reviewId: string) => void;
   onReprocess: (emailId: string) => void;
+  onRestoreEmail?: (emailId: string) => void;
   onCloseDetail?: () => void;
   onPage: (direction: "next" | "previous") => void;
   onGoToPage: (pageIndex: number) => void;
@@ -979,6 +984,17 @@ function QueuePage({
             <option value="true">Needs review</option>
             <option value="false">No review need</option>
           </select>
+          <select
+            aria-label="Filter by lifecycle"
+            value={filters.lifecycle_status ?? ""}
+            onChange={(event) =>
+              onFilters({ ...filters, lifecycle_status: event.target.value as EmailLifecycleStatus | "", skip: 0 })
+            }
+          >
+            <option value="">Active mailbox</option>
+            <option value="DELETED">Deleted in Outlook</option>
+            <option value="ARCHIVED">Archived in Outlook</option>
+          </select>
         </div>
 
         <div className="table-scroll-bar">
@@ -1023,13 +1039,16 @@ function QueuePage({
                   {queue.items.map((item) => (
                     <tr
                       key={item.id}
-                      className={cx(detail?.email.id === item.id && "selected-row")}
+                      className={cx(detail?.email.id === item.id && "selected-row", item.lifecycle?.lifecycle_status === "DELETED" && "deleted-row")}
                       onClick={() => onSelect(item)}
                       aria-selected={detail?.email.id === item.id}
                     >
                       <td>
                         <strong>{item.sender?.split("@")[0]?.replace(/[._]/g, " ") || item.sender}</strong>
-                        <span className="subtle">{item.external_message_id}</span>
+                        <span className="subtle">
+                          {item.lifecycle?.outlook_read_state === "UNREAD" && <span className="unread-dot" title="Unread in Outlook" aria-label="Unread in Outlook">● </span>}
+                          {item.external_message_id}
+                        </span>
                       </td>
                       <td>
                         <button
@@ -1048,7 +1067,12 @@ function QueuePage({
                         <StatusBadge value={item.category} />
                       </td>
                       <td>
-                        <StatusBadge value={item.processing_status} />
+                        <div style={{ display: "flex", gap: "4px", flexWrap: "wrap", alignItems: "center" }}>
+                          <StatusBadge value={item.processing_status} />
+                          {item.lifecycle?.lifecycle_status && item.lifecycle.lifecycle_status !== "ACTIVE" && (
+                            <StatusBadge value={item.lifecycle.lifecycle_status} />
+                          )}
+                        </div>
                       </td>
                       <td>
                         <span className="subtle">
@@ -1148,7 +1172,7 @@ function QueuePage({
           <>
             <div className="floating-backdrop" onClick={onCloseDetail} />
             <div className="surface-panel detail-panel floating-modal">
-              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} onRestoreEmail={onRestoreEmail} />
             </div>
           </>
         ) : null
@@ -1169,7 +1193,7 @@ function QueuePage({
             {detailState === "loading" ? (
               <LoadingRows />
             ) : detail ? (
-              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} />
+              <EmailDetailContent detail={detail} onClose={onCloseDetail} onOpenReview={onOpenReview} onReprocess={onReprocess} onRestoreEmail={onRestoreEmail} />
             ) : (
               <EmptyState
                 title="Select an email"
@@ -1188,11 +1212,13 @@ function EmailDetailContent({
   onClose,
   onOpenReview,
   onReprocess,
+  onRestoreEmail,
 }: {
   detail: ProductEmailDetail;
   onClose?: () => void;
   onOpenReview: (reviewId: string) => void;
   onReprocess: (emailId: string) => void;
+  onRestoreEmail?: (emailId: string) => void;
 }) {
   const latestFailure = [...detail.timeline].reverse().find((event) => event.new_status === "FAILED");
   return (
@@ -1232,6 +1258,9 @@ function EmailDetailContent({
         <div className="detail-badge-row">
           <StatusBadge value={detail.email.category} />
           <StatusBadge value={detail.email.processing_status} />
+          {detail.email.lifecycle?.lifecycle_status && detail.email.lifecycle.lifecycle_status !== "ACTIVE" ? (
+            <StatusBadge value={detail.email.lifecycle.lifecycle_status} />
+          ) : null}
           {detail.email.review_status &&
           displayLabel(detail.email.processing_status) !== displayLabel(detail.email.review_status) ? (
             <StatusBadge value={detail.email.review_status} />
@@ -1253,8 +1282,37 @@ function EmailDetailContent({
           {detail.email.processing_status === "FAILED" ? (
             <button className="button-primary" type="button" onClick={() => onReprocess(detail.email.id)}>Retry / Reprocess</button>
           ) : null}
+          {detail.email.lifecycle?.lifecycle_status === "DELETED" ? (
+            <button
+              className="button-primary button-action-cta"
+              type="button"
+              onClick={() => onRestoreEmail?.(detail.email.id)}
+              title="Restore this email to active mailbox queue"
+            >
+              <RotateCcw size={15} />
+              <span>Restore Email</span>
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {detail.email.lifecycle?.lifecycle_status === "DELETED" ? (
+        <div className="detail-section">
+          <div className="state-note failed" role="status">
+            <strong>Mailbox item deleted</strong>
+            <span>This email was marked DELETED in Outlook. It is excluded from active queues, but verification evidence, audit trail, and Human Review records remain intact.</span>
+          </div>
+        </div>
+      ) : null}
+
+      {detail.email.lifecycle?.outlook_sync_error ? (
+        <div className="detail-section">
+          <div className="state-note failed" role="alert">
+            <strong>Outlook Sync Warning</strong>
+            <span>{detail.email.lifecycle.outlook_sync_error}</span>
+          </div>
+        </div>
+      ) : null}
 
       <div className="detail-section">
         <h3>Email information</h3>
@@ -1274,6 +1332,24 @@ function EmailDetailContent({
           <div className="info-item">
             <span>Attachments</span>
             <strong>{detail.attachments.length}</strong>
+          </div>
+          <div className="info-item">
+            <span>Mailbox state</span>
+            <strong>{displayLabel(detail.email.lifecycle?.lifecycle_status || "ACTIVE")}</strong>
+          </div>
+          <div className="info-item">
+            <span>Outlook read</span>
+            <strong>{displayLabel(detail.email.lifecycle?.outlook_read_state || "UNKNOWN")}</strong>
+          </div>
+          {detail.email.lifecycle?.outlook_categories && detail.email.lifecycle.outlook_categories.length > 0 ? (
+            <div className="info-item">
+              <span>Outlook tags</span>
+              <strong>{detail.email.lifecycle.outlook_categories.join(", ")}</strong>
+            </div>
+          ) : null}
+          <div className="info-item">
+            <span>Last Outlook sync</span>
+            <strong>{formatDate(detail.email.lifecycle?.last_outlook_sync_at ?? null)}</strong>
           </div>
         </div>
         <details className="body-preview">
@@ -3340,6 +3416,21 @@ export default function App() {
     }
   };
 
+  const restoreEmail = async (emailId: string) => {
+    setError(null);
+    try {
+      await reconcileOutlookLifecycle({
+        email_id: emailId,
+        lifecycle_status: "RESTORED",
+        actor_name: "Dashboard operator",
+      });
+      await loadDashboard();
+      setDetail(await getEmailDetail(emailId));
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Restore failed");
+    }
+  };
+
   const initialSync = async () => {
     setSyncState("loading");
     setError(null);
@@ -3475,6 +3566,7 @@ export default function App() {
             onSelect={(item) => void selectEmail(item)}
             onOpenReview={(reviewId) => void selectReviewById(reviewId)}
             onReprocess={(emailId) => void reprocess(emailId)}
+            onRestoreEmail={(emailId) => void restoreEmail(emailId)}
             onCloseDetail={() => setDetail(null)}
             onPage={movePage}
             onGoToPage={goToPage}

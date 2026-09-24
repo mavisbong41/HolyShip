@@ -11,8 +11,10 @@ import type {
   ProductEvent,
   ProductReview,
   ProductSummary,
+  ProductSyncStatus,
   QueueFilters,
   ReviewQueueFilters,
+  OutlookReconcileRequest,
 } from "./types";
 
 const defaultBaseUrl = "/api/v1";
@@ -69,6 +71,7 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
   appendParam(params, "review_status", filters.review_status);
   appendParam(params, "comparison_state", filters.comparison_state);
   appendParam(params, "has_mismatch", filters.has_mismatch);
+  appendParam(params, "lifecycle_status", filters.lifecycle_status);
   appendParam(params, "search", filters.search?.trim());
   appendParam(params, "skip", filters.skip ?? 0);
   appendParam(params, "limit", filters.limit ?? 20);
@@ -255,4 +258,18 @@ export async function recompareDiscrepancy(
       body: JSON.stringify({ reviewer_name: reviewerName }),
     },
   );
+}
+
+export async function reconcileOutlookLifecycle(
+  payload: OutlookReconcileRequest,
+): Promise<void> {
+  await request('/outlook/reconcile', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function getSyncStatus(): Promise<ProductSyncStatus> {
+  return request<ProductSyncStatus>('/sync/status');
 }
