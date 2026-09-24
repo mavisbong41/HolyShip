@@ -5,6 +5,22 @@ import "./styles/pane.css";
 import { TaskPane } from "./components/TaskPane";
 import { OfficeCurrentMailContextProvider } from "./office/OfficeContextProvider";
 import { FakeCurrentMailContextProvider } from "./office/FakeContextProvider";
+import { demoCases } from "./lib/demoCases";
+
+function getInitialDemoKey(): string | null {
+  const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+  const hasOffice = typeof Office !== "undefined" && typeof Office.context?.mailbox !== "undefined";
+
+  // Standalone browser dev or explicitly requested demo mode:
+  if (!hasOffice || params?.has("preview") || params?.has("fake") || params?.has("demo")) {
+    const demoParam = params?.get("demo");
+    if (demoParam && demoParam in demoCases) {
+      return demoParam;
+    }
+    return "mismatchReview";
+  }
+  return null;
+}
 
 function getContextProvider() {
   const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
@@ -32,7 +48,10 @@ function mountApp(): void {
   if (!root) throw new Error("Root element not found");
   createRoot(root).render(
     <React.StrictMode>
-      <TaskPane contextProvider={getContextProvider()} />
+      <TaskPane
+        contextProvider={getContextProvider()}
+        initialDemoKey={getInitialDemoKey()}
+      />
     </React.StrictMode>,
   );
 }

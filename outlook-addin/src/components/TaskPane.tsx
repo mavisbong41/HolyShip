@@ -53,6 +53,7 @@ import type {
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
+import { demoCases } from "../lib/demoCases";
 
 // ─── Helpers ──────────────────────────────────────────────────────
 
@@ -73,7 +74,13 @@ function LoadingView(): React.ReactElement {
   );
 }
 
-function NotFoundView({ note }: { note: string | null }): React.ReactElement {
+function NotFoundView({
+  note,
+  onSelectDemo,
+}: {
+  note: string | null;
+  onSelectDemo?: (key: string) => void;
+}): React.ReactElement {
   return (
     <div className="not-found-state" role="status">
       <div className="not-found-icon" aria-hidden="true">
@@ -87,6 +94,22 @@ function NotFoundView({ note }: { note: string | null }): React.ReactElement {
         <div className="limitation-note" role="note">
           <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
           <span>{note}</span>
+        </div>
+      )}
+      {onSelectDemo && (
+        <div className="demo-selector-box">
+          <p className="demo-selector-label">Explore sample operational cases (consistent with Dashboard):</p>
+          <div className="demo-pills">
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("mismatchReview")}>
+              ⚠️ Mismatch & Review
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("cleanMatch")}>
+              ✅ Clean Match
+            </button>
+            <button type="button" className="btn-secondary btn-sm" onClick={() => onSelectDemo("deletedInOutlook")}>
+              🗑️ Deleted in Outlook (Sync)
+            </button>
+          </div>
         </div>
       )}
     </div>
@@ -1096,9 +1119,13 @@ function ReplyWorkflowSection({
 
 export function TaskPane({
   contextProvider,
+  initialDemoKey,
 }: {
   contextProvider: MailContextProvider;
+  initialDemoKey?: string | null;
 }): React.ReactElement {
+  const [selectedDemoKey, setSelectedDemoKey] = useState<string | null>(initialDemoKey ?? null);
+  const [demoOverriddenDetail, setDemoOverriddenDetail] = useState<ProductEmailDetail | null>(null);
   const [state, setState] = useState<PaneState>({ type: "loading" });
   const [showComparison, setShowComparison] = useState(true);
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
@@ -1285,16 +1312,21 @@ export function TaskPane({
     };
   }, [contextProvider, refreshCurrentEmail]);
 
-  const emailId = state.type === "ready" ? state.detail.email.id : null;
+  const effectiveDetail = demoOverriddenDetail ?? (selectedDemoKey && demoCases[selectedDemoKey] ? demoCases[selectedDemoKey].detail : (state.type === "ready" ? state.detail : null));
+  const effectiveState: PaneState = selectedDemoKey && demoCases[selectedDemoKey]
+    ? { type: "ready", detail: effectiveDetail!, confidence: "high", note: null }
+    : state;
+
+  const emailId = effectiveState.type === "ready" && effectiveDetail ? effectiveDetail.email.id : null;
   const dashUrl = emailId ? dashboardEmailUrl(emailId) : null;
-  const activeReview = state.type === "ready"
-    ? state.detail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
+  const activeReview = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
     : null;
-  const historicalReview = state.type === "ready"
-    ? state.detail.review.find((review) => review.case_origin === "LEGACY")
+  const historicalReview = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.review.find((review) => review.case_origin === "LEGACY")
     : null;
-  const aiSuggestion = state.type === "ready"
-    ? state.detail.resolutions.find((resolution) => resolution.attempted)
+  const aiSuggestion = effectiveState.type === "ready" && effectiveDetail
+    ? effectiveDetail.resolutions.find((resolution) => resolution.attempted)
     : null;
   const reviewUrl = activeReview ? dashboardReviewUrl(activeReview.id) : null;
 
@@ -1316,14 +1348,70 @@ export function TaskPane({
   };
 
   const replaceReadyDetail = (detail: ProductEmailDetail) => {
-    setState({ type: "ready", detail, confidence: state.type === "ready" ? state.confidence : "high", note: state.type === "ready" ? state.note : null });
+    if (selectedDemoKey) {
+      setDemoOverriddenDetail(detail);
+    } else {
+      setState({ type: "ready", detail, confidence: state.type === "ready" ? state.confidence : "high", note: state.type === "ready" ? state.note : null });
+    }
+  };
+
+  const handleRestore = async () => {
+    if (!emailId || !effectiveDetail) return;
+    setActionState("loading");
+    try {
+      if (selectedDemoKey) {
+        const curLifecycle = getEmailLifecycle(effectiveDetail.email);
+        const updated: ProductEmailDetail = {
+          ...effectiveDetail,
+          email: {
+            ...effectiveDetail.email,
+            lifecycle: {
+              ...curLifecycle,
+              lifecycle_status: "ACTIVE",
+              deleted_at: null,
+              restored_at: new Date().toISOString(),
+              outlook_folder_id: "inbox",
+            },
+          },
+        };
+        replaceReadyDetail(updated);
+        setActionState("idle");
+        return;
+      }
+      await reconcileOutlookLifecycle(emailId, { outlook_folder_id: "inbox", outlook_archived: false });
+      await refreshCurrentEmail(true);
+      setActionState("idle");
+    } catch (err) {
+      setActionState("error");
+      setState({ type: "error", message: err instanceof Error ? err.message : "Restore failed" });
+    }
   };
 
   return (
     <div className="pane-shell">
       {/* Header */}
       <header className="pane-header">
+        <div className="pane-brand">
+          <span className="pane-brand-dot" aria-hidden="true" />
+          <span className="pane-brand-title">HolyShip</span>
+          <span className="pane-brand-subtitle">Verification</span>
+        </div>
         <div className="pane-header-actions">
+          <span className="pane-sync-status" title="Consistent with Dashboard state">
+            <span className="pane-sync-dot" /> Synced
+          </span>
+          {dashUrl && (
+            <a
+              href={dashUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="pane-icon-btn"
+              title="Open Case in HolyShip Dashboard"
+              aria-label="Open Case in HolyShip Dashboard"
+            >
+              <ExternalLink size={13} aria-hidden="true" />
+            </a>
+          )}
           <button
             className="pane-icon-btn"
             type="button"
@@ -1336,73 +1424,125 @@ export function TaskPane({
         </div>
       </header>
 
+      {/* Standalone / Demo Showcase Switcher */}
+      {(selectedDemoKey !== null || typeof Office === "undefined") && (
+        <nav className="demo-switcher-bar" aria-label="Sample Cases Switcher">
+          <div className="demo-switcher-inner">
+            <span className="demo-switcher-title">Sample:</span>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "mismatchReview" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("mismatchReview");
+              }}
+            >
+              ⚠️ Mismatch & Review
+            </button>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "cleanMatch" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("cleanMatch");
+              }}
+            >
+              ✅ Clean Match
+            </button>
+            <button
+              type="button"
+              className={`demo-pill ${selectedDemoKey === "deletedInOutlook" ? "active" : ""}`}
+              onClick={() => {
+                setDemoOverriddenDetail(null);
+                setSelectedDemoKey("deletedInOutlook");
+              }}
+            >
+              🗑️ Deleted (Sync)
+            </button>
+            {selectedDemoKey !== null && (
+              <button
+                type="button"
+                className="demo-pill"
+                onClick={() => {
+                  setDemoOverriddenDetail(null);
+                  setSelectedDemoKey(null);
+                }}
+                title="Switch back to live mailbox resolution"
+              >
+                🔍 Live Context
+              </button>
+            )}
+          </div>
+        </nav>
+      )}
+
       {/* Body */}
       <main className="pane-body">
-        {state.type === "loading" && <LoadingView />}
+        {effectiveState.type === "loading" && <LoadingView />}
 
-        {state.type === "error" && <ErrorView message={state.message} onRetry={() => void refreshCurrentEmail(true)} />}
+        {effectiveState.type === "error" && <ErrorView message={effectiveState.message} onRetry={() => void refreshCurrentEmail(true)} />}
 
-        {state.type === "not_found" && <NotFoundView note={state.note} />}
+        {effectiveState.type === "not_found" && <NotFoundView note={effectiveState.note} onSelectDemo={(k) => setSelectedDemoKey(k)} />}
 
-        {state.type === "ready" && (
+        {effectiveState.type === "ready" && effectiveDetail && (
           <>
             {/* Low-confidence identity note */}
-            {state.note && (
+            {effectiveState.note && (
               <div className="limitation-note" role="note">
                 <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
-                <span>{state.note}</span>
+                <span>{effectiveState.note}</span>
               </div>
             )}
 
-            {getEmailLifecycle(state.detail.email).lifecycle_status !== "ACTIVE" && (
+            {getEmailLifecycle(effectiveDetail.email).lifecycle_status !== "ACTIVE" && (
               <div className="lifecycle-alert" role="status">
                 <Archive size={13} aria-hidden="true" />
-                <strong>{displayLabel(getEmailLifecycle(state.detail.email).lifecycle_status)}</strong>
+                <strong>{displayLabel(getEmailLifecycle(effectiveDetail.email).lifecycle_status)}</strong>
                 <span>
-                  {getEmailLifecycle(state.detail.email).lifecycle_status === "DELETED"
+                  {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED"
                     ? "Hidden from active queues; history and review evidence are preserved."
                     : "Mailbox location changed; backend case state remains available."}
                 </span>
               </div>
             )}
 
-            {getEmailLifecycle(state.detail.email).outlook_sync_error && (
+            {getEmailLifecycle(effectiveDetail.email).outlook_sync_error && (
               <div className="lifecycle-alert error" role="alert">
                 <AlertCircle size={13} aria-hidden="true" />
                 <strong>Sync issue</strong>
-                <span>{getEmailLifecycle(state.detail.email).outlook_sync_error}</span>
+                <span>{getEmailLifecycle(effectiveDetail.email).outlook_sync_error}</span>
               </div>
             )}
 
             <section className="email-hero" aria-labelledby="current-email-heading">
               <p className="pane-section-label">Current email</p>
-              <h1 id="current-email-heading">{state.detail.email.subject}</h1>
-              <p>{state.detail.email.sender || "Unknown sender"} · {formatDate(state.detail.email.received_at ?? state.detail.email.created_at)}</p>
+              <h1 id="current-email-heading">{effectiveDetail.email.subject}</h1>
+              <p>{effectiveDetail.email.sender || "Unknown sender"} · {formatDate(effectiveDetail.email.received_at ?? effectiveDetail.email.created_at)}</p>
             </section>
 
-            <CaseStatusRail detail={state.detail} />
+            <CaseStatusRail detail={effectiveDetail} />
 
             {/* Processing state card */}
-            <ProcessingStateCard email={state.detail.email} />
+            <ProcessingStateCard email={effectiveDetail.email} />
 
             {/* Comparison summary chips */}
-            <ComparisonSummaryStrip email={state.detail.email} comparison={state.detail.comparison} />
+            <ComparisonSummaryStrip email={effectiveDetail.email} comparison={effectiveDetail.comparison} />
 
             <div className="operational-grid" aria-label="Outlook operational workflow">
               <section className="ops-panel">
-                <EmailInfoSection email={state.detail.email} />
+                <EmailInfoSection email={effectiveDetail.email} />
               </section>
-              <CategoryCorrectionSection email={state.detail.email} onUpdated={replaceReadyDetail} />
+              <CategoryCorrectionSection email={effectiveDetail.email} onUpdated={replaceReadyDetail} />
               <ReplyWorkflowSection
-                email={state.detail.email}
-                initialWorkflow={state.detail.outlook_workflow}
+                email={effectiveDetail.email}
+                initialWorkflow={effectiveDetail.outlook_workflow}
                 onActionComplete={refreshAfterMutation}
               />
             </div>
 
             {/* Comparison table for document_comparison */}
-            {state.detail.email.category === "document_comparison" &&
-              state.detail.comparison && (
+            {effectiveDetail.email.category === "document_comparison" &&
+              effectiveDetail.comparison && (
                 <>
                   <div className="pane-divider" />
                   <button
@@ -1419,7 +1559,7 @@ export function TaskPane({
                   </button>
                   {showComparison && (
                     <div id="comparison-section">
-                      <ComparisonTable comparison={state.detail.comparison} />
+                      <ComparisonTable comparison={effectiveDetail.comparison} />
                     </div>
                   )}
                 </>
@@ -1437,7 +1577,7 @@ export function TaskPane({
                   <dl className="review-card-facts">
                     <div>
                       <dt>{activeReview.field ? "Affected field" : "Affected area"}</dt>
-                      <dd>{reviewAffectedText(activeReview, state.detail.email)}</dd>
+                      <dd>{reviewAffectedText(activeReview, effectiveDetail.email)}</dd>
                     </div>
                     <div>
                       <dt>Suggested action</dt>
@@ -1458,7 +1598,7 @@ export function TaskPane({
                 />
                 <DirectReviewActions
                   review={activeReview}
-                  comparison={state.detail.comparison}
+                  comparison={effectiveDetail.comparison}
                   onActionComplete={refreshAfterMutation}
                 />
                 <ReviewHistorySection review={activeReview} />
@@ -1476,7 +1616,7 @@ export function TaskPane({
                   <dl className="review-card-facts">
                     <div>
                       <dt>Affected area</dt>
-                      <dd>{reviewAffectedText(historicalReview, state.detail.email)}</dd>
+                      <dd>{reviewAffectedText(historicalReview, effectiveDetail.email)}</dd>
                     </div>
                   </dl>
                   <ReviewHistorySection review={historicalReview} />
@@ -1512,7 +1652,7 @@ export function TaskPane({
                   Open in Dashboard
                 </a>
               )}
-              {state.detail.email.processing_status === "FAILED" ? (
+              {effectiveDetail.email.processing_status === "FAILED" ? (
                 <button className="btn-primary" type="button" disabled={actionState === "loading"} onClick={() => void retryProcessing()}>
                   <RefreshCw size={12} aria-hidden="true" />
                   {actionState === "loading" ? "Retrying…" : "Retry / Reprocess"}
