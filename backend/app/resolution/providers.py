@@ -11,6 +11,14 @@ from backend.app.resolution.models import (
     ProviderResolution,
     SemanticResolutionRequest,
 )
+from backend.app.security.ai_gateway import (
+    AIGatewayHTTPError,
+    AIGatewayPolicyError,
+    AIGatewayTransportError,
+    PURPOSE_FIELD_EXTRACTION,
+    PURPOSE_FIELD_SEMANTIC_COMPARISON,
+    SecureAIGateway,
+)
 
 
 class ResolverProvider(Protocol):
@@ -117,7 +125,7 @@ class HttpJsonResolverProvider:
 
 
 class GeminiResolverProvider:
-    """Direct provider connecting to Google Gemini REST API for targeted resolution."""
+    """Gemini resolver routed exclusively through the Secure AI Gateway."""
 
     def __init__(
         self,
@@ -126,6 +134,7 @@ class GeminiResolverProvider:
         model_name: str = "gemini-2.5-flash",
         timeout_seconds: float = 15.0,
         endpoint: str | None = None,
+        gateway: SecureAIGateway | None = None,
     ) -> None:
         if not api_key.strip():
             raise ValueError("API key is required for the gemini provider")
@@ -133,64 +142,75 @@ class GeminiResolverProvider:
         self.model_name = model_name or "gemini-2.5-flash"
         self.timeout_seconds = timeout_seconds
         self.endpoint = endpoint
+        self.gateway = gateway or SecureAIGateway()
 
     def resolve(
         self,
         request: ExtractionResolutionRequest | SemanticResolutionRequest,
     ) -> ProviderResolution:
         if isinstance(request, ExtractionResolutionRequest):
-            prompt = (
-                f"You are a shipping document extraction resolver.\n"
-                f"Document role: {request.document_role}\n"
-                f"Target canonical field: {request.field.value}\n"
-                f"Escalation reason: {request.escalation_reason}\n"
-                f"Evidence text:\n{request.evidence}\n\n"
-                f"Extract the exact value for field '{request.field.value}' from the evidence text.\n"
-                f"Output strictly a JSON object with keys:\n"
-                f'{{"field": "{request.field.value}", "value": "<extracted string>", "normalized_value": <normalized value or null>, "confidence": <float 0.0-1.0>, "evidence": "<quote>", "reasoning_code": "GEMINI_EXTRACTION"}}'
+            purpose = PURPOSE_FIELD_EXTRACTION
+            feature = "l2_extraction_resolution"
+            data = {
+                "field": request.field.value,
+                "document_role": request.document_role,
+                "evidence": request.evidence,
+                "escalation_reason": request.escalation_reason,
+            }
+            instruction = (
+                "Resolve one shipping-document extraction field strictly from the provided "
+                "field evidence. Return JSON with field, value, normalized_value, confidence, "
+                "evidence, and reasoning_code. Evidence must quote the supplied field evidence."
+            )
+        elif isinstance(request, SemanticResolutionRequest):
+            purpose = PURPOSE_FIELD_SEMANTIC_COMPARISON
+            feature = "l2_semantic_comparison"
+            data = {
+                "field": request.field.value,
+                "si_value": request.si_value,
+                "bl_value": request.bl_value,
+                "si_evidence": request.si_evidence,
+                "bl_evidence": request.bl_evidence,
+            }
+            instruction = (
+                "Compare exactly one canonical shipping field. Determine whether the supplied "
+                "SI reference value and BL value are semantically equivalent. Return JSON with "
+                "field, equivalent, confidence, evidence, and reasoning_code. The evidence text "
+                "must mention both supplied values."
             )
         else:
-            prompt = (
-                f"You are a shipping document semantic comparison resolver.\n"
-                f"Target canonical field: {request.field.value}\n"
-                f"SI reference value: {request.si_value}\n"
-                f"BL document value: {request.bl_value}\n"
-                f"SI evidence:\n{request.si_evidence}\n"
-                f"BL evidence:\n{request.bl_evidence}\n\n"
-                f"Determine if the SI value and BL value are semantically equivalent.\n"
-                f"Output strictly a JSON object with keys:\n"
-                f'{{"field": "{request.field.value}", "equivalent": <true or false>, "confidence": <float 0.0-1.0>, "evidence": "<explanation>", "reasoning_code": "GEMINI_SEMANTIC"}}'
+            raise TypeError(
+                "Gemini resolver accepts only single extraction or semantic requests"
             )
 
-        base_url = self.endpoint or "https://generativelanguage.googleapis.com/v1beta/models"
-        import urllib.parse
-        url = f"{base_url}/{self.model_name}:generateContent?key={urllib.parse.quote(self.api_key)}"
-
-        payload = {
-            "contents": [{"role": "user", "parts": [{"text": prompt}]}],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": 0.0,
-                "maxOutputTokens": 1024,
-            },
-        }
-        body = json.dumps(payload).encode("utf-8")
-        headers = {"Content-Type": "application/json", "x-goog-api-key": self.api_key}
-        http_request = urllib.request.Request(url, data=body, headers=headers, method="POST")
-
         try:
-            with urllib.request.urlopen(http_request, timeout=self.timeout_seconds) as response:
-                decoded = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as exc:
-            if exc.code in {408, 425, 429} or exc.code >= 500:
-                raise TransientResolverError(f"Gemini HTTP {exc.code}") from exc
-            raise RuntimeError(f"Gemini HTTP {exc.code}") from exc
-        except (TimeoutError, ConnectionError, urllib.error.URLError) as exc:
+            result = self.gateway.invoke_gemini_json(
+                api_key=self.api_key,
+                model=self.model_name,
+                purpose=purpose,
+                feature=feature,
+                data=data,
+                system_instruction=instruction,
+                timeout_seconds=self.timeout_seconds,
+                endpoint=self.endpoint,
+                temperature=0.0,
+                max_output_tokens=1024,
+            )
+        except AIGatewayHTTPError as exc:
+            if exc.status_code in {408, 425, 429} or exc.status_code >= 500:
+                raise TransientResolverError(
+                    f"Gemini HTTP {exc.status_code}"
+                ) from exc
+            raise RuntimeError(f"Gemini HTTP {exc.status_code}") from exc
+        except AIGatewayTransportError as exc:
             raise TransientResolverError("Gemini transport failure") from exc
+        except AIGatewayPolicyError as exc:
+            raise RuntimeError(
+                f"Gemini gateway policy rejected request: {exc}"
+            ) from exc
 
+        parsed = result.structured_response
         try:
-            raw_text = decoded["candidates"][0]["content"]["parts"][0]["text"]
-            parsed = json.loads(raw_text)
             return ProviderResolution(
                 field=parsed["field"],
                 value=parsed.get("value"),
@@ -199,6 +219,9 @@ class GeminiResolverProvider:
                 confidence=float(parsed["confidence"]),
                 evidence=str(parsed.get("evidence", "")),
                 reasoning_code=str(parsed.get("reasoning_code", "GEMINI")),
+                audit_metadata=result.audit_metadata,
             )
         except Exception as exc:
-            raise RuntimeError(f"Failed to parse Gemini response: {exc}") from exc
+            raise RuntimeError(
+                f"Failed to parse Gemini response: {exc}"
+            ) from exc
