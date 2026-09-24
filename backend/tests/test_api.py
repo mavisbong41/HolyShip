@@ -442,3 +442,27 @@ def test_v1_outlook_reconcile_restores_same_logical_email(client):
     assert record.restored_at is not None
     assert record.outlook_sync_error is None
 
+
+
+@pytest.mark.req("SYNC-06")
+@pytest.mark.req("LIFE-07")
+def test_v1_sync_status_endpoint(client):
+    tc, mock_session = client
+    from backend.app.api.product_schemas import ProductSyncStatus
+    with patch("backend.app.api.router.get_product_sync_status") as mock_sync_status:
+        mock_sync_status.return_value = ProductSyncStatus(
+            total_emails=10,
+            active_count=8,
+            deleted_count=2,
+            archived_count=0,
+            unread_count=3,
+            sync_error_count=0,
+            last_outlook_sync_at=None,
+        )
+        resp = tc.get("/api/v1/sync/status")
+        assert resp.status_code == 200
+        data = resp.json()
+        assert data["total_emails"] == 10
+        assert data["active_count"] == 8
+        assert data["deleted_count"] == 2
+        assert data["unread_count"] == 3
