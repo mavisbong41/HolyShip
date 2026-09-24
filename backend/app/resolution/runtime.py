@@ -15,6 +15,7 @@ from backend.app.resolution.providers import (
 )
 from backend.app.resolution.service import ResolutionExecutor, ResolutionSharedState
 from backend.app.storage.repositories import AIResolutionRepository
+from backend.app.security.ai_gateway import SecureAIGateway
 
 
 ProviderBuilder = Callable[[Settings], ResolverProvider]
@@ -79,6 +80,7 @@ def _build_gemini_provider(settings: Settings) -> ResolverProvider:
         model_name=settings.ai_model if settings.ai_model not in ("none", "", "disabled") else "gemini-2.5-flash",
         timeout_seconds=settings.ai_timeout_seconds,
         endpoint=settings.ai_endpoint,
+        gateway=SecureAIGateway.from_settings(settings),
     )
 
 
