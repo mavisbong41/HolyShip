@@ -1496,6 +1496,7 @@ function TimelineCard({
 }: {
   detail: ProductEmailDetail;
 }): React.ReactElement {
+  const [isExpanded, setIsExpanded] = useState(false);
   const events = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
     {
       id: "ev-ingest",
@@ -1520,11 +1521,41 @@ function TimelineCard({
     },
   ];
 
+  const displayedEvents = isExpanded || events.length <= 5 ? events : events.slice(-5);
+
   return (
     <div className="timeline-card" aria-label="Case Timeline and Audit Trail">
-      <p className="pane-section-label" style={{ marginBottom: 12 }}>Case Timeline & Audit Trail</p>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>
+          Case Timeline & Audit Trail
+          {events.length > 5 && (
+            <span style={{ fontSize: "11px", fontWeight: "normal", color: "#666", marginLeft: 6 }}>
+              ({isExpanded ? `all ${events.length}` : `latest 5 of ${events.length}`})
+            </span>
+          )}
+        </p>
+        {events.length > 5 && (
+          <button
+            type="button"
+            className="timeline-expand-btn"
+            onClick={() => setIsExpanded(!isExpanded)}
+            style={{
+              fontSize: "11px",
+              fontWeight: 600,
+              color: "#e66800",
+              background: "rgba(227, 148, 57, 0.08)",
+              border: "1px solid rgba(227, 148, 57, 0.25)",
+              borderRadius: "4px",
+              padding: "2px 8px",
+              cursor: "pointer",
+            }}
+          >
+            {isExpanded ? "Show latest 5" : `Expand all (${events.length})`}
+          </button>
+        )}
+      </div>
       <ul className="timeline-list">
-        {events.map((ev, idx) => {
+        {displayedEvents.map((ev, idx) => {
           const rawReason = ev.reason_code || (ev as any).event_type || ev.new_status || "Event";
           const title = displayLabel(rawReason);
           const isDeleted = rawReason === "OUTLOOK_EMAIL_DELETED" || ev.new_status === "DELETED";
