@@ -45,8 +45,38 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-24
-**Updated by:** Enterprise AI Security enhancement
-**Repository state:** Security work is isolated on `feature/security-ai-gateway`, branched from `main@5d06606eb8a72f5b4f50f15b764d84154f1232b1`. The branch adds Enterprise Privacy Mode, a centralized Gemini Secure AI Gateway, purpose-specific Minimum Necessary Disclosure, secret-safe AI audit metadata, and migration `20260924_0016` to redact legacy raw AI request/question payloads. It does not add authentication/RBAC, Outlook action changes, Smart Reply, mailbox delete/restore sync, or Data Lifecycle cleanup.
+**Updated by:** Final Enterprise AI Security consolidation
+**Repository state:** Security work is isolated on `feature/security-ai-gateway`, branched from `main@5d06606eb8a72f5b4f50f15b764d84154f1232b1`. This branch is the canonical security implementation; the separate `feature/security-privacy-gateway` branch is superseded and must not be merged together with it.
+
+Implemented controls:
+- production-default `ENTERPRISE_PRIVACY_MODE=true`;
+- centralized Gemini Secure AI Gateway for Human Review AI plus L2 extraction/semantic resolution;
+- purpose-specific Minimum Necessary Disclosure;
+- free-form email/API-key/Bearer-token redaction;
+- provider allowlist, optional exact-model allowlist, and outbound endpoint-host allowlist;
+- production defaults permit only Gemini/Google to `generativelanguage.googleapis.com`;
+- OpenAI/custom/http_json paths fail closed by default under Enterprise Privacy Mode;
+- explicitly approved custom L2 providers still receive minimized field-only payloads before transport;
+- API keys stay backend-only and Gemini keys are never placed in request URLs;
+- raw Human Review questions and raw resolver requests are not durably persisted;
+- migration `20260924_0016` redacts legacy raw AI request/question payloads;
+- audit persistence keeps purpose/provider/model, hashes, disclosure categories/fields, payload size, status, latency, and validated structured results;
+- provider error bodies are not exposed to users;
+- no change to deterministic comparison truth, Human Review approval semantics, immutable overrides, mandatory re-compare, Dashboard workflow, or Outlook workflow.
+
+Final verification (GitHub Actions run `36010376697`):
+- Python compile: PASS.
+- Alembic migration smoke through `20260924_0016`: PASS.
+- Security-focused suite: **60 passed**.
+- Full backend regression: **373 passed, 1 deselected**.
+- The deselected force-sync assertion was run separately on both branch and `main`; both failed identically (`branch_rc=1 main_rc=1`), confirming it is a pre-existing main-baseline issue.
+- Public baseline: **520 emails**, **18.113 s**, **28.708 emails/s**.
+- Dashboard: typecheck + **30 tests** + production build PASS.
+- Outlook Add-in: typecheck + **65 tests** + production build PASS.
+- `git diff --check`: PASS.
+- The temporary verification workflow was removed after the successful run.
+
+Scope boundary: this security milestone does not claim complete production identity/compliance security. SSO, RBAC, tenant isolation, KMS-backed key rotation, formal compliance controls, penetration testing, Outlook action changes, Smart Reply, mailbox delete/restore sync, and Data Lifecycle cleanup remain separate work.
 
 ---
 
