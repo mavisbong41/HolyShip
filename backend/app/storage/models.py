@@ -28,6 +28,8 @@ class EmailMessageRecord(TimestampMixin, Base):
     __table_args__ = (
         UniqueConstraint("source_type", "external_message_id", name="uq_email_source_external_id"),
         CheckConstraint("processing_status IN ('NEW','QUEUED','CLASSIFYING','CLASSIFIED','AWAITING_DOCUMENTS','RETRIEVING_ATTACHMENTS','EXTRACTING','COMPARING','COMPLETED','BLOCKED','FAILED')", name="ck_email_processing_status"),
+        CheckConstraint("lifecycle_status IN ('ACTIVE','DELETED','ARCHIVED')", name="ck_email_lifecycle_status"),
+        CheckConstraint("outlook_read_state IN ('READ','UNREAD','UNKNOWN')", name="ck_email_outlook_read_state"),
     )
 
     id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
@@ -41,6 +43,15 @@ class EmailMessageRecord(TimestampMixin, Base):
     source_metadata: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
     content_hash: Mapped[str] = mapped_column(String(64), nullable=False, index=True)
     processing_status: Mapped[str] = mapped_column(String(50), nullable=False, default="NEW")
+    lifecycle_status: Mapped[str] = mapped_column(String(50), nullable=False, default="ACTIVE", index=True)
+    outlook_read_state: Mapped[str] = mapped_column(String(20), nullable=False, default="UNKNOWN")
+    outlook_categories: Mapped[list[str]] = mapped_column(JSONB, nullable=False, default=list)
+    outlook_folder_id: Mapped[str | None] = mapped_column(String(512))
+    outlook_archived: Mapped[bool] = mapped_column(Boolean, nullable=False, default=False)
+    last_outlook_sync_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), index=True)
+    outlook_sync_error: Mapped[str | None] = mapped_column(Text)
+    deleted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    restored_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
     attachments: Mapped[list[AttachmentRecord]] = relationship(
         back_populates="email",

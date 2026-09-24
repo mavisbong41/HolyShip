@@ -24,6 +24,7 @@ from backend.app.api.product_schemas import (
     ProductDiscrepancySummary,
     ProductDocument,
     ProductEmailDetail,
+    ProductEmailLifecycle,
     ProductEmailSummary,
     ProductEvent,
     ProductEvidence,
@@ -31,6 +32,7 @@ from backend.app.api.product_schemas import (
     ProductFieldComparison,
     ProductResolution,
     ProductReview,
+    ProductSyncStatus,
     ProductSummary,
     ProductTimelineEvent,
     ProductValue,
@@ -118,6 +120,20 @@ def _json_length(column: Any) -> Any:
     return func.coalesce(func.jsonb_array_length(column), 0)
 
 
+def _lifecycle_from_values(record: Any) -> ProductEmailLifecycle:
+    return ProductEmailLifecycle(
+        lifecycle_status=getattr(record, "lifecycle_status", None) or "ACTIVE",
+        outlook_read_state=getattr(record, "outlook_read_state", None) or "UNKNOWN",
+        outlook_categories=list(getattr(record, "outlook_categories", None) or []),
+        outlook_folder_id=getattr(record, "outlook_folder_id", None),
+        outlook_archived=bool(getattr(record, "outlook_archived", False)),
+        last_outlook_sync_at=getattr(record, "last_outlook_sync_at", None),
+        outlook_sync_error=getattr(record, "outlook_sync_error", None),
+        deleted_at=getattr(record, "deleted_at", None),
+        restored_at=getattr(record, "restored_at", None),
+    )
+
+
 def _queue_statement(
     *,
     status: str | None,
@@ -130,6 +146,7 @@ def _queue_statement(
     search: str | None,
     received_from: datetime | None,
     received_to: datetime | None,
+    lifecycle_status: str | None,
 ) -> tuple[Any, Any]:
     classification, comparison, review = _queue_sources()
     attachment_count = (
@@ -160,6 +177,15 @@ def _queue_statement(
         review.c.status.label("review_status"),
         review.c.reason_code.label("review_reason"),
         review.c.id.label("review_id"),
+        EmailMessageRecord.lifecycle_status,
+        EmailMessageRecord.outlook_read_state,
+        EmailMessageRecord.outlook_categories,
+        EmailMessageRecord.outlook_folder_id,
+        EmailMessageRecord.outlook_archived,
+        EmailMessageRecord.last_outlook_sync_at,
+        EmailMessageRecord.outlook_sync_error,
+        EmailMessageRecord.deleted_at,
+        EmailMessageRecord.restored_at,
     ]
     statement = (
         select(*columns)
@@ -205,6 +231,10 @@ def _queue_statement(
         filters.append(EmailMessageRecord.received_at >= received_from)
     if received_to:
         filters.append(EmailMessageRecord.received_at <= received_to)
+    if lifecycle_status:
+        filters.append(EmailMessageRecord.lifecycle_status == lifecycle_status)
+    else:
+        filters.append(EmailMessageRecord.lifecycle_status != "DELETED")
     if filters:
         statement = statement.where(*filters)
     order = (
@@ -240,6 +270,7 @@ def _summary_from_row(row: Any) -> ProductEmailSummary:
         review_id=getattr(row, "review_id", None) or (
             _latest(row.human_review_cases).id if getattr(row, "human_review_cases", None) else None
         ),
+        lifecycle=_lifecycle_from_values(row),
     )
 
 
@@ -260,6 +291,7 @@ def list_email_queue(
     search: str | None = None,
     received_from: datetime | None = None,
     received_to: datetime | None = None,
+    lifecycle_status: str | None = None,
 ) -> EmailQueuePage:
     validate_page(skip=skip, limit=limit)
     statement, count_statement = _queue_statement(
@@ -273,6 +305,7 @@ def list_email_queue(
         search=search,
         received_from=received_from,
         received_to=received_to,
+        lifecycle_status=lifecycle_status,
     )
     rows = session.execute(statement.offset(skip).limit(limit)).all()
     total = int(session.scalar(count_statement) or 0)
@@ -302,6 +335,7 @@ def get_product_summary(session: Session) -> ProductSummary:
             HumanReviewCaseRecord.case_origin == "ACTIVE",
             HumanReviewCaseRecord.status.in_(["OPEN", "IN_REVIEW"]),
             EmailMessageRecord.processing_status == "BLOCKED",
+            EmailMessageRecord.lifecycle_status != "DELETED",
             HumanReviewCaseRecord.reason_code.in_(ACTIONABLE_BLOCK_REASONS),
             ~exists(
                 select(1).where(
@@ -316,25 +350,47 @@ def get_product_summary(session: Session) -> ProductSummary:
         select(
             func.count(EmailMessageRecord.id).label("total"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 EmailMessageRecord.processing_status == "BLOCKED"
             ).label("blocked"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 EmailMessageRecord.processing_status == "FAILED"
             ).label("failed"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 EmailMessageRecord.processing_status == "COMPLETED"
             ).label("completed"),
-            func.count(EmailMessageRecord.id).filter(needs_review_value).label("needs_review"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
+                needs_review_value,
+            ).label("needs_review"),
             active_review_count.label("active_review_count"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 classification.c.comparison_readiness == "READY_FOR_COMPARISON"
             ).label("ready"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 comparison.c.mismatch_found.is_(True)
             ).label("mismatch"),
             func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
                 _json_length(comparison.c.unresolved_fields) > 0
             ).label("unresolved"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status == "DELETED"
+            ).label("deleted"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status == "ARCHIVED"
+            ).label("archived"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status != "DELETED",
+                EmailMessageRecord.outlook_read_state == "UNREAD",
+            ).label("unread"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.outlook_sync_error.is_not(None)
+            ).label("sync_errors"),
         )
         .select_from(EmailMessageRecord)
         .outerjoin(classification, and_(classification.c.email_id == EmailMessageRecord.id, classification.c.rank == 1))
@@ -344,6 +400,7 @@ def get_product_summary(session: Session) -> ProductSummary:
     row = session.execute(statement).one()
     status_rows = session.execute(
         select(EmailMessageRecord.processing_status, func.count(EmailMessageRecord.id))
+        .where(EmailMessageRecord.lifecycle_status != "DELETED")
         .group_by(EmailMessageRecord.processing_status)
     ).all()
     status_counts = {status: int(count) for status, count in status_rows}
@@ -365,6 +422,43 @@ def get_product_summary(session: Session) -> ProductSummary:
         human_review_open_count=active_open_count,
         failed_count=status_counts.get("FAILED", 0),
         processing_count=processing_count,
+        deleted_count=int(row.deleted or 0),
+        unread_count=int(row.unread or 0),
+        sync_error_count=int(row.sync_errors or 0),
+    )
+
+
+def get_product_sync_status(session: Session) -> ProductSyncStatus:
+    row = session.execute(
+        select(
+            func.count(EmailMessageRecord.id).label("total"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status == "ACTIVE"
+            ).label("active"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status == "DELETED"
+            ).label("deleted"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.lifecycle_status == "ARCHIVED"
+            ).label("archived"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.outlook_read_state == "UNREAD",
+                EmailMessageRecord.lifecycle_status != "DELETED",
+            ).label("unread"),
+            func.count(EmailMessageRecord.id).filter(
+                EmailMessageRecord.outlook_sync_error.is_not(None)
+            ).label("sync_errors"),
+            func.max(EmailMessageRecord.last_outlook_sync_at).label("last_sync"),
+        )
+    ).one()
+    return ProductSyncStatus(
+        total_emails=int(row.total or 0),
+        active_count=int(row.active or 0),
+        deleted_count=int(row.deleted or 0),
+        archived_count=int(row.archived or 0),
+        unread_count=int(row.unread or 0),
+        sync_error_count=int(row.sync_errors or 0),
+        last_outlook_sync_at=row.last_sync,
     )
 
 
@@ -586,6 +680,7 @@ def _summary_from_record(
         review_status=review.status if review else None,
         review_reason=review.reason_code if review else None,
         review_id=review.id if review else None,
+        lifecycle=_lifecycle_from_values(record),
     )
 
 

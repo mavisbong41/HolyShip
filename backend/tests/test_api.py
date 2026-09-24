@@ -356,3 +356,89 @@ def test_v1_reply_workflow_records_human_confirmed_send(client):
     assert record.source_metadata["outlook_workflow"]["status"] == "SENT"
     assert record.source_metadata["outlook_events"][-1]["reason_code"] == "REPLY_SENT_CONFIRMED"
 
+
+@pytest.mark.req("SYNC-06")
+@pytest.mark.req("LIFE-07")
+def test_v1_outlook_reconcile_marks_deleted_without_destroying_history(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-delete",
+        source_type="GRAPH",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    record.lifecycle_status = "ACTIVE"
+    record.outlook_read_state = "UNKNOWN"
+    record.outlook_categories = []
+    record.outlook_archived = False
+    mock_session.get.return_value = record
+
+    resp = tc.post(
+        "/api/v1/outlook/reconcile",
+        json={
+            "email_id": str(email_id),
+            "lifecycle_status": "DELETED",
+            "outlook_read_state": "UNREAD",
+            "outlook_categories": ["BL_COMPARISON", "Customer"],
+            "actor_name": "Outlook sync",
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["action"] == "OUTLOOK_EMAIL_DELETED"
+    assert data["lifecycle"]["lifecycle_status"] == "DELETED"
+    assert data["lifecycle"]["outlook_read_state"] == "UNREAD"
+    assert data["lifecycle"]["outlook_categories"] == ["BL_COMPARISON", "Customer"]
+    assert record.deleted_at is not None
+    assert record.source_metadata["outlook_events"][-1]["reason_code"] == "OUTLOOK_EMAIL_DELETED"
+
+
+@pytest.mark.req("SYNC-06")
+@pytest.mark.req("LIFE-07")
+def test_v1_outlook_reconcile_restores_same_logical_email(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-restore",
+        source_type="GRAPH",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    record.lifecycle_status = "DELETED"
+    record.outlook_read_state = "READ"
+    record.outlook_categories = ["BL_COMPARISON"]
+    record.outlook_archived = False
+    record.outlook_sync_error = "Previous sync failed"
+    mock_session.get.return_value = record
+
+    resp = tc.post(
+        "/api/v1/outlook/reconcile",
+        json={
+            "email_id": str(email_id),
+            "lifecycle_status": "RESTORED",
+            "outlook_read_state": "READ",
+        },
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["email_id"] == str(email_id)
+    assert data["lifecycle"]["lifecycle_status"] == "ACTIVE"
+    assert data["action"] == "OUTLOOK_EMAIL_RESTORED"
+    assert record.restored_at is not None
+    assert record.outlook_sync_error is None
+

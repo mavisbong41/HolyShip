@@ -39,6 +39,8 @@ ProductCategory = Literal[
 ]
 ComparisonReadiness = Literal["READY_FOR_COMPARISON", "AWAITING_DOCUMENTS", "UNRESOLVED"]
 FieldStatus = Literal["MATCH", "MISMATCH", "UNRESOLVED"]
+EmailLifecycleStatus = Literal["ACTIVE", "DELETED", "ARCHIVED"]
+OutlookReadState = Literal["READ", "UNREAD", "UNKNOWN"]
 
 
 class ProductEvidence(BaseModel):
@@ -155,6 +157,18 @@ class ProductTimelineEvent(BaseModel):
     created_at: datetime
 
 
+class ProductEmailLifecycle(BaseModel):
+    lifecycle_status: EmailLifecycleStatus = "ACTIVE"
+    outlook_read_state: OutlookReadState = "UNKNOWN"
+    outlook_categories: list[str] = Field(default_factory=list)
+    outlook_folder_id: str | None = None
+    outlook_archived: bool = False
+    last_outlook_sync_at: datetime | None = None
+    outlook_sync_error: str | None = None
+    deleted_at: datetime | None = None
+    restored_at: datetime | None = None
+
+
 class ProductEmailSummary(BaseModel):
     id: uuid.UUID
     external_message_id: str
@@ -175,6 +189,7 @@ class ProductEmailSummary(BaseModel):
     review_id: uuid.UUID | None = None
     review_status: str | None = None
     review_reason: str | None = None
+    lifecycle: ProductEmailLifecycle = Field(default_factory=ProductEmailLifecycle)
 
 
 class EmailQueuePage(BaseModel):
@@ -203,6 +218,9 @@ class ProductSummary(BaseModel):
     human_review_open_count: int = Field(default=0, description="Number of currently actionable ACTIVE open review cases.")
     failed_count: int = 0
     processing_count: int = 0
+    deleted_count: int = 0
+    unread_count: int = 0
+    sync_error_count: int = 0
 
 
 class ProductEmailDetail(BaseModel):
@@ -357,6 +375,36 @@ class CategoryOverrideIn(BaseModel):
     category: ProductCategory
     reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
     reason: str | None = Field(default=None, max_length=4000)
+
+
+class OutlookLifecycleReconcileIn(BaseModel):
+    email_id: uuid.UUID | None = None
+    external_message_id: str | None = Field(default=None, min_length=1, max_length=255)
+    source_type: str = Field(default="GRAPH", min_length=1, max_length=50)
+    lifecycle_status: Literal["ACTIVE", "DELETED", "RESTORED", "ARCHIVED"] | None = None
+    outlook_read_state: OutlookReadState | None = None
+    outlook_categories: list[str] | None = Field(default=None, max_length=50)
+    outlook_folder_id: str | None = Field(default=None, max_length=512)
+    outlook_archived: bool | None = None
+    sync_error: str | None = Field(default=None, max_length=4000)
+    synced_at: datetime | None = None
+    actor_name: str | None = Field(default=None, max_length=255)
+
+
+class OutlookLifecycleReconcileOut(BaseModel):
+    email_id: uuid.UUID
+    action: str
+    lifecycle: ProductEmailLifecycle
+
+
+class ProductSyncStatus(BaseModel):
+    total_emails: int
+    active_count: int
+    deleted_count: int
+    archived_count: int
+    unread_count: int
+    sync_error_count: int
+    last_outlook_sync_at: datetime | None = None
 
 
 class ProductReplyWorkflow(BaseModel):

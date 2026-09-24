@@ -53,6 +53,7 @@ from backend.app.api.product_queries import (
     get_human_review as get_product_human_review,
     get_product_discrepancy_detail,
     get_product_summary,
+    get_product_sync_status,
     list_email_queue,
     list_human_reviews as list_product_human_reviews,
     list_processing_events,
@@ -80,9 +81,13 @@ from backend.app.api.product_schemas import (
     ProductEmailDetail,
     ProductEvent,
     ProductIncomingOut,
+    OutlookLifecycleReconcileIn,
+    OutlookLifecycleReconcileOut,
+    ProductEmailLifecycle,
     ProductReprocessOut,
     ProductReplyWorkflow,
     ProductReview,
+    ProductSyncStatus,
     ProductSummary,
     ReplyGenerateIn,
     ReplyRefineIn,
@@ -440,6 +445,7 @@ def product_email_queue(
     search: str | None = Query(None, min_length=1, max_length=200),
     received_from: datetime | None = Query(None),
     received_to: datetime | None = Query(None),
+    lifecycle_status: Literal["ACTIVE", "DELETED", "ARCHIVED"] | None = Query(None),
     session: Session = Depends(get_session),
 ):
     valid_statuses = {
@@ -469,6 +475,7 @@ def product_email_queue(
         search=search,
         received_from=received_from,
         received_to=received_to,
+        lifecycle_status=lifecycle_status,
     )
 
 
@@ -479,6 +486,15 @@ def product_email_queue(
 )
 def product_summary(session: Session = Depends(get_session)):
     return get_product_summary(session)
+
+
+@router.get(
+    "/v1/sync/status",
+    response_model=ProductSyncStatus,
+    summary="Return Outlook lifecycle synchronisation status",
+)
+def product_sync_status(session: Session = Depends(get_session)):
+    return get_product_sync_status(session)
 
 
 @router.get(
@@ -551,6 +567,153 @@ def _workflow_payload(record: EmailMessageRecord, **updates) -> ProductReplyWork
     metadata["outlook_workflow"] = workflow
     record.source_metadata = metadata
     return ProductReplyWorkflow(email_id=record.id, **workflow)
+
+
+def _product_lifecycle(record: EmailMessageRecord) -> ProductEmailLifecycle:
+    return ProductEmailLifecycle(
+        lifecycle_status=record.lifecycle_status,
+        outlook_read_state=record.outlook_read_state,
+        outlook_categories=list(record.outlook_categories or []),
+        outlook_folder_id=record.outlook_folder_id,
+        outlook_archived=record.outlook_archived,
+        last_outlook_sync_at=record.last_outlook_sync_at,
+        outlook_sync_error=record.outlook_sync_error,
+        deleted_at=record.deleted_at,
+        restored_at=record.restored_at,
+    )
+
+
+def _append_lifecycle_event(
+    session: Session,
+    record: EmailMessageRecord,
+    reason_code: str,
+    *,
+    details: dict | None = None,
+) -> None:
+    session.add(
+        ProcessingEventRecord(
+            email_id=record.id,
+            old_status=record.processing_status,
+            new_status=record.processing_status,
+            reason_code=reason_code,
+        )
+    )
+    metadata = dict(record.source_metadata or {})
+    events = list(metadata.get("outlook_events") or [])
+    events.append(
+        {
+            "reason_code": reason_code,
+            "created_at": utcnow().isoformat(),
+            "details": details or {},
+        }
+    )
+    metadata["outlook_events"] = events[-50:]
+    record.source_metadata = metadata
+
+
+def _find_lifecycle_record(
+    session: Session,
+    payload: OutlookLifecycleReconcileIn,
+) -> EmailMessageRecord | None:
+    if payload.email_id:
+        return session.get(EmailMessageRecord, payload.email_id)
+    if not payload.external_message_id:
+        return None
+    return session.scalar(
+        select(EmailMessageRecord).where(
+            EmailMessageRecord.source_type == payload.source_type,
+            EmailMessageRecord.external_message_id == payload.external_message_id,
+        )
+    )
+
+
+@router.post(
+    "/v1/outlook/reconcile",
+    response_model=OutlookLifecycleReconcileOut,
+    summary="Reconcile Outlook email lifecycle state into HolyShip",
+)
+def product_outlook_reconcile(
+    payload: OutlookLifecycleReconcileIn,
+    session: Session = Depends(get_session),
+):
+    record = _find_lifecycle_record(session, payload)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Email not found for Outlook reconciliation")
+
+    now = utcnow()
+    previous_lifecycle = record.lifecycle_status
+    changed_reasons: list[str] = []
+
+    if payload.lifecycle_status:
+        requested = payload.lifecycle_status
+        if requested == "DELETED":
+            record.lifecycle_status = "DELETED"
+            record.deleted_at = record.deleted_at or now
+            changed_reasons.append("OUTLOOK_EMAIL_DELETED")
+        elif requested == "RESTORED":
+            record.lifecycle_status = "ACTIVE"
+            record.restored_at = now
+            record.outlook_sync_error = None
+            changed_reasons.append("OUTLOOK_EMAIL_RESTORED")
+        elif requested == "ARCHIVED":
+            record.lifecycle_status = "ARCHIVED"
+            record.outlook_archived = True
+            changed_reasons.append("OUTLOOK_EMAIL_ARCHIVED")
+        elif requested == "ACTIVE":
+            record.lifecycle_status = "ACTIVE"
+            record.outlook_archived = bool(payload.outlook_archived) if payload.outlook_archived is not None else False
+            if previous_lifecycle == "DELETED":
+                record.restored_at = now
+                changed_reasons.append("OUTLOOK_EMAIL_RESTORED")
+            else:
+                changed_reasons.append("OUTLOOK_LIFECYCLE_RECONCILED")
+
+    if payload.outlook_read_state and payload.outlook_read_state != record.outlook_read_state:
+        record.outlook_read_state = payload.outlook_read_state
+        changed_reasons.append("OUTLOOK_READ_STATE_SYNCED")
+    if payload.outlook_categories is not None:
+        categories = [item.strip() for item in payload.outlook_categories if item.strip()]
+        if categories != list(record.outlook_categories or []):
+            record.outlook_categories = categories
+            changed_reasons.append("OUTLOOK_CATEGORY_SYNCED")
+    if payload.outlook_folder_id is not None and payload.outlook_folder_id != record.outlook_folder_id:
+        record.outlook_folder_id = payload.outlook_folder_id
+        changed_reasons.append("OUTLOOK_FOLDER_SYNCED")
+    if payload.outlook_archived is not None and payload.outlook_archived != record.outlook_archived:
+        record.outlook_archived = payload.outlook_archived
+        if payload.outlook_archived and record.lifecycle_status == "ACTIVE":
+            record.lifecycle_status = "ARCHIVED"
+        elif not payload.outlook_archived and record.lifecycle_status == "ARCHIVED":
+            record.lifecycle_status = "ACTIVE"
+        changed_reasons.append("OUTLOOK_ARCHIVE_STATE_SYNCED")
+
+    record.last_outlook_sync_at = payload.synced_at or now
+    record.outlook_sync_error = payload.sync_error
+    if payload.sync_error:
+        changed_reasons.append("OUTLOOK_SYNC_FAILED")
+
+    reason_code = changed_reasons[0] if changed_reasons else "OUTLOOK_LIFECYCLE_RECONCILED"
+    _append_lifecycle_event(
+        session,
+        record,
+        reason_code,
+        details={
+            "all_reason_codes": changed_reasons or [reason_code],
+            "actor_name": payload.actor_name,
+            "lifecycle_status": record.lifecycle_status,
+            "outlook_read_state": record.outlook_read_state,
+            "outlook_categories": record.outlook_categories,
+            "previous_lifecycle_status": previous_lifecycle,
+            "sync_error": bool(payload.sync_error),
+        },
+    )
+    session.commit()
+    session.refresh(record)
+    return OutlookLifecycleReconcileOut(
+        email_id=record.id,
+        action=reason_code,
+        lifecycle=_product_lifecycle(record),
+    )
 
 
 def _reply_seed_points(detail: ProductEmailDetail) -> list[str]:
