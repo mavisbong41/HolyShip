@@ -506,6 +506,32 @@ function OverviewPage({
             tone="neutral"
           />
         </div>
+
+        {summary && summary.deleted_count > 0 && (
+          <div
+            className="deleted-lifecycle-banner"
+            role="button"
+            tabIndex={0}
+            onClick={() => {
+              onFilters({ ...filters, lifecycle_status: "DELETED", skip: 0 });
+              onOpenQueue();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                onFilters({ ...filters, lifecycle_status: "DELETED", skip: 0 });
+                onOpenQueue();
+              }
+            }}
+          >
+            <div className="deleted-lifecycle-banner-left">
+              <Archive size={14} className="deleted-banner-icon" />
+              <span>
+                <strong>{summary.deleted_count}</strong> email{summary.deleted_count === 1 ? "" : "s"} deleted in Outlook — historical comparisons, overrides, and audit events preserved.
+              </span>
+            </div>
+            <span className="deleted-banner-link">View deleted queue →</span>
+          </div>
+        )}
       </section>
 
       <div className="overview-tri-grid">
