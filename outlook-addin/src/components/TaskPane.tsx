@@ -78,9 +78,11 @@ function LoadingView(): React.ReactElement {
 function NotFoundView({
   note,
   onSelectDemo,
+  onRefresh,
 }: {
   note: string | null;
   onSelectDemo?: (key: string) => void;
+  onRefresh?: () => void;
 }): React.ReactElement {
   return (
     <div className="not-found-state" role="status">
@@ -91,6 +93,20 @@ function NotFoundView({
       <p>
         This email has not been processed by HolyShip, or it could not be identified.
       </p>
+      {onRefresh && (
+        <div style={{ marginTop: 6, marginBottom: 4 }}>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            onClick={onRefresh}
+            aria-label="Refresh case data"
+            title="Refresh case data"
+          >
+            <RefreshCw size={12} aria-hidden="true" />
+            Refresh
+          </button>
+        </div>
+      )}
       {note && (
         <div className="limitation-note" role="note">
           <Info size={12} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
@@ -233,17 +249,23 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
   }
 
   if ((status === "BLOCKED" || email.needs_review) && status !== "FAILED") {
+    const totalAffected = (email.mismatch_count || 0) + (email.unresolved_count || 0);
+    const countText = totalAffected > 0
+      ? `${totalAffected} field${totalAffected > 1 ? "s" : ""} require attention`
+      : "1 field requires attention";
+
     return (
-      <div className="state-card">
+      <div className="state-card state-card-needs-review">
         <div className="state-card-icon icon-warn" aria-hidden="true">
-          <AlertTriangle size={18} />
+          <AlertTriangle size={15} />
         </div>
         <div className="state-card-body">
           <h2>Needs Review</h2>
           <p>
-            {email.review_reason
-              ? reasonLabels[email.review_reason] || displayLabel(email.review_reason)
-              : "Human Review is required for this case."}
+            {countText}
+            {email.review_reason && (
+              <span className="sr-only"> — {reasonLabels[email.review_reason] || displayLabel(email.review_reason)}</span>
+            )}
           </p>
         </div>
       </div>
@@ -1160,36 +1182,45 @@ function RequiresAttentionSection({
         <span className="badge badge-bad">{problematicFields.length} Issue{problematicFields.length > 1 ? "s" : ""}</span>
       </div>
 
-      <div className="attention-cards-list">
+      <div className="attention-rows-group">
         {problematicFields.map((fieldRow) => {
           const siVal = displayValue(fieldRow.si.raw ?? fieldRow.si.canonical);
           const blVal = displayValue(fieldRow.bl.raw ?? fieldRow.bl.canonical);
           const isMismatch = fieldRow.status === "MISMATCH";
+          // Check if both values are short enough to display inline with arrow: SI [val] → BL [val]
+          const isInlineCompatible = siVal.length <= 16 && blVal.length <= 16 && siVal !== "—" && blVal !== "—";
 
           return (
-            <div key={fieldRow.field} className="attention-field-card">
-              <div className="attention-card-header">
-                <span className="attention-field-name">{labelForField(fieldRow.field)}</span>
+            <div key={fieldRow.field} className="attention-compact-row">
+              <div className="attention-row-header">
+                <span className="attention-row-name">{labelForField(fieldRow.field)}</span>
                 <span className={`badge ${isMismatch ? "badge-bad" : "badge-warn"}`}>
                   {isMismatch ? "Mismatch" : "Unresolved"}
                 </span>
               </div>
 
-              <div className="attention-values-comparison">
-                <div className="attention-value-box si-box">
-                  <span className="value-box-label">SI Reference</span>
-                  <span className="value-box-data">{siVal}</span>
+              {isInlineCompatible ? (
+                <div className="attention-row-inline-values">
+                  <span className="val-segment">
+                    <span className="doc-tag si">SI</span>
+                    <strong className="val-text">{siVal}</strong>
+                  </span>
+                  <span className="val-arrow" aria-hidden="true">→</span>
+                  <span className="val-segment">
+                    <span className="doc-tag bl">BL</span>
+                    <strong className="val-text">{blVal}</strong>
+                  </span>
                 </div>
-                <div className="attention-value-box bl-box">
-                  <span className="value-box-label">Draft BL</span>
-                  <span className="value-box-data">{blVal}</span>
-                </div>
-              </div>
-
-              {fieldRow.status === "UNRESOLVED" && fieldRow.reason && (
-                <div className="attention-field-reason">
-                  <Info size={11} aria-hidden="true" />
-                  <span>{fieldRow.reason}</span>
+              ) : (
+                <div className="attention-row-stacked-values">
+                  <div className="val-segment">
+                    <span className="doc-tag si">SI</span>
+                    <span className="val-text">{siVal}</span>
+                  </div>
+                  <div className="val-segment">
+                    <span className="doc-tag bl">BL</span>
+                    <span className="val-text">{blVal}</span>
+                  </div>
                 </div>
               )}
             </div>
@@ -1208,7 +1239,7 @@ function RequiresAttentionSection({
               <CheckCircle2 size={13} style={{ color: "var(--color-success)" }} aria-hidden="true" />
               ✓ {matchedCount} other field{matchedCount > 1 ? "s" : ""} matched
             </span>
-            <span className="btn-link-action">View full comparison →</span>
+            <span className="btn-link-action">View comparison →</span>
           </button>
         </div>
       )}
@@ -1933,6 +1964,7 @@ export function TaskPane({
   const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
   const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
   const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const resolveGeneration = useRef(0);
   const lastItemIdRef = useRef<string | null>(null);
 
@@ -1964,6 +1996,9 @@ export function TaskPane({
     }
 
     const currentGen = ++resolveGeneration.current;
+    if (force) {
+      setIsRefreshing(true);
+    }
     setActionState("idle");
     setState({ type: "loading" });
 
@@ -2006,6 +2041,10 @@ export function TaskPane({
         type: "error",
         message: err instanceof Error ? err.message : "Failed to load HolyShip status",
       });
+    } finally {
+      if (currentGen === resolveGeneration.current) {
+        setIsRefreshing(false);
+      }
     }
   }, [contextProvider]);
 
@@ -2142,23 +2181,6 @@ export function TaskPane({
 
   return (
     <div className="pane-shell">
-      {/* Top Utility / Sync Row (One compact horizontal row) */}
-      <header className="pane-sync-row">
-        <div className="pane-sync-info">
-          <span className="sync-status-dot" />
-          <span>Synced · Just now</span>
-        </div>
-        <button
-          className="btn-sync-refresh"
-          type="button"
-          onClick={() => void refreshCurrentEmail(true)}
-          aria-label="Refresh case data"
-          title="Refresh case data"
-        >
-          <RefreshCw size={13} aria-hidden="true" />
-        </button>
-      </header>
-
       {/* Standalone Demo Showcase Switcher (Only if explicitly enabled via ?demo=1 or toggled) */}
       {showDemoBar && (
         <nav className="demo-switcher-bar" aria-label="Sample Cases Switcher">
@@ -2242,6 +2264,7 @@ export function TaskPane({
               setShowDemoBar(true);
               setSelectedDemoKey(k);
             }}
+            onRefresh={() => void refreshCurrentEmail(true)}
           />
         )}
 
@@ -2293,8 +2316,20 @@ export function TaskPane({
 
             {/* ══════════════ 1. PRIMARY SCREEN: CASE OVERVIEW ══════════════ */}
             <div className={`workflow-subview ${activeWorkflowView === "overview" ? "active" : "visually-hidden"}`}>
-              {/* Compact Email Subject Heading */}
-              <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
+              {/* Compact Case Header Row with Email Subject & Refresh */}
+              <div className="case-header-row">
+                <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
+                <button
+                  className="btn-sync-refresh"
+                  type="button"
+                  onClick={() => void refreshCurrentEmail(true)}
+                  aria-label="Refresh case data"
+                  title="Refresh case data"
+                  disabled={isRefreshing}
+                >
+                  <RefreshCw size={13} className={isRefreshing ? "spin-icon" : ""} aria-hidden="true" />
+                </button>
+              </div>
 
               {/* State-Driven Case Status Card */}
               <ProcessingStateCard email={effectiveDetail.email} />
