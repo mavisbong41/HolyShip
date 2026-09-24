@@ -140,7 +140,7 @@ def test_human_review_gateway_discloses_only_affected_case_data():
         feature="human_review_assistant",
         model="gemini-2.5-flash",
         data={
-            "question": "Explain this for ops@example.com",
+            "question": "Explain this for ops@example.com api_key=topsecret Bearer abc123",
             "context": _human_review_context(),
         },
     )
@@ -148,7 +148,9 @@ def test_human_review_gateway_discloses_only_affected_case_data():
     serialized = json.dumps(payload, sort_keys=True)
     case = payload["case"]
 
-    assert payload["question"] == "Explain this for [REDACTED_EMAIL]"
+    assert payload["question"] == (
+        "Explain this for [REDACTED_EMAIL] api_key=[REDACTED] Bearer [REDACTED]"
+    )
     assert "sender" not in case
     assert "subject" not in case
     assert "case_id" not in case
@@ -457,6 +459,14 @@ def test_gemini_network_calls_are_centralized_in_gateway():
     assert "urllib.request.urlopen" not in gemini_review
     assert "urllib.request.urlopen" not in gemini_resolver
     assert gateway_source.count("urllib.request.urlopen") == 1
+
+    gateway_path = Path("backend/app/security/ai_gateway.py")
+    for path in Path("backend/app").rglob("*.py"):
+        if path == gateway_path:
+            continue
+        source = path.read_text(encoding="utf-8", errors="ignore")
+        assert "generativelanguage.googleapis.com" not in source
+        assert '"x-goog-api-key"' not in source
 
 
 def test_frontend_sources_do_not_reference_gemini_api_secrets():
