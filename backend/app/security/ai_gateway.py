@@ -27,7 +27,8 @@ _ALLOWED_PURPOSES = frozenset(
 
 _EMAIL_RE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 _SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_ -]?key|authorization|token|password)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
+    r"(?i)\b(api[_ -]?key|authorization|access[_ -]?token|refresh[_ -]?token|"
+    r"client[_ -]?secret|token|password|secret)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
 )
 _BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 
@@ -75,19 +76,26 @@ class SecureAIGateway:
         if max_payload_bytes < 1024:
             raise ValueError("max_payload_bytes must be at least 1024")
         self.enterprise_privacy_mode = enterprise_privacy_mode
+        provider_source = {"gemini", "google"} if allowed_providers is None else allowed_providers
+        model_source = set() if allowed_models is None else allowed_models
+        endpoint_source = (
+            {"generativelanguage.googleapis.com"}
+            if allowed_endpoint_hosts is None
+            else allowed_endpoint_hosts
+        )
         self.allowed_providers = {
             value.strip().lower()
-            for value in (allowed_providers or {"gemini", "google"})
+            for value in provider_source
             if value and value.strip()
         }
         self.allowed_models = {
             value.strip()
-            for value in (allowed_models or set())
+            for value in model_source
             if value and value.strip()
         }
         self.allowed_endpoint_hosts = {
             value.strip().lower()
-            for value in (allowed_endpoint_hosts or {"generativelanguage.googleapis.com"})
+            for value in endpoint_source
             if value and value.strip()
         }
         self.max_payload_bytes = max_payload_bytes
@@ -281,7 +289,13 @@ class SecureAIGateway:
                 f"AI model {model!r} is not approved by Enterprise Privacy Mode"
             )
         if endpoint:
-            host = (urlparse(endpoint).hostname or "").strip().lower()
+            parsed = urlparse(endpoint)
+            scheme = (parsed.scheme or "").strip().lower()
+            host = (parsed.hostname or "").strip().lower()
+            if scheme != "https":
+                raise AIGatewayPolicyError(
+                    "AI endpoint must use HTTPS while Enterprise Privacy Mode is active"
+                )
             if not host or host not in self.allowed_endpoint_hosts:
                 raise AIGatewayPolicyError(
                     f"AI endpoint host {host or '<missing>'!r} is not approved by Enterprise Privacy Mode"
