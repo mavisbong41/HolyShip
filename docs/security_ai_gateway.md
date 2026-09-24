@@ -68,7 +68,10 @@ Gemini receives only:
 - field-local evidence;
 - escalation reason.
 
-It does not receive the full email or full document.
+When multiple unresolved extraction fields are batched for performance, each
+batch entry is independently reduced to those same field-local attributes.
+The gateway keeps the existing single-provider-call optimization without
+expanding disclosure to the full email or full document.
 
 ### Field semantic comparison
 
@@ -96,7 +99,9 @@ The gateway removes:
 - unrelated comparison fields;
 - reviewer identity and free-form override notes.
 
-For field-level review, only affected fields are disclosed.
+For field-level review, only affected fields are disclosed. For document- or
+email-level review where there is no affected canonical field, no SI/BL field
+values or field overrides are disclosed.
 
 Document metadata is reduced to operational information such as role, format, validation/read state, and routing outcome.
 
