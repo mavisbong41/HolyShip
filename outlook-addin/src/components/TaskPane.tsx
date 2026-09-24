@@ -2346,7 +2346,11 @@ export function TaskPane({
         setActionState("idle");
         return;
       }
-      await reconcileOutlookLifecycle(emailId, { outlook_folder_id: "inbox", outlook_archived: false });
+      await reconcileOutlookLifecycle(emailId, {
+        lifecycle_status: "RESTORED",
+        outlook_folder_id: "inbox",
+        outlook_archived: false,
+      });
       await refreshCurrentEmail(true);
       setActionState("idle");
     } catch (err) {
