@@ -216,7 +216,32 @@ export interface ProductReview {
   age_minutes?: number;
   comparison: ProductComparison | null;
   resolutions: ProductResolution[];
+  overrides?: ProductReviewOverride[];
+  actions?: ProductReviewAction[];
   ai_suggestions?: ProductAISuggestion[];
+  created_at: string;
+}
+
+export interface ProductReviewOverride {
+  id: string;
+  document_side: "SI" | "BL";
+  field: CanonicalField | string;
+  original_field_id: string;
+  corrected_value: unknown;
+  corrected_canonical_value: unknown;
+  reviewer_name?: string | null;
+  note?: string | null;
+  active: boolean;
+  supersedes_override_id?: string | null;
+  ai_suggestion_id?: string | null;
+  created_at: string;
+}
+
+export interface ProductReviewAction {
+  id: string;
+  action: string;
+  actor_name?: string | null;
+  details: Record<string, unknown>;
   created_at: string;
 }
 

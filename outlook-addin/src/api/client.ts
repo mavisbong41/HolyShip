@@ -1,4 +1,4 @@
-import type { AIAssistantResponse, EmailQueuePage, ProductEmailDetail } from "../types/product";
+import type { AIAssistantResponse, EmailQueuePage, ProductEmailDetail, ProductReview } from "../types/product";
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -81,6 +81,95 @@ export async function askAIAssistant(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ question }),
+  });
+}
+
+export async function claimHumanReview(reviewId: string, reviewerName: string): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function saveHumanReviewOverride(
+  reviewId: string,
+  payload: {
+    document_side: "SI" | "BL";
+    field: string;
+    corrected_value: unknown;
+    corrected_canonical_value?: unknown;
+    reviewer_name?: string;
+    note?: string;
+  },
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/overrides`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function resolveHumanReview(
+  reviewId: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, notes }),
+  });
+}
+
+export async function dismissHumanReview(
+  reviewId: string,
+  reason: string,
+  reviewerName?: string,
+  notes?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName, reason, notes }),
+  });
+}
+
+export async function acceptAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  reviewerLabel: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/accept`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_label: reviewerLabel }),
+  });
+}
+
+export async function applyEditedAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  value: string,
+  reviewerLabel: string,
+  note?: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/apply-edited`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ value, reviewer_label: reviewerLabel, note }),
+  });
+}
+
+export async function dismissAISuggestion(
+  reviewId: string,
+  suggestionId: string,
+  reviewerLabel: string,
+): Promise<ProductReview> {
+  return request<ProductReview>(`/human-review/${reviewId}/ai/suggestions/${suggestionId}/dismiss`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_label: reviewerLabel }),
   });
 }
 

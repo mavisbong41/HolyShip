@@ -3,7 +3,9 @@ import {
   AlertTriangle,
   Bot,
   CheckCircle2,
+  Check,
   Clock,
+  Edit3,
   ExternalLink,
   FileSearch,
   FileText,
@@ -11,10 +13,21 @@ import {
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  X,
 } from "lucide-react";
 import type React from "react";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { askAIAssistant, reprocessEmail } from "../api/client";
+import {
+  acceptAISuggestion,
+  applyEditedAISuggestion,
+  askAIAssistant,
+  claimHumanReview,
+  dismissAISuggestion,
+  dismissHumanReview,
+  reprocessEmail,
+  resolveHumanReview,
+  saveHumanReviewOverride,
+} from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
@@ -24,6 +37,7 @@ import type {
   ProductEmailDetail,
   ProductEmailSummary,
   ProductReview,
+  ProductAISuggestion,
 } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
@@ -277,14 +291,19 @@ function ComparisonSummaryStrip({
 function AICompanionSection({
   reviewId,
   reviewUrl,
+  onActionComplete,
 }: {
   reviewId: string;
   reviewUrl: string | null;
+  onActionComplete: () => Promise<void>;
 }): React.ReactElement {
   const [isAsking, setIsAsking] = useState(false);
+  const [isApplying, setIsApplying] = useState(false);
   const [response, setResponse] = useState<AIAssistantResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [lastQuestion, setLastQuestion] = useState<string | null>(null);
+  const [editedValue, setEditedValue] = useState("");
+  const [reviewerLabel, setReviewerLabel] = useState("Outlook reviewer");
 
   const handleAsk = async (question: string) => {
     setIsAsking(true);
@@ -293,10 +312,37 @@ function AICompanionSection({
     try {
       const resp = await askAIAssistant(reviewId, question);
       setResponse(resp);
+      setEditedValue(resp.suggestion?.suggested_value ?? "");
     } catch (err) {
       setError(err instanceof Error ? err.message : "AI Assistant unavailable");
     } finally {
       setIsAsking(false);
+    }
+  };
+
+  const handleSuggestionAction = async (action: "accept" | "edit" | "dismiss") => {
+    if (!response?.suggestion_id || isApplying) return;
+    setIsApplying(true);
+    setError(null);
+    try {
+      if (action === "accept") {
+        await acceptAISuggestion(reviewId, response.suggestion_id, reviewerLabel || "Outlook reviewer");
+      } else if (action === "edit") {
+        await applyEditedAISuggestion(
+          reviewId,
+          response.suggestion_id,
+          editedValue,
+          reviewerLabel || "Outlook reviewer",
+          "Edited and applied from Outlook Add-in.",
+        );
+      } else {
+        await dismissAISuggestion(reviewId, response.suggestion_id, reviewerLabel || "Outlook reviewer");
+      }
+      await onActionComplete();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Unable to apply AI suggestion");
+    } finally {
+      setIsApplying(false);
     }
   };
 
@@ -392,6 +438,56 @@ function AICompanionSection({
                   Open Review & Apply in HolyShip
                 </a>
               )}
+              {response.suggestion_id && (
+                <div className="ai-action-panel" aria-label="AI suggestion action controls">
+                  <label>
+                    Reviewer
+                    <input
+                      type="text"
+                      value={reviewerLabel}
+                      onChange={(event) => setReviewerLabel(event.target.value)}
+                    />
+                  </label>
+                  <label>
+                    Edited value
+                    <input
+                      type="text"
+                      value={editedValue}
+                      onChange={(event) => setEditedValue(event.target.value)}
+                    />
+                  </label>
+                  <div className="inline-action-row">
+                    <button
+                      type="button"
+                      className="btn-primary"
+                      disabled={isApplying}
+                      onClick={() => void handleSuggestionAction("accept")}
+                    >
+                      <Check size={12} aria-hidden="true" />
+                      Accept
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={isApplying || !editedValue.trim()}
+                      onClick={() => void handleSuggestionAction("edit")}
+                    >
+                      <Edit3 size={12} aria-hidden="true" />
+                      Apply Edit
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary"
+                      disabled={isApplying}
+                      onClick={() => void handleSuggestionAction("dismiss")}
+                    >
+                      <X size={12} aria-hidden="true" />
+                      Reject
+                    </button>
+                  </div>
+                  <p className="mini-note">Applying an accepted or edited suggestion stores a human override and triggers re-comparison.</p>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -425,6 +521,274 @@ function reviewSuggestedAction(review: ProductReview): string {
     return "Open Human Review and confirm the document issue.";
   }
   return "Open Human Review and confirm this email-level issue.";
+}
+
+function safeText(value: unknown): string {
+  if (value === null || value === undefined || value === "") return "—";
+  if (typeof value === "object") return JSON.stringify(value);
+  return String(value);
+}
+
+function ReviewHistorySection({ review }: { review: ProductReview }): React.ReactElement | null {
+  const overrides = review.overrides ?? [];
+  const actions = review.actions ?? [];
+  if (overrides.length === 0 && actions.length === 0) return null;
+
+  return (
+    <section className="history-section" aria-label="Review history">
+      <p className="pane-section-label">Review History</p>
+      {overrides.length > 0 && (
+        <div className="history-list">
+          {overrides.map((override) => (
+            <article key={override.id} className="history-item">
+              <div className="history-item-head">
+                <strong>{override.document_side} · {labelForField(override.field)}</strong>
+                <StatusBadge value={override.active ? "ACTIVE" : "SUPERSEDED"} tone={override.active ? "good" : "neutral"} />
+              </div>
+              <p>{safeText(override.corrected_value)}</p>
+              <small>{override.reviewer_name || "Reviewer"} · {formatDate(override.created_at)}</small>
+            </article>
+          ))}
+        </div>
+      )}
+      {actions.length > 0 && (
+        <div className="history-list">
+          {actions.slice().reverse().slice(0, 6).map((action) => (
+            <article key={action.id} className="history-item compact">
+              <strong>{displayLabel(action.action)}</strong>
+              <small>{action.actor_name || "System"} · {formatDate(action.created_at)}</small>
+            </article>
+          ))}
+        </div>
+      )}
+    </section>
+  );
+}
+
+function ExistingSuggestionsSection({
+  review,
+  onActionComplete,
+}: {
+  review: ProductReview;
+  onActionComplete: () => Promise<void>;
+}): React.ReactElement | null {
+  const suggestions = (review.ai_suggestions ?? []).filter((suggestion) => suggestion.status === "PENDING");
+  const [busyId, setBusyId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [edits, setEdits] = useState<Record<string, string>>({});
+  const [reviewerLabel, setReviewerLabel] = useState("Outlook reviewer");
+
+  if (suggestions.length === 0) return null;
+
+  const applyAction = async (suggestion: ProductAISuggestion, action: "accept" | "edit" | "dismiss") => {
+    setBusyId(suggestion.id);
+    setError(null);
+    try {
+      if (action === "accept") {
+        await acceptAISuggestion(review.id, suggestion.id, reviewerLabel || "Outlook reviewer");
+      } else if (action === "edit") {
+        await applyEditedAISuggestion(
+          review.id,
+          suggestion.id,
+          edits[suggestion.id] ?? suggestion.suggested_value ?? "",
+          reviewerLabel || "Outlook reviewer",
+          "Edited and applied from Outlook Add-in.",
+        );
+      } else {
+        await dismissAISuggestion(review.id, suggestion.id, reviewerLabel || "Outlook reviewer");
+      }
+      await onActionComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Unable to update AI suggestion");
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Pending AI suggestions">
+      <div className="section-title-row">
+        <p className="pane-section-label">AI Plan</p>
+        <span className="badge badge-info">{suggestions.length} pending</span>
+      </div>
+      <label className="form-field">
+        Reviewer
+        <input value={reviewerLabel} onChange={(event) => setReviewerLabel(event.target.value)} />
+      </label>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <div className="history-list">
+        {suggestions.map((suggestion) => {
+          const editedValue = edits[suggestion.id] ?? suggestion.suggested_value ?? "";
+          return (
+            <article key={suggestion.id} className="history-item">
+              <div className="history-item-head">
+                <strong>{suggestion.document_side ?? "Field"} · {suggestion.field ? labelForField(suggestion.field) : "Suggestion"}</strong>
+                {suggestion.confidence != null && <span className="badge badge-info">{Math.round(suggestion.confidence * 100)}%</span>}
+              </div>
+              <p>{suggestion.reason || suggestion.message}</p>
+              <div className="suggestion-diff">
+                <span>{safeText(suggestion.current_value)}</span>
+                <span>→</span>
+                <strong>{safeText(suggestion.suggested_value)}</strong>
+              </div>
+              <label className="form-field">
+                Edit proposed value
+                <input
+                  value={editedValue}
+                  onChange={(event) => setEdits((current) => ({ ...current, [suggestion.id]: event.target.value }))}
+                />
+              </label>
+              <div className="inline-action-row">
+                <button className="btn-primary" type="button" disabled={busyId === suggestion.id} onClick={() => void applyAction(suggestion, "accept")}>
+                  <Check size={12} aria-hidden="true" />Approve
+                </button>
+                <button className="btn-secondary" type="button" disabled={busyId === suggestion.id || !editedValue.trim()} onClick={() => void applyAction(suggestion, "edit")}>
+                  <Edit3 size={12} aria-hidden="true" />Apply Edit
+                </button>
+                <button className="btn-secondary" type="button" disabled={busyId === suggestion.id} onClick={() => void applyAction(suggestion, "dismiss")}>
+                  <X size={12} aria-hidden="true" />Reject
+                </button>
+              </div>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DirectReviewActions({
+  review,
+  comparison,
+  onActionComplete,
+}: {
+  review: ProductReview;
+  comparison: ProductComparison | null;
+  onActionComplete: () => Promise<void>;
+}): React.ReactElement {
+  const firstProblemField = comparison?.fields.find((field) => field.status !== "MATCH")?.field ?? review.field ?? "shipper";
+  const [reviewerName, setReviewerName] = useState(review.reviewer_name || "Outlook reviewer");
+  const [documentSide, setDocumentSide] = useState<"SI" | "BL">("BL");
+  const [field, setField] = useState(firstProblemField);
+  const [correctedValue, setCorrectedValue] = useState("");
+  const [note, setNote] = useState("");
+  const [resolveNotes, setResolveNotes] = useState("");
+  const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const run = async (action: string, operation: () => Promise<unknown>) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      await operation();
+      await onActionComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Review action failed");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Outlook Human Review actions">
+      <div className="section-title-row">
+        <p className="pane-section-label">Review Actions</p>
+        <span className="badge badge-attention">Shared Backend</span>
+      </div>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <label className="form-field">
+        Reviewer
+        <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
+      </label>
+      {review.status === "OPEN" && (
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busyAction === "claim"}
+          onClick={() => void run("claim", () => claimHumanReview(review.id, reviewerName || "Outlook reviewer"))}
+        >
+          <Check size={12} aria-hidden="true" />
+          Claim review
+        </button>
+      )}
+      <div className="review-form-grid">
+        <label className="form-field">
+          Side
+          <select value={documentSide} onChange={(event) => setDocumentSide(event.target.value as "SI" | "BL")}>
+            <option value="SI">SI</option>
+            <option value="BL">Draft BL</option>
+          </select>
+        </label>
+        <label className="form-field">
+          Field
+          <select value={field} onChange={(event) => setField(event.target.value)}>
+            {comparison?.fields.map((item) => (
+              <option key={item.field} value={item.field}>{labelForField(item.field)}</option>
+            )) ?? <option value={field}>{labelForField(field)}</option>}
+          </select>
+        </label>
+      </div>
+      <label className="form-field">
+        Corrected value
+        <input value={correctedValue} onChange={(event) => setCorrectedValue(event.target.value)} />
+      </label>
+      <label className="form-field">
+        Note
+        <textarea value={note} onChange={(event) => setNote(event.target.value)} rows={2} />
+      </label>
+      <div className="inline-action-row">
+        <button
+          type="button"
+          className="btn-primary"
+          disabled={busyAction === "override" || !correctedValue.trim()}
+          onClick={() => void run("override", () => saveHumanReviewOverride(review.id, {
+            document_side: documentSide,
+            field,
+            corrected_value: correctedValue,
+            reviewer_name: reviewerName || "Outlook reviewer",
+            note,
+          }))}
+        >
+          <Edit3 size={12} aria-hidden="true" />
+          Save Override
+        </button>
+      </div>
+      <label className="form-field">
+        Confirmation notes
+        <textarea value={resolveNotes} onChange={(event) => setResolveNotes(event.target.value)} rows={2} />
+      </label>
+      <button
+        type="button"
+        className="btn-primary"
+        disabled={busyAction === "resolve"}
+        onClick={() => void run("resolve", () => resolveHumanReview(review.id, reviewerName || "Outlook reviewer", resolveNotes))}
+      >
+        <RefreshCw size={12} aria-hidden="true" />
+        Confirm & Re-compare
+      </button>
+      <div className="dismiss-row">
+        <label className="form-field">
+          Reject reason
+          <select value={dismissReason} onChange={(event) => setDismissReason(event.target.value)}>
+            <option value="NOT_ACTIONABLE">Not actionable</option>
+            <option value="INSUFFICIENT_EVIDENCE">Insufficient evidence</option>
+            <option value="DUPLICATE_OR_OBSOLETE">Duplicate or obsolete</option>
+          </select>
+        </label>
+        <button
+          type="button"
+          className="btn-secondary"
+          disabled={busyAction === "dismiss"}
+          onClick={() => void run("dismiss", () => dismissHumanReview(review.id, dismissReason, reviewerName || "Outlook reviewer", note))}
+        >
+          <X size={12} aria-hidden="true" />
+          Dismiss
+        </button>
+      </div>
+      <p className="mini-note">Overrides preserve original extracted values. Confirming runs backend re-comparison so Dashboard and Outlook share the same result.</p>
+    </section>
+  );
 }
 
 // ─── Main TaskPane ─────────────────────────────────────────────────
@@ -638,6 +1002,10 @@ export function TaskPane({
     }
   };
 
+  const refreshAfterMutation = async () => {
+    await refreshCurrentEmail(true);
+  };
+
   return (
     <div className="pane-shell">
       {/* Header */}
@@ -735,7 +1103,21 @@ export function TaskPane({
                   {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
                 </section>
 
-                <AICompanionSection reviewId={activeReview.id} reviewUrl={reviewUrl} />
+                <AICompanionSection
+                  reviewId={activeReview.id}
+                  reviewUrl={reviewUrl}
+                  onActionComplete={refreshAfterMutation}
+                />
+                <ExistingSuggestionsSection
+                  review={activeReview}
+                  onActionComplete={refreshAfterMutation}
+                />
+                <DirectReviewActions
+                  review={activeReview}
+                  comparison={state.detail.comparison}
+                  onActionComplete={refreshAfterMutation}
+                />
+                <ReviewHistorySection review={activeReview} />
               </>
             )}
 
@@ -753,6 +1135,7 @@ export function TaskPane({
                       <dd>{reviewAffectedText(historicalReview, state.detail.email)}</dd>
                     </div>
                   </dl>
+                  <ReviewHistorySection review={historicalReview} />
                 </section>
               </>
             )}

@@ -246,6 +246,48 @@ fixtures.historicalReview.review = [
 fixtures.aiSuggestion.review = fixtures.blocked.review.map((review) => ({
   ...review,
   status: "OPEN",
+  ai_suggestions: [
+    {
+      id: "suggestion-001",
+      human_review_case_id: "review-001",
+      mode: "ACTIONABLE_SUGGESTION",
+      message: "Draft BL gross weight can be corrected from SI evidence.",
+      document_side: "BL",
+      field: "gross_weight_kg",
+      current_value: "24,500 KG",
+      suggested_value: "22,000 KG",
+      confidence: 0.91,
+      reason: "SI source evidence shows 22,000 KG.",
+      evidence_refs: ["SI Page 1"],
+      provider_name: "mock",
+      provider_model: "mock-model",
+      status: "PENDING",
+      created_at: "2024-05-01T09:03:00Z",
+    },
+  ],
+  overrides: [
+    {
+      id: "override-001",
+      document_side: "BL",
+      field: "gross_weight_kg",
+      original_field_id: "field-001",
+      corrected_value: "22,000 KG",
+      corrected_canonical_value: 22000,
+      reviewer_name: "Jordan Lee",
+      note: "Confirmed with SI evidence.",
+      active: true,
+      created_at: "2024-05-01T09:04:00Z",
+    },
+  ],
+  actions: [
+    {
+      id: "action-001",
+      action: "OVERRIDE_APPLIED",
+      actor_name: "Jordan Lee",
+      details: {},
+      created_at: "2024-05-01T09:04:30Z",
+    },
+  ],
 }));
 
 fixtures.aiSuggestion.resolutions = [

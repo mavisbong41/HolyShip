@@ -402,6 +402,56 @@ describe("TaskPane", () => {
       expect(applyLink.getAttribute("href")).toContain("review=review-001");
     });
 
+    it("accepts an AI suggestion directly from Outlook and refreshes the case", async () => {
+      const mockAccept = vi.spyOn(clientModule, "acceptAISuggestion").mockResolvedValue(fixtures.aiSuggestion.review[0]);
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "Pending AI suggestions" })).toBeInTheDocument();
+      });
+
+      await user.click(screen.getByRole("button", { name: /^Approve$/i }));
+
+      await waitFor(() => {
+        expect(mockAccept).toHaveBeenCalledWith("review-001", "suggestion-001", "Outlook reviewer");
+      });
+      expect(MockAdapter).toHaveBeenCalledTimes(2);
+    });
+
+    it("saves a manual override and confirms backend recomparison from Outlook", async () => {
+      const mockOverride = vi.spyOn(clientModule, "saveHumanReviewOverride").mockResolvedValue(fixtures.blocked.review[0]);
+      const mockResolve = vi.spyOn(clientModule, "resolveHumanReview").mockResolvedValue(fixtures.blocked.review[0]);
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      await waitFor(() => {
+        expect(screen.getByRole("region", { name: "Outlook Human Review actions" })).toBeInTheDocument();
+      });
+
+      await user.clear(screen.getByLabelText("Corrected value"));
+      await user.type(screen.getByLabelText("Corrected value"), "Same as consignee");
+      await user.click(screen.getByRole("button", { name: /save override/i }));
+
+      await waitFor(() => {
+        expect(mockOverride).toHaveBeenCalledWith("review-001", expect.objectContaining({
+          document_side: "BL",
+          field: "notify_party",
+          corrected_value: "Same as consignee",
+          reviewer_name: "Jordan Lee",
+        }));
+      });
+
+      await user.type(screen.getByLabelText("Confirmation notes"), "Confirmed in Outlook.");
+      await user.click(screen.getByRole("button", { name: /confirm & re-compare/i }));
+
+      await waitFor(() => {
+        expect(mockResolve).toHaveBeenCalledWith("review-001", "Jordan Lee", "Confirmed in Outlook.");
+      });
+    });
+
     it("displays error notice gracefully when AI assistant call fails", async () => {
       vi.spyOn(clientModule, "askAIAssistant").mockRejectedValue(new Error("AI service timeout"));
 
