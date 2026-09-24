@@ -30,6 +30,8 @@ When enabled, the Secure AI Gateway:
 - allows only configured AI providers;
 - optionally pins approved model names;
 - allows outbound AI traffic only to configured endpoint hosts;
+- requires HTTPS for external AI traffic while Enterprise Privacy Mode is enabled;
+- binds Google's Gemini endpoint to the Gemini/Google provider path so alternate providers cannot bypass the centralized Gemini transport;
 - rejects payloads above `AI_GATEWAY_MAX_PAYLOAD_BYTES`.
 
 ## Secure AI Gateway
@@ -198,7 +200,9 @@ Production should keep Enterprise Privacy Mode enabled. The default provider
 and endpoint allowlists intentionally permit only Google's Gemini transport.
 An empty model allowlist means any model under an approved provider; production
 may pin one or more exact model names. An empty provider or endpoint-host
-allowlist is rejected while Enterprise Privacy Mode is enabled.
+allowlist is rejected while Enterprise Privacy Mode is enabled. Explicit empty
+allowlists passed directly to the gateway remain deny-all rather than silently
+falling back to defaults. External AI endpoints must use HTTPS in privacy mode.
 
 There is deliberately no runtime switch that re-enables raw AI prompt/request
 persistence. Durable storage keeps disclosure metadata and validated structured
