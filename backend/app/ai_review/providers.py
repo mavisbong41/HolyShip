@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Any, Protocol
 
@@ -257,13 +256,20 @@ class OpenAIProvider:
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
                 choices = resp_data.get("choices", [])
+                self.last_audit_metadata = {
+                    **self.last_audit_metadata,
+                    "response_status": "RECEIVED",
+                }
                 if choices and "message" in choices[0]:
                     content = choices[0]["message"].get("content", "")
                     return content, self.provider_name, self.model
                 return json.dumps(resp_data), self.provider_name, self.model
         except urllib.error.HTTPError as exc:
-            err_body = exc.read().decode("utf-8", errors="replace")
-            err_msg = f"OpenAI API error (HTTP {exc.code}): {err_body[:300]}"
+            self.last_audit_metadata = {
+                **self.last_audit_metadata,
+                "response_status": f"HTTP_{exc.code}",
+            }
+            err_msg = f"OpenAI API error (HTTP {exc.code})."
             error_payload = {
                 "message": err_msg,
                 "mode": "INSUFFICIENT_EVIDENCE",
@@ -271,8 +277,12 @@ class OpenAIProvider:
             }
             return json.dumps(error_payload), self.provider_name, self.model
         except Exception as exc:
+            self.last_audit_metadata = {
+                **self.last_audit_metadata,
+                "response_status": type(exc).__name__,
+            }
             error_payload = {
-                "message": f"OpenAI API request failed: {str(exc)}",
+                "message": "OpenAI API request failed.",
                 "mode": "INSUFFICIENT_EVIDENCE",
                 "suggestion": None,
             }
