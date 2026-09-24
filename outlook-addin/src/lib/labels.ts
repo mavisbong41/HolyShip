@@ -72,6 +72,14 @@ export const reasonLabels: Record<string, string> = {
   READINESS_UNRESOLVED: "Document readiness unclear",
   NOT_ACTIONABLE: "Not actionable",
   OCR_BACKEND_UNAVAILABLE: "Document processing unavailable",
+  OUTLOOK_EMAIL_DELETED: "Mailbox item deleted",
+  OUTLOOK_EMAIL_RESTORED: "Mailbox item restored",
+  OUTLOOK_EMAIL_ARCHIVED: "Mailbox item archived",
+  OUTLOOK_LIFECYCLE_RECONCILED: "Lifecycle synchronized",
+  OUTLOOK_READ_STATE_SYNCED: "Read state synchronized",
+  OUTLOOK_CATEGORY_SYNCED: "Category synchronized",
+  OUTLOOK_FOLDER_SYNCED: "Folder synchronized",
+  OUTLOOK_ARCHIVE_STATE_SYNCED: "Archive state synchronized",
 };
 
 export type SemanticTone = "neutral" | "good" | "warn" | "bad" | "attention" | "info" | "muted";

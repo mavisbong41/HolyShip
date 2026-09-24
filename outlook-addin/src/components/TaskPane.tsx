@@ -1433,38 +1433,51 @@ function TimelineCard({
   const events = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
     {
       id: "ev-ingest",
-      event_type: "EMAIL_INGESTED",
-      status: "COMPLETED",
-      details: {},
+      old_status: null,
+      new_status: "NEW",
+      reason_code: "EMAIL_INGESTED",
       created_at: detail.email.received_at ?? detail.email.created_at,
     },
     {
       id: "ev-class",
-      event_type: "CLASSIFIED",
-      status: "COMPLETED",
-      details: { category: detail.email.category },
+      old_status: "NEW",
+      new_status: "CLASSIFIED",
+      reason_code: "CLASSIFIED",
       created_at: detail.email.created_at,
     },
     {
       id: "ev-status",
-      event_type: "PROCESSING_COMPLETED",
-      status: "COMPLETED",
-      details: { status: detail.email.processing_status },
+      old_status: "CLASSIFIED",
+      new_status: detail.email.processing_status,
+      reason_code: "PROCESSING_COMPLETED",
       created_at: detail.email.created_at,
     },
   ];
 
   return (
-    <div className="timeline-card">
-      <p className="pane-section-label" style={{ marginBottom: 12 }}>Case Timeline</p>
+    <div className="timeline-card" aria-label="Case Timeline and Audit Trail">
+      <p className="pane-section-label" style={{ marginBottom: 12 }}>Case Timeline & Audit Trail</p>
       <ul className="timeline-list">
-        {events.map((ev, idx) => (
-          <li key={ev.id || idx} className="timeline-item">
-            <span className="timeline-dot" />
-            <p className="timeline-title">{displayLabel(ev.event_type)}</p>
-            <span className="timeline-time">{formatDate(ev.created_at)}</span>
-          </li>
-        ))}
+        {events.map((ev, idx) => {
+          const rawReason = ev.reason_code || (ev as any).event_type || ev.new_status || "Event";
+          const title = displayLabel(rawReason);
+          const isDeleted = rawReason === "OUTLOOK_EMAIL_DELETED" || ev.new_status === "DELETED";
+          const isRestored = rawReason === "OUTLOOK_EMAIL_RESTORED";
+          const dotClass = isDeleted ? "timeline-dot dot-deleted" : isRestored ? "timeline-dot dot-restored" : "timeline-dot";
+
+          return (
+            <li key={ev.id || idx} className="timeline-item">
+              <span className={dotClass} />
+              <div className="timeline-content">
+                <p className="timeline-title">{title}</p>
+                {ev.new_status && ev.new_status !== ev.old_status && !rawReason.startsWith("OUTLOOK_") && (
+                  <span className="timeline-sub">{displayLabel(ev.new_status)}</span>
+                )}
+              </div>
+              <span className="timeline-time">{formatDate(ev.created_at)}</span>
+            </li>
+          );
+        })}
       </ul>
     </div>
   );
