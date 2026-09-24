@@ -44,8 +44,24 @@ superseded historical restriction are recorded in
 
 ## Last Updated
 
-**Date:** 2026-09-24
-**Updated by:** Outlook Add-in Enhancement section 5 implementation
+**Date:** 2026-09-25
+**Updated by:** Section 8 Delete and Restore Behaviour implementation
+
+### Section 8: Delete and Restore Behaviour Completed:
+- **8.1 Delete Detection & Evidence Preservation**:
+  - `reconcileOutlookLifecycle` in Outlook Add-in detects deleted items folders (`deleteditems`, `trash`, etc.) and automatically synchronizes `DELETED` lifecycle status.
+  - Soft-delete semantics guarantee all historical processing data, extracted values, comparisons, Human Review cases, overrides, and audit events are strictly preserved.
+  - Deletions are audited as `OUTLOOK_EMAIL_DELETED` processing events and recorded in lifecycle audit history.
+  - Normal active queue queries filter out `DELETED` records by default.
+  - `SyncService` guards against re-processing `DELETED` emails during inbox synchronization to prevent overwriting historical state.
+- **8.2 Restore Behaviour**:
+  - `handleRestore` in Outlook Add-in explicitly sends `lifecycle_status: "RESTORED"` to the backend.
+  - Backend restores email to `ACTIVE`, sets `restored_at` timestamp, clears sync errors, audits `OUTLOOK_EMAIL_RESTORED`, and makes case active again in default queues.
+  - Idempotent transitions ensure re-sending `DELETED` or `RESTORED` does not generate spurious duplicate audit events.
+  - Unique identity constraints (`source_type`, `external_message_id`) guarantee restored records match existing cases without creating duplicate entries.
+- **UI/UX Refinements**:
+  - Dashboard Overview displays deleted email counts in a subtle, clickable grey banner (outside KPI cards), navigating directly to the deleted queue filter.
+  - Outlook Add-in Case Timeline renders full audit trail including `OUTLOOK_EMAIL_DELETED` and `OUTLOOK_EMAIL_RESTORED` events with color-coded status dots.
 **Repository state:** Security work is isolated on `feature/security-ai-gateway`, branched from `main@5d06606eb8a72f5b4f50f15b764d84154f1232b1`. This branch is the canonical security implementation; the separate `feature/security-privacy-gateway` branch is superseded and must not be merged together with it.
 
 Implemented controls:
