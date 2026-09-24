@@ -9,12 +9,12 @@ from uuid import uuid4
 
 import pytest
 
-from backend.app.ai_review.providers import MockAIReviewProvider
+from backend.app.ai_review.providers import MockAIReviewProvider, OpenAIProvider
 from backend.app.ai_review.service import AIReviewService
 from backend.app.core.config import Settings
 from backend.app.extraction.models import CanonicalField
 from backend.app.resolution.models import ExtractionResolutionRequest
-from backend.app.resolution.providers import GeminiResolverProvider
+from backend.app.resolution.providers import GeminiResolverProvider, HttpJsonResolverProvider
 from backend.app.security.ai_gateway import (
     AIGatewayPolicyError,
     AIGatewayResult,
@@ -477,3 +477,183 @@ def test_frontend_sources_do_not_reference_gemini_api_secrets():
             content = path.read_text(encoding="utf-8", errors="ignore")
             assert "GEMINI_API_KEY" not in content
             assert "AI_REVIEW_API_KEY" not in content
+
+
+def test_gateway_enterprise_allowlist_defaults_are_restrictive():
+    settings = Settings(_env_file=None)
+    gateway = SecureAIGateway.from_settings(settings)
+
+    assert settings.enterprise_privacy_mode is True
+    assert gateway.allowed_providers == {"gemini", "google"}
+    assert gateway.allowed_models == set()
+    assert gateway.allowed_endpoint_hosts == {"generativelanguage.googleapis.com"}
+
+
+def test_gateway_blocks_unapproved_provider_model_and_endpoint_before_network():
+    gateway = SecureAIGateway(
+        allowed_providers={"gemini"},
+        allowed_models={"gemini-2.5-flash"},
+        allowed_endpoint_hosts={"generativelanguage.googleapis.com"},
+    )
+
+    with pytest.raises(AIGatewayPolicyError, match="provider"):
+        gateway.prepare_payload(
+            purpose=PURPOSE_HUMAN_REVIEW,
+            feature="human_review_assistant",
+            model="gpt-4o-mini",
+            provider="openai",
+            endpoint="https://api.openai.com/v1/chat/completions",
+            data={"question": "test", "context": {}},
+        )
+
+    with pytest.raises(AIGatewayPolicyError, match="model"):
+        gateway.invoke_gemini_json(
+            api_key="test-key",
+            model="gemini-unapproved",
+            purpose=PURPOSE_FIELD_SEMANTIC_COMPARISON,
+            feature="l2_semantic_comparison",
+            data={
+                "field": "port_of_loading",
+                "si_value": "Port Klang",
+                "bl_value": "Port Klang",
+                "si_evidence": "Port Klang",
+                "bl_evidence": "Port Klang",
+            },
+            system_instruction="Return JSON.",
+            timeout_seconds=1,
+        )
+
+    with patch("backend.app.security.ai_gateway.urllib.request.urlopen") as mocked:
+        with pytest.raises(AIGatewayPolicyError, match="endpoint host"):
+            gateway.invoke_gemini_json(
+                api_key="test-key",
+                model="gemini-2.5-flash",
+                purpose=PURPOSE_FIELD_SEMANTIC_COMPARISON,
+                feature="l2_semantic_comparison",
+                data={
+                    "field": "port_of_loading",
+                    "si_value": "Port Klang",
+                    "bl_value": "Port Klang",
+                    "si_evidence": "Port Klang",
+                    "bl_evidence": "Port Klang",
+                },
+                system_instruction="Return JSON.",
+                timeout_seconds=1,
+                endpoint="https://evil.example/v1/models",
+            )
+        mocked.assert_not_called()
+
+
+def test_privacy_mode_off_allows_explicit_development_endpoint_policy_bypass():
+    gateway = SecureAIGateway(
+        enterprise_privacy_mode=False,
+        allowed_providers=set(),
+        allowed_models=set(),
+        allowed_endpoint_hosts=set(),
+    )
+    payload, audit = gateway.prepare_payload(
+        purpose=PURPOSE_HUMAN_REVIEW,
+        feature="human_review_assistant",
+        model="dev-model",
+        provider="custom",
+        endpoint="http://localhost:9999/v1/chat/completions",
+        data={"question": "test", "context": {}},
+    )
+    assert payload["question"] == "test"
+    assert audit["provider"] == "custom"
+    assert audit["privacy_mode"] is False
+
+
+def test_openai_review_provider_is_blocked_by_default_privacy_policy_without_network():
+    provider = OpenAIProvider(
+        api_key="secret",
+        model="gpt-4o-mini",
+        endpoint="https://api.openai.com/v1/chat/completions",
+        gateway=SecureAIGateway(),
+    )
+    with patch("backend.app.ai_review.providers.urllib.request.urlopen") as mocked:
+        raw, provider_name, model = provider.generate_review_response(
+            _human_review_context(),
+            "Explain this case",
+        )
+
+    parsed = json.loads(raw)
+    assert provider_name == "openai"
+    assert model == "gpt-4o-mini"
+    assert parsed["mode"] == "INSUFFICIENT_EVIDENCE"
+    assert provider.last_audit_metadata["request_status"] == "BLOCKED_BY_POLICY"
+    assert provider.last_audit_metadata["response_status"] == "NOT_SENT"
+    mocked.assert_not_called()
+
+
+def test_allowed_http_json_provider_still_receives_only_minimized_field_data():
+    gateway = SecureAIGateway(
+        allowed_providers={"http_json"},
+        allowed_endpoint_hosts={"resolver.example.com"},
+    )
+    provider = HttpJsonResolverProvider(
+        endpoint="https://resolver.example.com/v1/resolve",
+        model_name="approved-resolver",
+        timeout_seconds=1,
+        api_key="server-secret",
+        gateway=gateway,
+    )
+    request = ExtractionResolutionRequest(
+        case_id="private-case-id",
+        field=CanonicalField.PORT_OF_LOADING,
+        document_role="SI",
+        document_id="private-doc-id",
+        content_identity="sha256:private-content",
+        evidence="Port of Loading: Port Klang",
+        deterministic_candidates=("Port Klang",),
+        escalation_reason="UNRESOLVED_EXTRACTION",
+    )
+    response_body = {
+        "field": "port_of_loading",
+        "value": "Port Klang",
+        "normalized_value": "PORT KLANG",
+        "equivalent": None,
+        "confidence": 0.99,
+        "evidence": "Port of Loading: Port Klang",
+        "reasoning_code": "APPROVED_RESOLVER",
+    }
+    mock_response = MagicMock()
+    mock_response.read.return_value = json.dumps(response_body).encode("utf-8")
+    mock_response.__enter__.return_value = mock_response
+
+    with patch(
+        "backend.app.resolution.providers.urllib.request.urlopen",
+        return_value=mock_response,
+    ) as mocked:
+        result = provider.resolve(request)
+
+    sent_request = mocked.call_args.args[0]
+    sent_payload = json.loads(sent_request.data.decode("utf-8"))
+    serialized = json.dumps(sent_payload)
+    assert sent_payload["request"] == {
+        "field": "port_of_loading",
+        "document_role": "SI",
+        "evidence": "Port of Loading: Port Klang",
+        "escalation_reason": "UNRESOLVED_EXTRACTION",
+    }
+    assert "private-case-id" not in serialized
+    assert "private-doc-id" not in serialized
+    assert "private-content" not in serialized
+    assert "deterministic_candidates" not in serialized
+    assert result.audit_metadata["provider"] == "http_json"
+    assert result.audit_metadata["disclosed_fields"] == ["port_of_loading"]
+
+
+def test_settings_fail_closed_if_enterprise_allowlists_are_empty():
+    with pytest.raises(ValueError, match="ALLOWED_PROVIDERS"):
+        Settings(
+            _env_file=None,
+            enterprise_privacy_mode=True,
+            ai_gateway_allowed_providers="",
+        )
+    with pytest.raises(ValueError, match="ALLOWED_ENDPOINT_HOSTS"):
+        Settings(
+            _env_file=None,
+            enterprise_privacy_mode=True,
+            ai_gateway_allowed_endpoint_hosts="",
+        )
