@@ -300,6 +300,13 @@ class SecureAIGateway:
                 raise AIGatewayPolicyError(
                     f"AI endpoint host {host or '<missing>'!r} is not approved by Enterprise Privacy Mode"
                 )
+            if (
+                host == "generativelanguage.googleapis.com"
+                and normalized_provider not in {"gemini", "google"}
+            ):
+                raise AIGatewayPolicyError(
+                    "Google Gemini endpoint may only be used by the Gemini gateway provider"
+                )
 
     def _minimize_field_extraction(self, data: dict[str, Any]) -> dict[str, Any]:
         batch = data.get("requests")
