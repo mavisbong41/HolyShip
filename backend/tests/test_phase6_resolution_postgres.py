@@ -88,7 +88,11 @@ def test_resolution_audit_round_trips_accepted_metadata(db_factory):
         assert record.field_name == "port_of_loading"
         assert record.provider_name == "fake"
         assert record.resolver_version == "resolver-v1"
-        assert record.request_json["evidence"] == "Port of Loading: Port Klang"
+        assert record.request_json["purpose"] == "EXTRACTION"
+        assert record.request_json["field"] == "port_of_loading"
+        assert record.request_json["escalation_reason"] == "UNRESOLVED_EXTRACTION"
+        assert "evidence" not in record.request_json
+        assert "Port of Loading: Port Klang" not in str(record.request_json)
         assert record.response_json["normalized_value"] == "PORT KLANG"
         assert cached == _decision()
 

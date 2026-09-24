@@ -3,11 +3,17 @@ from __future__ import annotations
 import json
 import os
 import urllib.error
-import urllib.parse
 import urllib.request
 from typing import Any, Protocol
 
 from backend.app.core.config import Settings
+from backend.app.security.ai_gateway import (
+    AIGatewayHTTPError,
+    AIGatewayPolicyError,
+    AIGatewayTransportError,
+    PURPOSE_HUMAN_REVIEW,
+    SecureAIGateway,
+)
 
 SYSTEM_INSTRUCTION = """You are the HolyShip AI Review Assistant for Shipping Document Verification.
 Your mission is to explain shipping document verification discrepancies and suggest field corrections ONLY when firmly grounded in provided document evidence.
@@ -56,6 +62,7 @@ class DisabledProvider:
     def __init__(self, provider_name: str = "disabled", model_name: str = "none"):
         self.provider_name = provider_name
         self.model_name = model_name
+        self.last_audit_metadata: dict[str, Any] = {}
 
     def generate_review_response(
         self,
@@ -82,6 +89,7 @@ class MockAIReviewProvider:
         self.response_json = response_json
         self.provider_name = provider_name
         self.model_name = model_name
+        self.last_audit_metadata: dict[str, Any] = {}
 
     def generate_review_response(
         self,
@@ -111,6 +119,7 @@ class GeminiProvider:
         timeout_seconds: float = 15.0,
         temperature: float = 0.0,
         max_tokens: int = 2048,
+        gateway: SecureAIGateway | None = None,
     ):
         self.api_key = api_key
         self.model = model or "gemini-2.5-flash"
@@ -119,66 +128,59 @@ class GeminiProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.provider_name = "gemini"
-
-    def _build_url(self) -> str:
-        if self.endpoint:
-            return self.endpoint
-        # Default Google Gemini REST API endpoint
-        base = "https://generativelanguage.googleapis.com/v1beta/models"
-        return f"{base}/{self.model}:generateContent?key={urllib.parse.quote(self.api_key)}"
+        self.gateway = gateway or SecureAIGateway()
+        self.last_audit_metadata: dict[str, Any] = {}
 
     def generate_review_response(
         self,
         context: dict[str, Any],
         question: str,
     ) -> tuple[str, str, str]:
-        user_prompt = f"CASE CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nUSER QUESTION: {question}"
-
-        payload = {
-            "systemInstruction": {
-                "parts": [{"text": SYSTEM_INSTRUCTION}]
-            },
-            "contents": [
-                {
-                    "role": "user",
-                    "parts": [{"text": user_prompt}]
-                }
-            ],
-            "generationConfig": {
-                "responseMimeType": "application/json",
-                "temperature": self.temperature,
-                "maxOutputTokens": self.max_tokens,
-            },
-        }
-
-        body_bytes = json.dumps(payload).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": self.api_key,
-        }
-
-        url = self._build_url()
-        req = urllib.request.Request(url, data=body_bytes, headers=headers, method="POST")
-
         try:
-            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                resp_data = json.loads(resp.read().decode("utf-8"))
-                candidates = resp_data.get("candidates", [])
-                if candidates:
-                    parts = candidates[0].get("content", {}).get("parts", [])
-                    if parts and "text" in parts[0]:
-                        return parts[0]["text"], self.provider_name, self.model
-                return json.dumps(resp_data), self.provider_name, self.model
-        except urllib.error.HTTPError as exc:
-            err_body = exc.read().decode("utf-8", errors="replace")
-            err_msg = f"Gemini API error (HTTP {exc.code}): {err_body[:300]}"
+            result = self.gateway.invoke_gemini_json(
+                api_key=self.api_key,
+                model=self.model,
+                purpose=PURPOSE_HUMAN_REVIEW,
+                feature="human_review_assistant",
+                data={"context": context, "question": question},
+                system_instruction=SYSTEM_INSTRUCTION,
+                timeout_seconds=self.timeout_seconds,
+                endpoint=self.endpoint,
+                temperature=self.temperature,
+                max_output_tokens=self.max_tokens,
+            )
+            self.last_audit_metadata = result.audit_metadata
+            return (
+                json.dumps(result.structured_response),
+                self.provider_name,
+                self.model,
+            )
+        except AIGatewayHTTPError as exc:
+            self.last_audit_metadata = {
+                "purpose": PURPOSE_HUMAN_REVIEW,
+                "feature": "human_review_assistant",
+                "provider": "gemini",
+                "model": self.model,
+                "privacy_mode": self.gateway.enterprise_privacy_mode,
+                "request_status": "REJECTED_BY_PROVIDER",
+                "response_status": f"HTTP_{exc.status_code}",
+            }
             error_payload = {
-                "message": err_msg,
+                "message": f"Gemini API error (HTTP {exc.status_code}).",
                 "mode": "INSUFFICIENT_EVIDENCE",
                 "suggestion": None,
             }
             return json.dumps(error_payload), self.provider_name, self.model
-        except Exception as exc:
+        except (AIGatewayPolicyError, AIGatewayTransportError) as exc:
+            self.last_audit_metadata = {
+                "purpose": PURPOSE_HUMAN_REVIEW,
+                "feature": "human_review_assistant",
+                "provider": "gemini",
+                "model": self.model,
+                "privacy_mode": self.gateway.enterprise_privacy_mode,
+                "request_status": "BLOCKED" if isinstance(exc, AIGatewayPolicyError) else "FAILED",
+                "response_status": type(exc).__name__,
+            }
             error_payload = {
                 "message": f"Gemini API request failed: {str(exc)}",
                 "mode": "INSUFFICIENT_EVIDENCE",
@@ -199,6 +201,7 @@ class OpenAIProvider:
         temperature: float = 0.0,
         max_tokens: int = 2048,
         provider_name: str = "openai",
+        gateway: SecureAIGateway | None = None,
     ):
         self.api_key = api_key
         self.model = model or "gpt-4o-mini"
@@ -207,13 +210,52 @@ class OpenAIProvider:
         self.temperature = temperature
         self.max_tokens = max_tokens
         self.provider_name = provider_name
+        self.gateway = gateway or SecureAIGateway()
+        self.last_audit_metadata: dict[str, Any] = {}
 
     def generate_review_response(
         self,
         context: dict[str, Any],
         question: str,
     ) -> tuple[str, str, str]:
-        user_prompt = f"CASE CONTEXT:\n{json.dumps(context, indent=2, default=str)}\n\nUSER QUESTION: {question}"
+        try:
+            minimized, audit = self.gateway.prepare_payload(
+                purpose=PURPOSE_HUMAN_REVIEW,
+                data={"context": context, "question": question},
+                feature="human_review_assistant",
+                model=self.model,
+                provider=self.provider_name,
+                endpoint=self.endpoint,
+            )
+        except AIGatewayPolicyError:
+            self.last_audit_metadata = {
+                "purpose": PURPOSE_HUMAN_REVIEW,
+                "feature": "human_review_assistant",
+                "provider": self.provider_name,
+                "model": self.model,
+                "privacy_mode": self.gateway.enterprise_privacy_mode,
+                "request_status": "BLOCKED_BY_POLICY",
+                "response_status": "NOT_SENT",
+            }
+            return (
+                json.dumps(
+                    {
+                        "message": "AI request was blocked by Enterprise Privacy Mode.",
+                        "mode": "INSUFFICIENT_EVIDENCE",
+                        "suggestion": None,
+                    }
+                ),
+                self.provider_name,
+                self.model,
+            )
+        self.last_audit_metadata = {
+            **audit,
+            "request_status": "SENT",
+        }
+        user_prompt = (
+            "MINIMIZED CASE INPUT:\n"
+            + json.dumps(minimized, indent=2, default=str)
+        )
 
         payload: dict[str, Any] = {
             "model": self.model,
@@ -237,13 +279,20 @@ class OpenAIProvider:
             with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
                 resp_data = json.loads(resp.read().decode("utf-8"))
                 choices = resp_data.get("choices", [])
+                self.last_audit_metadata = {
+                    **self.last_audit_metadata,
+                    "response_status": "RECEIVED",
+                }
                 if choices and "message" in choices[0]:
                     content = choices[0]["message"].get("content", "")
                     return content, self.provider_name, self.model
                 return json.dumps(resp_data), self.provider_name, self.model
         except urllib.error.HTTPError as exc:
-            err_body = exc.read().decode("utf-8", errors="replace")
-            err_msg = f"OpenAI API error (HTTP {exc.code}): {err_body[:300]}"
+            self.last_audit_metadata = {
+                **self.last_audit_metadata,
+                "response_status": f"HTTP_{exc.code}",
+            }
+            err_msg = f"OpenAI API error (HTTP {exc.code})."
             error_payload = {
                 "message": err_msg,
                 "mode": "INSUFFICIENT_EVIDENCE",
@@ -251,8 +300,12 @@ class OpenAIProvider:
             }
             return json.dumps(error_payload), self.provider_name, self.model
         except Exception as exc:
+            self.last_audit_metadata = {
+                **self.last_audit_metadata,
+                "response_status": type(exc).__name__,
+            }
             error_payload = {
-                "message": f"OpenAI API request failed: {str(exc)}",
+                "message": "OpenAI API request failed.",
                 "mode": "INSUFFICIENT_EVIDENCE",
                 "suggestion": None,
             }
@@ -271,6 +324,7 @@ class HTTPProvider(OpenAIProvider):
         temperature: float = 0.0,
         max_tokens: int = 2048,
         provider_name: str = "http",
+        gateway: SecureAIGateway | None = None,
     ):
         super().__init__(
             api_key=api_key,
@@ -280,6 +334,7 @@ class HTTPProvider(OpenAIProvider):
             temperature=temperature,
             max_tokens=max_tokens,
             provider_name=provider_name,
+            gateway=gateway,
         )
 
 
@@ -312,6 +367,7 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
 
     model_name = settings.ai_review_model if settings.ai_review_model and settings.ai_review_model != "none" else (settings.ai_model if settings.ai_model != "none" else "")
     endpoint = settings.ai_review_endpoint or settings.ai_endpoint
+    gateway = SecureAIGateway.from_settings(settings)
 
     # Auto-resolve provider type if not explicitly set
     if not provider_name or provider_name in ("auto", "none", "disabled"):
@@ -336,6 +392,7 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
             timeout_seconds=settings.ai_review_timeout_seconds,
             temperature=settings.ai_review_temperature,
             max_tokens=settings.ai_review_max_tokens,
+            gateway=gateway,
         )
 
     if provider_name in ("openai", "azure_openai"):
@@ -348,6 +405,7 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
             temperature=settings.ai_review_temperature,
             max_tokens=settings.ai_review_max_tokens,
             provider_name=provider_name,
+            gateway=gateway,
         )
 
     if provider_name in ("http", "http_json", "custom"):
@@ -359,6 +417,7 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
             temperature=settings.ai_review_temperature,
             max_tokens=settings.ai_review_max_tokens,
             provider_name=provider_name,
+            gateway=gateway,
         )
 
     return DisabledProvider(provider_name=provider_name, model_name=model_name or "none")

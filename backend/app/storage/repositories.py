@@ -67,7 +67,30 @@ class AIResolutionRepository:
             if isinstance(request, ExtractionResolutionRequest)
             else request.source_identity
         )
-        request_json = json.loads(json.dumps(asdict(request), default=str))
+        gateway_audit = (
+            decision.evidence.get("ai_gateway", {})
+            if isinstance(decision.evidence, dict)
+            else {}
+        )
+        request_json = {
+            "purpose": purpose,
+            "field": request.field.value,
+            "escalation_reason": request.escalation_reason,
+            "payload_sha256": gateway_audit.get("payload_sha256"),
+            "payload_bytes": gateway_audit.get("payload_bytes"),
+            "privacy_mode": gateway_audit.get("privacy_mode"),
+            "disclosed_fields": gateway_audit.get(
+                "disclosed_fields",
+                [request.field.value],
+            ),
+            "disclosure_categories": gateway_audit.get(
+                "disclosure_categories",
+                [],
+            ),
+            "request_status": gateway_audit.get("request_status"),
+            "response_status": gateway_audit.get("response_status"),
+            "latency_ms": gateway_audit.get("latency_ms"),
+        }
         response_json = {
             "value": decision.value,
             "normalized_value": decision.normalized_value,

@@ -15,6 +15,7 @@ from backend.app.resolution.providers import (
 )
 from backend.app.resolution.service import ResolutionExecutor, ResolutionSharedState
 from backend.app.storage.repositories import AIResolutionRepository
+from backend.app.security.ai_gateway import SecureAIGateway
 
 
 ProviderBuilder = Callable[[Settings], ResolverProvider]
@@ -79,6 +80,7 @@ def _build_gemini_provider(settings: Settings) -> ResolverProvider:
         model_name=settings.ai_model if settings.ai_model not in ("none", "", "disabled") else "gemini-2.5-flash",
         timeout_seconds=settings.ai_timeout_seconds,
         endpoint=settings.ai_endpoint,
+        gateway=SecureAIGateway.from_settings(settings),
     )
 
 
@@ -93,6 +95,7 @@ def _build_http_json_provider(settings: Settings) -> ResolverProvider:
         model_name=settings.ai_model,
         timeout_seconds=settings.ai_timeout_seconds,
         api_key=api_key,
+        gateway=SecureAIGateway.from_settings(settings),
     )
 
 
@@ -121,6 +124,11 @@ def get_configured_resolution_executor_factory(
         settings.ai_max_concurrent_calls,
         settings.ai_resolver_version,
         settings.ai_prompt_schema_version,
+        settings.enterprise_privacy_mode,
+        settings.ai_gateway_allowed_providers,
+        settings.ai_gateway_allowed_models,
+        settings.ai_gateway_allowed_endpoint_hosts,
+        settings.ai_gateway_max_payload_bytes,
         settings.retry_max_attempts,
         settings.retry_backoff_seconds,
     )

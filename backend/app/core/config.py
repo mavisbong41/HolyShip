@@ -44,6 +44,11 @@ class Settings(BaseSettings):
     ai_review_confidence_threshold: float = Field(default=0.8, ge=0.0, le=1.0)
     ai_review_max_tokens: int = Field(default=2048, ge=1, le=8192)
     ai_review_temperature: float = Field(default=0.0, ge=0.0, le=1.0)
+    enterprise_privacy_mode: bool = True
+    ai_gateway_allowed_providers: str = "gemini,google"
+    ai_gateway_allowed_models: str = ""
+    ai_gateway_allowed_endpoint_hosts: str = "generativelanguage.googleapis.com"
+    ai_gateway_max_payload_bytes: int = Field(default=64 * 1024, ge=1024, le=1024 * 1024)
     ocr_tesseract_cmd: str | None = None
     ocr_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
     ocr_max_calls: int = Field(default=8, ge=1, le=1000)
@@ -61,6 +66,14 @@ class Settings(BaseSettings):
     def validate_polling_backoff(self) -> "Settings":
         if self.polling_backoff_max_seconds < self.polling_backoff_initial_seconds:
             raise ValueError("polling_backoff_max_seconds must not be below polling_backoff_initial_seconds")
+        if self.enterprise_privacy_mode and not self.ai_gateway_allowed_providers.strip():
+            raise ValueError(
+                "AI_GATEWAY_ALLOWED_PROVIDERS must not be empty while Enterprise Privacy Mode is active"
+            )
+        if self.enterprise_privacy_mode and not self.ai_gateway_allowed_endpoint_hosts.strip():
+            raise ValueError(
+                "AI_GATEWAY_ALLOWED_ENDPOINT_HOSTS must not be empty while Enterprise Privacy Mode is active"
+            )
         return self
 
     @property

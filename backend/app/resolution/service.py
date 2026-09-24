@@ -543,10 +543,13 @@ class ResolutionExecutor:
 
     @staticmethod
     def _response_evidence(response: ProviderResolution) -> dict[str, Any]:
-        return {
+        evidence = {
             "provider_evidence": response.evidence,
             "reasoning_code": response.reasoning_code,
         }
+        if response.audit_metadata:
+            evidence["ai_gateway"] = response.audit_metadata
+        return evidence
 
     @staticmethod
     def _rejection(
