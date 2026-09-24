@@ -104,13 +104,13 @@ mingw32-make dev PYTHON=py
 outlook-addin/
   src/
     api/
-      client.ts         — Backend API client (emailDetail, search, findByMessageId)
+      client.ts         — Backend API client (case, review, category, reply workflow)
     office/
       OfficeContextProvider.ts   — Real Office.js context reader
       FakeContextProvider.ts     — Test/dev fake context (no Office.js needed)
       IdentityAdapter.ts         — Resolves Outlook message → HolyShip case
     components/
-      TaskPane.tsx       — Main task pane UI (full state machine)
+      TaskPane.tsx       — Main task pane UI (case view + operational workflow)
       ComparisonTable.tsx — 7-field SI vs BL comparison table
       StatusBadge.tsx    — Shared badge component
     types/
@@ -180,6 +180,23 @@ All decisions come from the backend.
 
 ---
 
+## Current Outlook Workflow Capabilities
+
+The task pane now supports the main case-level workflow directly inside Outlook:
+
+- selected-email HolyShip case resolution;
+- classification, readiness, processing, review, reply, and last-sync status;
+- seven-field SI vs Draft BL comparison;
+- Human Review claim, manual field override, dismiss, and confirm/re-compare actions;
+- grounded AI Review Assistant questions plus approve/edit/reject suggestion actions;
+- manual category correction through the shared backend classification contract;
+- reply summary, editable key points, editable draft, refine, and explicit confirmed-send audit state;
+- review override/action history.
+
+The Add-in remains a backend client. It does not classify, compare, normalize, apply AI output, or send a reply without explicit user action.
+
+---
+
 ## Identity Limitation (Current Branch)
 
 > See also: `docs/outlook_addin_identity.md`
@@ -202,9 +219,8 @@ When no match is found, the task pane shows:
 - Real Microsoft Graph OAuth
 - Live Outlook mailbox ingestion
 - Live Graph identity linkage (accurate message-id → case mapping)
-- Add-in-native Human Review write actions (the Dashboard now provides the active review workflow)
-- Field correction backend
 - Replacement SI/BL upload
+- Native Microsoft Graph send/delete/restore/read-unread/category reconciliation
 - Production AppSource submission
 
 ---
