@@ -4,6 +4,7 @@ import hashlib
 import json
 from pathlib import Path
 from unittest.mock import MagicMock, patch
+from types import SimpleNamespace
 from uuid import uuid4
 
 import pytest
@@ -11,8 +12,13 @@ import pytest
 from backend.app.ai_review.providers import MockAIReviewProvider
 from backend.app.ai_review.service import AIReviewService
 from backend.app.core.config import Settings
+from backend.app.extraction.models import CanonicalField
+from backend.app.resolution.models import ExtractionResolutionRequest
+from backend.app.resolution.providers import GeminiResolverProvider
 from backend.app.security.ai_gateway import (
     AIGatewayPolicyError,
+    AIGatewayResult,
+    PURPOSE_FIELD_EXTRACTION,
     PURPOSE_FIELD_SEMANTIC_COMPARISON,
     PURPOSE_HUMAN_REVIEW,
     SecureAIGateway,
@@ -168,6 +174,117 @@ def test_human_review_gateway_discloses_only_affected_case_data():
     assert audit["disclosed_fields"] == ["gross_weight_kg"]
     assert "affected_field_values" in audit["disclosure_categories"]
 
+
+
+def test_document_level_review_discloses_no_unrelated_field_values():
+    context = _human_review_context()
+    context["reason_code"] = "UNREADABLE_ATTACHMENT"
+    context["presentation_title"] = "Document could not be read reliably"
+    context["affected_area"] = "Documents"
+    context["affected_fields"] = []
+
+    payload, audit = SecureAIGateway().prepare_payload(
+        purpose=PURPOSE_HUMAN_REVIEW,
+        feature="human_review_assistant",
+        model="gemini-2.5-flash",
+        data={"question": "Why does this need review?", "context": context},
+    )
+
+    case = payload["case"]
+    serialized = json.dumps(payload, sort_keys=True)
+    assert case["si_extracted_fields"] == {}
+    assert case["bl_extracted_fields"] == {}
+    assert case["comparison"]["fields"] == []
+    assert case["comparison"]["mismatched_fields"] == []
+    assert case["comparison"]["unresolved_fields"] == []
+    assert case["active_overrides"] == []
+    assert "22000 KG" not in serialized
+    assert "22,O00 KG" not in serialized
+    assert "PRIVATE SHIPPER" not in serialized
+    assert audit["disclosed_fields"] == []
+
+
+def test_gemini_extraction_batch_stays_minimized_and_single_call():
+    gateway = MagicMock(spec=SecureAIGateway)
+    gateway.invoke_gemini_json.return_value = AIGatewayResult(
+        structured_response={
+            "results": [
+                {
+                    "field": "port_of_loading",
+                    "value": "Port Klang",
+                    "normalized_value": "PORT KLANG",
+                    "confidence": 0.97,
+                    "evidence": "Port of Loading: Port Klang",
+                    "reasoning_code": "GEMINI_EXTRACTION",
+                },
+                {
+                    "field": "port_of_discharge",
+                    "value": "Singapore",
+                    "normalized_value": "SINGAPORE",
+                    "confidence": 0.96,
+                    "evidence": "Port of Discharge: Singapore",
+                    "reasoning_code": "GEMINI_EXTRACTION",
+                },
+            ]
+        },
+        audit_metadata={
+            "purpose": PURPOSE_FIELD_EXTRACTION,
+            "disclosed_fields": ["port_of_loading", "port_of_discharge"],
+        },
+    )
+    provider = GeminiResolverProvider(
+        api_key="test-key",
+        gateway=gateway,
+    )
+    requests = (
+        ExtractionResolutionRequest(
+            case_id="case-1",
+            field=CanonicalField.PORT_OF_LOADING,
+            document_role="SI",
+            document_id="doc-1",
+            content_identity="sha:1",
+            evidence="Port of Loading: Port Klang",
+            deterministic_candidates=(),
+            escalation_reason="UNRESOLVED_EXTRACTION",
+        ),
+        ExtractionResolutionRequest(
+            case_id="case-1",
+            field=CanonicalField.PORT_OF_DISCHARGE,
+            document_role="SI",
+            document_id="doc-1",
+            content_identity="sha:1",
+            evidence="Port of Discharge: Singapore",
+            deterministic_candidates=(),
+            escalation_reason="UNRESOLVED_EXTRACTION",
+        ),
+    )
+
+    result = provider.resolve(SimpleNamespace(case_id="case-1", requests=requests))
+
+    assert [item.field for item in result] == [
+        CanonicalField.PORT_OF_LOADING,
+        CanonicalField.PORT_OF_DISCHARGE,
+    ]
+    gateway.invoke_gemini_json.assert_called_once()
+    call = gateway.invoke_gemini_json.call_args.kwargs
+    assert call["purpose"] == PURPOSE_FIELD_EXTRACTION
+    assert call["feature"] == "l2_extraction_resolution_batch"
+    assert call["data"] == {
+        "requests": [
+            {
+                "field": "port_of_loading",
+                "document_role": "SI",
+                "evidence": "Port of Loading: Port Klang",
+                "escalation_reason": "UNRESOLVED_EXTRACTION",
+            },
+            {
+                "field": "port_of_discharge",
+                "document_role": "SI",
+                "evidence": "Port of Discharge: Singapore",
+                "escalation_reason": "UNRESOLVED_EXTRACTION",
+            },
+        ]
+    }
 
 def test_field_semantic_gateway_rejects_unrelated_context():
     gateway = SecureAIGateway()
