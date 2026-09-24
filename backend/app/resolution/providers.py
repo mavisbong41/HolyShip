@@ -3,7 +3,6 @@ from __future__ import annotations
 import json
 import urllib.error
 import urllib.request
-from dataclasses import asdict
 from typing import Protocol
 
 from backend.app.resolution.models import (
@@ -49,6 +48,7 @@ class HttpJsonResolverProvider:
         model_name: str,
         timeout_seconds: float,
         api_key: str | None = None,
+        gateway: SecureAIGateway | None = None,
     ) -> None:
         if not endpoint.strip():
             raise ValueError("AI_ENDPOINT is required for the http_json provider")
@@ -56,16 +56,42 @@ class HttpJsonResolverProvider:
         self.model_name = model_name
         self.timeout_seconds = timeout_seconds
         self.api_key = api_key
+        self.gateway = gateway or SecureAIGateway()
 
     def resolve(self, request):
         requests = getattr(request, "requests", None)
         if requests is None:
-            payload = self._request_payload(request)
+            payload, audit = self._request_payload(request)
         else:
+            minimized_batch, audit = self.gateway.prepare_payload(
+                purpose=PURPOSE_FIELD_EXTRACTION,
+                data={
+                    "requests": [
+                        {
+                            "field": item.field.value,
+                            "document_role": item.document_role,
+                            "evidence": item.evidence,
+                            "escalation_reason": item.escalation_reason,
+                        }
+                        for item in requests
+                    ]
+                },
+                feature="l2_http_json_resolution_batch",
+                model=self.model_name,
+                provider="http_json",
+                endpoint=self.endpoint,
+            )
             payload = {
                 "purpose": "EXTRACTION_BATCH",
                 "model": self.model_name,
-                "requests": [self._request_payload(item) for item in requests],
+                "requests": [
+                    {
+                        "purpose": "EXTRACTION",
+                        "model": self.model_name,
+                        "request": item,
+                    }
+                    for item in minimized_batch["requests"]
+                ],
             }
         body = json.dumps(payload, separators=(",", ":"), default=str).encode("utf-8")
         headers = {"Content-Type": "application/json", "Accept": "application/json"}
@@ -91,23 +117,45 @@ class HttpJsonResolverProvider:
             items = decoded.get("results") if isinstance(decoded, dict) else decoded
             if not isinstance(items, list):
                 return decoded
-            return [self._parse_resolution(item) for item in items]
-        return self._parse_resolution(decoded)
+            return [self._parse_resolution(item, audit) for item in items]
+        return self._parse_resolution(decoded, audit)
 
-    def _request_payload(self, request) -> dict:
-        purpose = (
-            "EXTRACTION"
-            if isinstance(request, ExtractionResolutionRequest)
-            else "SEMANTIC"
+    def _request_payload(self, request) -> tuple[dict, dict]:
+        if isinstance(request, ExtractionResolutionRequest):
+            purpose = "EXTRACTION"
+            gateway_purpose = PURPOSE_FIELD_EXTRACTION
+            data = {
+                "field": request.field.value,
+                "document_role": request.document_role,
+                "evidence": request.evidence,
+                "escalation_reason": request.escalation_reason,
+            }
+        else:
+            purpose = "SEMANTIC"
+            gateway_purpose = PURPOSE_FIELD_SEMANTIC_COMPARISON
+            data = {
+                "field": request.field.value,
+                "si_value": request.si_value,
+                "bl_value": request.bl_value,
+                "si_evidence": request.si_evidence,
+                "bl_evidence": request.bl_evidence,
+            }
+        minimized, audit = self.gateway.prepare_payload(
+            purpose=gateway_purpose,
+            data=data,
+            feature="l2_http_json_resolution",
+            model=self.model_name,
+            provider="http_json",
+            endpoint=self.endpoint,
         )
         return {
             "purpose": purpose,
             "model": self.model_name,
-            "request": json.loads(json.dumps(asdict(request), default=str)),
-        }
+            "request": minimized,
+        }, audit
 
     @staticmethod
-    def _parse_resolution(payload):
+    def _parse_resolution(payload, audit_metadata: dict | None = None):
         if not isinstance(payload, dict):
             return payload
         try:
@@ -119,6 +167,7 @@ class HttpJsonResolverProvider:
                 confidence=payload["confidence"],
                 evidence=payload["evidence"],
                 reasoning_code=payload["reasoning_code"],
+                audit_metadata=dict(audit_metadata or {}),
             )
         except (KeyError, TypeError, ValueError):
             return payload
