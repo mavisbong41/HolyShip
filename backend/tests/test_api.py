@@ -12,12 +12,15 @@ Database integration (real PostgreSQL) is covered by test_sync_service.py.
 """
 
 import uuid
+from datetime import datetime, timezone
 from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
 
 from backend.app.main import app
+from backend.app.api.product_schemas import ProductEmailDetail, ProductEmailSummary
+from backend.app.storage.models import EmailMessageRecord
 from backend.app.sync.service import EmailSyncOutcome, SyncReport
 
 
@@ -258,4 +261,98 @@ def test_cors_headers_preserved_on_500_error():
                 assert "Simulated internal explosion" in data["error"]
     finally:
         app.dependency_overrides.clear()
+
+
+def _product_detail(email_id: uuid.UUID, category: str | None = "document_comparison") -> ProductEmailDetail:
+    now = datetime.now(timezone.utc)
+    return ProductEmailDetail(
+        email=ProductEmailSummary(
+            id=email_id,
+            external_message_id="msg-001",
+            source_type="simulated_api",
+            sender="shipper@example.com",
+            subject="Draft BL",
+            received_at=now,
+            created_at=now,
+            processing_status="COMPLETED",
+            attachment_count=0,
+            category=category,
+            classification_confidence=1.0 if category else None,
+            comparison_readiness=None,
+            comparison_state=None,
+            mismatch_count=0,
+            unresolved_count=0,
+            needs_review=False,
+            review_status=None,
+            review_reason=None,
+        ),
+        body="Please confirm.",
+        recipients=[],
+        content_hash="abc123",
+    )
+
+
+@pytest.mark.req("OUTLOOK-05")
+def test_v1_category_override_persists_manual_classification(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-001",
+        source_type="simulated_api",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    record.classification_results = []
+    mock_session.get.return_value = record
+
+    with patch("backend.app.api.router.get_email_detail", return_value=_product_detail(email_id, "invoice_query")):
+        resp = tc.patch(
+            f"/api/v1/emails/{email_id}/category",
+            json={
+                "category": "invoice_query",
+                "reviewer_name": "Outlook reviewer",
+                "reason": "Customer is asking about invoice charges.",
+            },
+        )
+
+    assert resp.status_code == 200
+    assert resp.json()["email"]["category"] == "invoice_query"
+    assert any(getattr(item, "category", None) == "invoice_query" for item in mock_session.add.call_args_list[0].args)
+
+
+@pytest.mark.req("OUTLOOK-05")
+def test_v1_reply_workflow_records_human_confirmed_send(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id,
+        external_message_id="msg-001",
+        source_type="simulated_api",
+        sender="shipper@example.com",
+        recipients=[],
+        subject="Draft BL",
+        body="Please confirm.",
+        content_hash="abc123",
+        processing_status="COMPLETED",
+        source_metadata={},
+    )
+    mock_session.get.return_value = record
+
+    resp = tc.post(
+        f"/api/v1/emails/{email_id}/reply/send",
+        json={"final_message": "Dear Customer, confirmed.", "reviewer_name": "Outlook reviewer"},
+    )
+
+    assert resp.status_code == 200
+    data = resp.json()
+    assert data["status"] == "SENT"
+    assert data["draft"] == "Dear Customer, confirmed."
+    assert record.source_metadata["outlook_workflow"]["status"] == "SENT"
+    assert record.source_metadata["outlook_events"][-1]["reason_code"] == "REPLY_SENT_CONFIRMED"
 

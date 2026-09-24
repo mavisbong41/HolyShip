@@ -347,6 +347,85 @@ describe("TaskPane", () => {
     });
   });
 
+  it("saves manual category correction from Outlook", async () => {
+    const updatedDetail: ProductEmailDetail = {
+      ...fixtures.cleanMatch,
+      email: {
+        ...fixtures.cleanMatch.email,
+        category: "invoice_query",
+      },
+    };
+    const mockCategory = vi.spyOn(clientModule, "updateEmailCategory").mockResolvedValue(updatedDetail);
+    const user = userEvent.setup();
+    setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Manual category correction" })).toBeInTheDocument();
+    });
+
+    await user.selectOptions(screen.getByLabelText("Category"), "invoice_query");
+    await user.type(screen.getByLabelText("Reason"), "Customer is asking about invoice charges.");
+    await user.click(screen.getByRole("button", { name: /save category/i }));
+
+    await waitFor(() => {
+      expect(mockCategory).toHaveBeenCalledWith(
+        "email-001",
+        "invoice_query",
+        "Outlook reviewer",
+        "Customer is asking about invoice charges.",
+      );
+    });
+  });
+
+  it("runs reply summary and draft workflow from Outlook", async () => {
+    const summaryWorkflow = {
+      email_id: "email-001",
+      status: "KEY_POINTS_READY",
+      summary: "Draft BL case needs a reply.",
+      key_points: ["Acknowledge discrepancy"],
+      draft: null,
+      last_instruction: null,
+      sent_at: null,
+      updated_at: "2024-05-01T09:05:00Z",
+    };
+    const draftWorkflow = {
+      ...summaryWorkflow,
+      status: "DRAFT_READY",
+      draft: "Dear Customer,\n\n- Acknowledge discrepancy\n\nBest regards,\nHolyShip Operations",
+    };
+    const sentWorkflow = {
+      ...draftWorkflow,
+      status: "SENT",
+      sent_at: "2024-05-01T09:07:00Z",
+    };
+    const mockSummary = vi.spyOn(clientModule, "createReplySummary").mockResolvedValue(summaryWorkflow);
+    const mockGenerate = vi.spyOn(clientModule, "generateReplyDraft").mockResolvedValue(draftWorkflow);
+    const mockSend = vi.spyOn(clientModule, "sendReplyDraft").mockResolvedValue(sentWorkflow);
+    const user = userEvent.setup();
+    setupAdapter({ detail: fixtures.cleanMatch, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+    render(<TaskPane contextProvider={provider} />);
+
+    await waitFor(() => {
+      expect(screen.getByRole("region", { name: "Reply workflow" })).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole("button", { name: /prepare summary/i }));
+    await waitFor(() => {
+      expect(mockSummary).toHaveBeenCalledWith("email-001", "Outlook reviewer");
+    });
+
+    await user.click(await screen.findByRole("button", { name: /generate draft/i }));
+    await waitFor(() => {
+      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Outlook reviewer");
+    });
+
+    await user.click(await screen.findByRole("button", { name: /confirm sent/i }));
+    await waitFor(() => {
+      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Outlook reviewer");
+    });
+  });
+
   describe("AI Review Assistant Companion", () => {
     it("renders AI Review Assistant section and chips when active review exists", async () => {
       setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });

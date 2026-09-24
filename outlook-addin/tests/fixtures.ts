@@ -159,6 +159,7 @@ function makeDetail(
     timeline: [],
     review: [],
     resolutions: [],
+    outlook_workflow: undefined,
   };
 }
 

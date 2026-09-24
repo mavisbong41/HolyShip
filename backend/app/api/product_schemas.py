@@ -217,6 +217,7 @@ class ProductEmailDetail(BaseModel):
     timeline: list[ProductTimelineEvent] = Field(default_factory=list)
     review: list["ProductReview"] = Field(default_factory=list)
     resolutions: list[ProductResolution] = Field(default_factory=list)
+    outlook_workflow: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProductReview(BaseModel):
@@ -350,6 +351,43 @@ class ReviewDismissIn(BaseModel):
     reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
     reason: str = Field(min_length=1, max_length=80)
     notes: str | None = Field(default=None, max_length=4000)
+
+
+class CategoryOverrideIn(BaseModel):
+    category: ProductCategory
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    reason: str | None = Field(default=None, max_length=4000)
+
+
+class ProductReplyWorkflow(BaseModel):
+    email_id: uuid.UUID
+    status: str
+    summary: str | None = None
+    key_points: list[str] = Field(default_factory=list)
+    draft: str | None = None
+    last_instruction: str | None = None
+    sent_at: datetime | None = None
+    updated_at: datetime
+
+
+class ReplySummaryIn(BaseModel):
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ReplyGenerateIn(BaseModel):
+    key_points: list[str] = Field(default_factory=list, max_length=12)
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ReplyRefineIn(BaseModel):
+    draft: str = Field(min_length=1, max_length=8000)
+    instruction: str = Field(min_length=1, max_length=1000)
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+
+
+class ReplySendIn(BaseModel):
+    final_message: str = Field(min_length=1, max_length=8000)
+    reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
 
 
 class HumanReviewPage(BaseModel):

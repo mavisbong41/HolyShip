@@ -10,9 +10,11 @@ import {
   FileSearch,
   FileText,
   Info,
+  Plus,
   RefreshCw,
   ShieldCheck,
   Sparkles,
+  Tag,
   X,
 } from "lucide-react";
 import type React from "react";
@@ -22,11 +24,16 @@ import {
   applyEditedAISuggestion,
   askAIAssistant,
   claimHumanReview,
+  createReplySummary,
   dismissAISuggestion,
   dismissHumanReview,
+  generateReplyDraft,
+  refineReplyDraft,
   reprocessEmail,
   resolveHumanReview,
+  sendReplyDraft,
   saveHumanReviewOverride,
+  updateEmailCategory,
 } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
@@ -38,6 +45,8 @@ import type {
   ProductEmailSummary,
   ProductReview,
   ProductAISuggestion,
+  ProductCategory,
+  ProductReplyWorkflow,
 } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
@@ -791,6 +800,229 @@ function DirectReviewActions({
   );
 }
 
+const categoryOptions: ProductCategory[] = [
+  "document_comparison",
+  "new_si_request",
+  "invoice_query",
+  "general_message",
+  "spam",
+];
+
+function CategoryCorrectionSection({
+  email,
+  onUpdated,
+}: {
+  email: ProductEmailSummary;
+  onUpdated: (detail: ProductEmailDetail) => void;
+}): React.ReactElement {
+  const [category, setCategory] = useState<ProductCategory>(email.category ?? "general_message");
+  const [reviewerName, setReviewerName] = useState("Outlook reviewer");
+  const [reason, setReason] = useState("");
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const submit = async () => {
+    setBusy(true);
+    setError(null);
+    try {
+      const detail = await updateEmailCategory(email.id, category, reviewerName || "Outlook reviewer", reason);
+      onUpdated(detail);
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Category correction failed");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Manual category correction">
+      <div className="section-title-row">
+        <p className="pane-section-label">Category Correction</p>
+        <Tag size={14} className="text-orange" aria-hidden="true" />
+      </div>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <div className="review-form-grid">
+        <label className="form-field">
+          Category
+          <select value={category} onChange={(event) => setCategory(event.target.value as ProductCategory)}>
+            {categoryOptions.map((item) => (
+              <option key={item} value={item}>{categoryLabels[item]}</option>
+            ))}
+          </select>
+        </label>
+        <label className="form-field">
+          Reviewer
+          <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
+        </label>
+      </div>
+      <label className="form-field">
+        Reason
+        <textarea value={reason} onChange={(event) => setReason(event.target.value)} rows={2} />
+      </label>
+      <button type="button" className="btn-secondary" disabled={busy} onClick={() => void submit()}>
+        <Check size={12} aria-hidden="true" />
+        Save Category
+      </button>
+      <p className="mini-note">Manual category wins by writing a backend classification override. Future AI suggestions must not silently replace it.</p>
+    </section>
+  );
+}
+
+function ReplyWorkflowSection({
+  email,
+  initialWorkflow,
+  onActionComplete,
+}: {
+  email: ProductEmailSummary;
+  initialWorkflow?: ProductReplyWorkflow;
+  onActionComplete: () => Promise<void>;
+}): React.ReactElement {
+  const [workflow, setWorkflow] = useState<ProductReplyWorkflow | undefined>(initialWorkflow);
+  const [reviewerName, setReviewerName] = useState("Outlook reviewer");
+  const [keyPointDraft, setKeyPointDraft] = useState("");
+  const [draft, setDraft] = useState(initialWorkflow?.draft ?? "");
+  const [instruction, setInstruction] = useState("Make it concise and professional.");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const keyPoints = workflow?.key_points ?? [];
+
+  const run = async (action: string, operation: () => Promise<ProductReplyWorkflow>) => {
+    setBusyAction(action);
+    setError(null);
+    try {
+      const next = await operation();
+      setWorkflow(next);
+      setDraft(next.draft ?? "");
+      await onActionComplete();
+    } catch (caught) {
+      setError(caught instanceof Error ? caught.message : "Reply workflow action failed");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const updateKeyPoint = (index: number, value: string) => {
+    if (!workflow) return;
+    const nextPoints = [...keyPoints];
+    nextPoints[index] = value;
+    setWorkflow({ ...workflow, key_points: nextPoints });
+  };
+
+  const removeKeyPoint = (index: number) => {
+    if (!workflow) return;
+    setWorkflow({ ...workflow, key_points: keyPoints.filter((_, itemIndex) => itemIndex !== index) });
+  };
+
+  const addKeyPoint = () => {
+    const trimmed = keyPointDraft.trim();
+    if (!trimmed) return;
+    const base = workflow ?? {
+      email_id: email.id,
+      status: "KEY_POINTS_EDITING",
+      summary: null,
+      key_points: [],
+      draft: null,
+      last_instruction: null,
+      sent_at: null,
+      updated_at: new Date().toISOString(),
+    };
+    setWorkflow({ ...base, key_points: [...(base.key_points ?? []), trimmed] });
+    setKeyPointDraft("");
+  };
+
+  return (
+    <section className="direct-review-section" aria-label="Reply workflow">
+      <div className="section-title-row">
+        <p className="pane-section-label">Reply Workflow</p>
+        <StatusBadge value={workflow?.status ?? "NOT_STARTED"} tone="info" />
+      </div>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
+      <label className="form-field">
+        Reviewer
+        <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
+      </label>
+      <button
+        type="button"
+        className="btn-secondary"
+        disabled={busyAction === "summary"}
+        onClick={() => void run("summary", () => createReplySummary(email.id, reviewerName || "Outlook reviewer"))}
+      >
+        <Sparkles size={12} aria-hidden="true" />
+        Prepare Summary
+      </button>
+      {workflow?.summary && <p className="reply-summary">{workflow.summary}</p>}
+      {workflow && (
+        <>
+          <div className="history-list">
+            {keyPoints.map((point, index) => (
+              <div key={`${point}-${index}`} className="key-point-row">
+                <input value={point} onChange={(event) => updateKeyPoint(index, event.target.value)} aria-label={`Reply key point ${index + 1}`} />
+                <button type="button" className="pane-icon-btn light" aria-label={`Remove key point ${index + 1}`} onClick={() => removeKeyPoint(index)}>
+                  <X size={12} aria-hidden="true" />
+                </button>
+              </div>
+            ))}
+          </div>
+          <div className="key-point-row">
+            <input
+              value={keyPointDraft}
+              onChange={(event) => setKeyPointDraft(event.target.value)}
+              aria-label="New reply key point"
+              placeholder="Add key point"
+            />
+            <button type="button" className="pane-icon-btn light" aria-label="Add key point" onClick={addKeyPoint}>
+              <Plus size={12} aria-hidden="true" />
+            </button>
+          </div>
+          <button
+            type="button"
+            className="btn-primary"
+            disabled={busyAction === "generate" || keyPoints.length === 0}
+            onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+          >
+            <FileText size={12} aria-hidden="true" />
+            Generate Draft
+          </button>
+        </>
+      )}
+      {(workflow?.draft || draft) && (
+        <>
+          <label className="form-field">
+            Draft reply
+            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={8} />
+          </label>
+          <label className="form-field">
+            Refine instruction
+            <input value={instruction} onChange={(event) => setInstruction(event.target.value)} />
+          </label>
+          <div className="inline-action-row">
+            <button
+              type="button"
+              className="btn-secondary"
+              disabled={busyAction === "refine" || !draft.trim() || !instruction.trim()}
+              onClick={() => void run("refine", () => refineReplyDraft(email.id, draft, instruction, reviewerName || "Outlook reviewer"))}
+            >
+              <RefreshCw size={12} aria-hidden="true" />
+              Refine
+            </button>
+            <button
+              type="button"
+              className="btn-primary"
+              disabled={busyAction === "send" || !draft.trim()}
+              onClick={() => void run("send", () => sendReplyDraft(email.id, draft, reviewerName || "Outlook reviewer"))}
+            >
+              <Check size={12} aria-hidden="true" />
+              Confirm Sent
+            </button>
+          </div>
+        </>
+      )}
+      <p className="mini-note">AI-style reply help stays human-controlled: edit key points, edit the draft, then explicitly confirm sending.</p>
+    </section>
+  );
+}
+
 // ─── Main TaskPane ─────────────────────────────────────────────────
 
 export function TaskPane({
@@ -1006,6 +1238,10 @@ export function TaskPane({
     await refreshCurrentEmail(true);
   };
 
+  const replaceReadyDetail = (detail: ProductEmailDetail) => {
+    setState({ type: "ready", detail, confidence: state.type === "ready" ? state.confidence : "high", note: state.type === "ready" ? state.note : null });
+  };
+
   return (
     <div className="pane-shell">
       {/* Header */}
@@ -1055,6 +1291,14 @@ export function TaskPane({
 
             {/* Email info */}
             <EmailInfoSection email={state.detail.email} />
+
+            <CategoryCorrectionSection email={state.detail.email} onUpdated={replaceReadyDetail} />
+
+            <ReplyWorkflowSection
+              email={state.detail.email}
+              initialWorkflow={state.detail.outlook_workflow}
+              onActionComplete={refreshAfterMutation}
+            />
 
             {/* Comparison table for document_comparison */}
             {state.detail.email.category === "document_comparison" &&

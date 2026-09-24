@@ -127,6 +127,18 @@ export interface ProductEmailDetail {
   timeline: ProductTimelineEvent[];
   review: ProductReview[];
   resolutions: ProductResolution[];
+  outlook_workflow?: ProductReplyWorkflow;
+}
+
+export interface ProductReplyWorkflow {
+  email_id: string;
+  status: string;
+  summary: string | null;
+  key_points: string[];
+  draft: string | null;
+  last_instruction: string | null;
+  sent_at: string | null;
+  updated_at: string;
 }
 
 export interface ProductAttachment {

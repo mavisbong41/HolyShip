@@ -709,6 +709,7 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
         ],
         review=review,
         resolutions=[_resolution(item) for item in resolutions],
+        outlook_workflow=dict((record.source_metadata or {}).get("outlook_workflow") or {}),
     )
 
 

@@ -1,4 +1,11 @@
-import type { AIAssistantResponse, EmailQueuePage, ProductEmailDetail, ProductReview } from "../types/product";
+import type {
+  AIAssistantResponse,
+  EmailQueuePage,
+  ProductCategory,
+  ProductEmailDetail,
+  ProductReplyWorkflow,
+  ProductReview,
+} from "../types/product";
 
 const DEFAULT_BASE_URL = "http://localhost:8000/api/v1";
 
@@ -68,6 +75,19 @@ export async function getEmailDetail(emailId: string): Promise<ProductEmailDetai
 
 export async function reprocessEmail(emailId: string): Promise<{ email_id: string; status: string }> {
   return request(`/emails/${emailId}/reprocess`, { method: "POST" });
+}
+
+export async function updateEmailCategory(
+  emailId: string,
+  category: ProductCategory,
+  reviewerName?: string,
+  reason?: string,
+): Promise<ProductEmailDetail> {
+  return request<ProductEmailDetail>(`/emails/${emailId}/category`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ category, reviewer_name: reviewerName, reason }),
+  });
 }
 
 /**
@@ -170,6 +190,54 @@ export async function dismissAISuggestion(
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ reviewer_label: reviewerLabel }),
+  });
+}
+
+export async function createReplySummary(
+  emailId: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/summary`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function generateReplyDraft(
+  emailId: string,
+  keyPoints: string[],
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/generate`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key_points: keyPoints, reviewer_name: reviewerName }),
+  });
+}
+
+export async function refineReplyDraft(
+  emailId: string,
+  draft: string,
+  instruction: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/refine`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draft, instruction, reviewer_name: reviewerName }),
+  });
+}
+
+export async function sendReplyDraft(
+  emailId: string,
+  finalMessage: string,
+  reviewerName?: string,
+): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/send`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ final_message: finalMessage, reviewer_name: reviewerName }),
   });
 }
 

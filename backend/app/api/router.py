@@ -40,6 +40,8 @@ from backend.app.storage.models import (
     ClassificationResultRecord,
     EmailMessageRecord,
     HumanReviewCaseRecord,
+    ProcessingEventRecord,
+    utcnow,
 )
 from backend.app.resolution.runtime import get_configured_resolution_executor_factory
 from backend.app.discrepancy.service import DiscrepancyConflictError, DiscrepancyService
@@ -63,6 +65,7 @@ from backend.app.api.product_schemas import (
     AISuggestionAcceptIn,
     AISuggestionApplyEditedIn,
     AISuggestionDismissIn,
+    CategoryOverrideIn,
     ComparisonReadiness,
     DiscrepancyAcknowledgeIn,
     DiscrepancyOverrideIn,
@@ -78,8 +81,13 @@ from backend.app.api.product_schemas import (
     ProductEvent,
     ProductIncomingOut,
     ProductReprocessOut,
+    ProductReplyWorkflow,
     ProductReview,
     ProductSummary,
+    ReplyGenerateIn,
+    ReplyRefineIn,
+    ReplySendIn,
+    ReplySummaryIn,
     ReviewClaimIn,
     ReviewDismissIn,
     ReviewOverrideIn,
@@ -498,6 +506,233 @@ def product_email_detail_alias(
     session: Session = Depends(get_session),
 ):
     return product_email_detail(email_id, session)
+
+
+def _email_or_404(session: Session, email_id: uuid.UUID) -> EmailMessageRecord:
+    record = session.get(EmailMessageRecord, email_id)
+    if record is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return record
+
+
+def _append_outlook_event(
+    session: Session,
+    record: EmailMessageRecord,
+    reason_code: str,
+    *,
+    details: dict | None = None,
+) -> None:
+    metadata = dict(record.source_metadata or {})
+    events = list(metadata.get("outlook_events") or [])
+    events.append(
+        {
+            "reason_code": reason_code,
+            "created_at": utcnow().isoformat(),
+            "details": details or {},
+        }
+    )
+    metadata["outlook_events"] = events[-50:]
+    record.source_metadata = metadata
+    session.add(
+        ProcessingEventRecord(
+            email_id=record.id,
+            old_status=record.processing_status,
+            new_status=record.processing_status,
+            reason_code=reason_code,
+        )
+    )
+
+
+def _workflow_payload(record: EmailMessageRecord, **updates) -> ProductReplyWorkflow:
+    metadata = dict(record.source_metadata or {})
+    workflow = dict(metadata.get("outlook_workflow") or {})
+    workflow.update(updates)
+    workflow["updated_at"] = utcnow().isoformat()
+    metadata["outlook_workflow"] = workflow
+    record.source_metadata = metadata
+    return ProductReplyWorkflow(email_id=record.id, **workflow)
+
+
+def _reply_seed_points(detail: ProductEmailDetail) -> list[str]:
+    points: list[str] = []
+    if detail.comparison:
+        if detail.comparison.mismatched_fields:
+            fields = ", ".join(detail.comparison.mismatched_fields)
+            points.append(f"Acknowledge discrepancy in {fields}.")
+        if detail.comparison.unresolved_fields:
+            fields = ", ".join(detail.comparison.unresolved_fields)
+            points.append(f"Confirm pending review for {fields}.")
+        if not detail.comparison.mismatch_found and not detail.comparison.unresolved_fields:
+            points.append("Confirm SI and Draft BL fields match.")
+    if not points and detail.email.category:
+        points.append(f"Acknowledge the {detail.email.category.replace('_', ' ')} request.")
+    points.append("State that HolyShip verification has been completed or is being handled.")
+    return points[:6]
+
+
+def _draft_from_points(points: list[str]) -> str:
+    body = "\n".join(f"- {point}" for point in points if point.strip())
+    return (
+        "Dear Customer,\n\n"
+        "Thank you for your email. We have reviewed the case in HolyShip.\n\n"
+        f"{body}\n\n"
+        "We will proceed according to the confirmed review outcome.\n\n"
+        "Best regards,\nHolyShip Operations"
+    )
+
+
+@router.patch(
+    "/v1/emails/{email_id}/category",
+    response_model=ProductEmailDetail,
+    summary="Apply a manual category correction from Dashboard or Outlook",
+)
+def product_email_category_override(
+    email_id: uuid.UUID,
+    payload: CategoryOverrideIn,
+    session: Session = Depends(get_session),
+):
+    record = _email_or_404(session, email_id)
+    existing_count = len(record.classification_results or [])
+    classifier_version = f"manual-category-v1-{existing_count + 1}"
+    session.add(
+        ClassificationResultRecord(
+            email_id=record.id,
+            category=payload.category,
+            confidence=1.0,
+            candidate_scores={payload.category: 1.0},
+            reason=payload.reason or "Manual category correction from Outlook/Dashboard.",
+            reason_code="MANUAL_CATEGORY_OVERRIDE",
+            evidence_summary={
+                "reviewer_name": payload.reviewer_name,
+                "source": "outlook_or_dashboard",
+            },
+            conflict_detected=False,
+            resolved_at_stage="human_override",
+            comparison_readiness="UNRESOLVED" if payload.category == "document_comparison" else None,
+            classifier_version=classifier_version,
+            source_content_hash=record.content_hash,
+        )
+    )
+    _append_outlook_event(
+        session,
+        record,
+        "MANUAL_CATEGORY_OVERRIDE",
+        details={"category": payload.category, "reviewer_name": payload.reviewer_name},
+    )
+    session.commit()
+    detail = get_email_detail(session, email_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    return detail
+
+
+@router.post(
+    "/v1/emails/{email_id}/reply/summary",
+    response_model=ProductReplyWorkflow,
+    summary="Create editable reply summary and key points for an Outlook case",
+)
+def product_reply_summary(
+    email_id: uuid.UUID,
+    payload: ReplySummaryIn,
+    session: Session = Depends(get_session),
+):
+    record = _email_or_404(session, email_id)
+    detail = get_email_detail(session, email_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Email not found")
+    summary = f"{detail.email.subject} — {detail.comparison.message if detail.comparison else 'case reviewed in HolyShip'}"
+    key_points = _reply_seed_points(detail)
+    workflow = _workflow_payload(
+        record,
+        status="KEY_POINTS_READY",
+        summary=summary,
+        key_points=key_points,
+        draft=None,
+        last_instruction=None,
+        sent_at=None,
+    )
+    _append_outlook_event(session, record, "REPLY_KEY_POINTS_CREATED", details={"reviewer_name": payload.reviewer_name})
+    session.commit()
+    return workflow
+
+
+@router.post(
+    "/v1/emails/{email_id}/reply/generate",
+    response_model=ProductReplyWorkflow,
+    summary="Generate an editable reply draft from approved key points",
+)
+def product_reply_generate(
+    email_id: uuid.UUID,
+    payload: ReplyGenerateIn,
+    session: Session = Depends(get_session),
+):
+    record = _email_or_404(session, email_id)
+    points = [point.strip() for point in payload.key_points if point.strip()]
+    if not points:
+        detail = get_email_detail(session, email_id)
+        if detail is None:
+            raise HTTPException(status_code=404, detail="Email not found")
+        points = _reply_seed_points(detail)
+    workflow = _workflow_payload(
+        record,
+        status="DRAFT_READY",
+        key_points=points,
+        draft=_draft_from_points(points),
+    )
+    _append_outlook_event(session, record, "REPLY_DRAFT_GENERATED", details={"reviewer_name": payload.reviewer_name})
+    session.commit()
+    return workflow
+
+
+@router.post(
+    "/v1/emails/{email_id}/reply/refine",
+    response_model=ProductReplyWorkflow,
+    summary="Refine an editable reply draft after user instruction",
+)
+def product_reply_refine(
+    email_id: uuid.UUID,
+    payload: ReplyRefineIn,
+    session: Session = Depends(get_session),
+):
+    record = _email_or_404(session, email_id)
+    instruction = payload.instruction.strip()
+    refined = payload.draft.strip()
+    if "short" in instruction.lower() or "concise" in instruction.lower():
+        refined = "\n".join(line for line in refined.splitlines() if line.strip())[:1200]
+    else:
+        refined = f"{refined}\n\nNote: {instruction}"
+    workflow = _workflow_payload(
+        record,
+        status="DRAFT_REFINED",
+        draft=refined,
+        last_instruction=instruction,
+    )
+    _append_outlook_event(session, record, "REPLY_DRAFT_REFINED", details={"reviewer_name": payload.reviewer_name})
+    session.commit()
+    return workflow
+
+
+@router.post(
+    "/v1/emails/{email_id}/reply/send",
+    response_model=ProductReplyWorkflow,
+    summary="Record explicit human-confirmed Outlook reply send",
+)
+def product_reply_send(
+    email_id: uuid.UUID,
+    payload: ReplySendIn,
+    session: Session = Depends(get_session),
+):
+    record = _email_or_404(session, email_id)
+    sent_at = utcnow()
+    workflow = _workflow_payload(
+        record,
+        status="SENT",
+        draft=payload.final_message,
+        sent_at=sent_at.isoformat(),
+    )
+    _append_outlook_event(session, record, "REPLY_SENT_CONFIRMED", details={"reviewer_name": payload.reviewer_name})
+    session.commit()
+    return workflow
 
 
 @router.get(
