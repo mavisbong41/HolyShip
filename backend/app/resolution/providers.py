@@ -25,7 +25,7 @@ class ResolverProvider(Protocol):
     def resolve(
         self,
         request: ExtractionResolutionRequest | SemanticResolutionRequest,
-    ) -> ProviderResolution: ...
+    ) -> ProviderResolution | list[ProviderResolution]: ...
 
 
 class TransientResolverError(RuntimeError):
@@ -144,11 +144,40 @@ class GeminiResolverProvider:
         self.endpoint = endpoint
         self.gateway = gateway or SecureAIGateway()
 
-    def resolve(
-        self,
-        request: ExtractionResolutionRequest | SemanticResolutionRequest,
-    ) -> ProviderResolution:
-        if isinstance(request, ExtractionResolutionRequest):
+    def resolve(self, request):
+        batch_requests = getattr(request, "requests", None)
+        is_batch = batch_requests is not None
+
+        if is_batch:
+            items = tuple(batch_requests)
+            if not items or any(
+                not isinstance(item, ExtractionResolutionRequest)
+                for item in items
+            ):
+                raise TypeError(
+                    "Gemini extraction batch must contain extraction requests"
+                )
+            purpose = PURPOSE_FIELD_EXTRACTION
+            feature = "l2_extraction_resolution_batch"
+            data = {
+                "requests": [
+                    {
+                        "field": item.field.value,
+                        "document_role": item.document_role,
+                        "evidence": item.evidence,
+                        "escalation_reason": item.escalation_reason,
+                    }
+                    for item in items
+                ]
+            }
+            instruction = (
+                "Resolve each shipping-document extraction field strictly from its own "
+                "provided field evidence. Return one JSON object with a 'results' array. "
+                "Every result must contain field, value, normalized_value, confidence, "
+                "evidence, and reasoning_code. Evidence must quote only that field's "
+                "supplied evidence."
+            )
+        elif isinstance(request, ExtractionResolutionRequest):
             purpose = PURPOSE_FIELD_EXTRACTION
             feature = "l2_extraction_resolution"
             data = {
@@ -180,7 +209,7 @@ class GeminiResolverProvider:
             )
         else:
             raise TypeError(
-                "Gemini resolver accepts only single extraction or semantic requests"
+                "Gemini resolver accepts extraction or semantic requests only"
             )
 
         try:
@@ -211,17 +240,34 @@ class GeminiResolverProvider:
 
         parsed = result.structured_response
         try:
-            return ProviderResolution(
-                field=parsed["field"],
-                value=parsed.get("value"),
-                normalized_value=parsed.get("normalized_value"),
-                equivalent=parsed.get("equivalent"),
-                confidence=float(parsed["confidence"]),
-                evidence=str(parsed.get("evidence", "")),
-                reasoning_code=str(parsed.get("reasoning_code", "GEMINI")),
-                audit_metadata=result.audit_metadata,
-            )
+            if is_batch:
+                raw_results = parsed.get("results")
+                if not isinstance(raw_results, list):
+                    raise TypeError("Gemini batch response requires a results array")
+                return [
+                    self._provider_resolution(item, result.audit_metadata)
+                    for item in raw_results
+                ]
+            return self._provider_resolution(parsed, result.audit_metadata)
         except Exception as exc:
             raise RuntimeError(
                 f"Failed to parse Gemini response: {exc}"
             ) from exc
+
+    @staticmethod
+    def _provider_resolution(
+        parsed: dict,
+        audit_metadata: dict,
+    ) -> ProviderResolution:
+        if not isinstance(parsed, dict):
+            raise TypeError("Gemini result must be an object")
+        return ProviderResolution(
+            field=parsed["field"],
+            value=parsed.get("value"),
+            normalized_value=parsed.get("normalized_value"),
+            equivalent=parsed.get("equivalent"),
+            confidence=float(parsed["confidence"]),
+            evidence=str(parsed.get("evidence", "")),
+            reasoning_code=str(parsed.get("reasoning_code", "GEMINI")),
+            audit_metadata=audit_metadata,
+        )
