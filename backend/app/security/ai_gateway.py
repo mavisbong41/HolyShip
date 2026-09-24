@@ -26,8 +26,9 @@ _ALLOWED_PURPOSES = frozenset(
 
 _EMAIL_RE = re.compile(r"(?i)\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b")
 _SECRET_ASSIGNMENT_RE = re.compile(
-    r"(?i)\b(api[_-]?key|authorization|bearer|token|password)\s*[:=]\s*[^\s,;]+"
+    r"(?i)\b(api[_ -]?key|authorization|token|password)\s*[:=]\s*(?:bearer\s+)?[^\s,;]+"
 )
+_BEARER_TOKEN_RE = re.compile(r"(?i)\bbearer\s+[A-Za-z0-9._~+/=-]+")
 
 
 class AIGatewayPolicyError(RuntimeError):
@@ -401,6 +402,7 @@ class SecureAIGateway:
             return [self._sanitize(item) for item in value]
         if isinstance(value, str):
             sanitized = _SECRET_ASSIGNMENT_RE.sub(r"\1=[REDACTED]", value)
+            sanitized = _BEARER_TOKEN_RE.sub("Bearer [REDACTED]", sanitized)
             if self.enterprise_privacy_mode:
                 sanitized = _EMAIL_RE.sub("[REDACTED_EMAIL]", sanitized)
             return sanitized
