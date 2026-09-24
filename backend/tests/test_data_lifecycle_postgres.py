@@ -13,10 +13,16 @@ from backend.app.storage.models import (
     AISuggestionRecord,
     AttachmentRecord,
     AuditEventRecord,
+    ComparisonResultRecord,
     DataLifecycleRunRecord,
+    DocumentExtractionRecord,
+    DocumentRecord,
     EmailMessageRecord,
+    ExtractedFieldRecord,
+    FieldComparisonRecord,
     HumanReviewCaseRecord,
     HumanReviewEventRecord,
+    HumanReviewFieldOverrideRecord,
     ProcessingEventRecord,
     ProcessingJobRecord,
     utcnow,
@@ -115,6 +121,158 @@ def _seed_case(session):
     session.add_all([attachment, job, event, review])
     session.flush()
 
+    si_document = DocumentRecord(
+        email_id=email.id,
+        attachment_id=attachment.id,
+        document_type="SI",
+        format="PDF_TEXT",
+        filename="si.pdf",
+        source_reference="data/bundle/inbox/si.pdf",
+        routing_outcome="SI_FOUND",
+        role_confidence=0.99,
+        role_evidence={},
+        validation_outcome="VALID",
+        content_sha256="d" * 64,
+        created_at=old,
+        updated_at=old,
+    )
+    bl_document = DocumentRecord(
+        email_id=email.id,
+        attachment_id=None,
+        document_type="DRAFT_BL",
+        format="PDF_TEXT",
+        filename="draft-bl.pdf",
+        source_reference="data/bundle/inbox/draft-bl.pdf",
+        routing_outcome="BL_FOUND",
+        role_confidence=0.99,
+        role_evidence={},
+        validation_outcome="VALID",
+        content_sha256="e" * 64,
+        created_at=old,
+        updated_at=old,
+    )
+    session.add_all([si_document, bl_document])
+    session.flush()
+
+    si_extraction = DocumentExtractionRecord(
+        document_id=si_document.id,
+        reader_used="PdfTextReader",
+        extraction_status="EXTRACTED",
+        extraction_quality=0.99,
+        raw_text="SI gross weight 1000 KG",
+        pages_count=1,
+        metadata_json={},
+        extractor_version="test",
+        created_at=old,
+        updated_at=old,
+    )
+    bl_extraction = DocumentExtractionRecord(
+        document_id=bl_document.id,
+        reader_used="PdfTextReader",
+        extraction_status="EXTRACTED",
+        extraction_quality=0.99,
+        raw_text="BL gross weight 900 KG",
+        pages_count=1,
+        metadata_json={},
+        extractor_version="test",
+        created_at=old,
+        updated_at=old,
+    )
+    session.add_all([si_extraction, bl_extraction])
+    session.flush()
+
+    si_field = ExtractedFieldRecord(
+        extraction_id=si_extraction.id,
+        field_name="gross_weight_kg",
+        raw_label="Gross Weight",
+        raw_value="1000 KG",
+        canonical_value=1000,
+        status="RESOLVED",
+        confidence=0.99,
+        evidence={},
+        source_location={},
+        mapping_method="exact_label",
+        extraction_method="DETERMINISTIC_ONE_PASS",
+        created_at=old,
+    )
+    bl_field = ExtractedFieldRecord(
+        extraction_id=bl_extraction.id,
+        field_name="gross_weight_kg",
+        raw_label="Gross Weight",
+        raw_value="900 KG",
+        canonical_value=900,
+        status="RESOLVED",
+        confidence=0.99,
+        evidence={},
+        source_location={},
+        mapping_method="exact_label",
+        extraction_method="DETERMINISTIC_ONE_PASS",
+        created_at=old,
+    )
+    session.add_all([si_field, bl_field])
+    session.flush()
+
+    comparison = ComparisonResultRecord(
+        email_id=email.id,
+        si_extraction_id=si_extraction.id,
+        bl_extraction_id=bl_extraction.id,
+        review_case_id=review.id,
+        comparison_version="test-comparison-v1",
+        comparison_state="COMPLETED",
+        mismatch_found=True,
+        all_fields_definite=True,
+        mismatched_fields=["gross_weight_kg"],
+        unresolved_fields=[],
+        reason_code="COMPARISON_COMPLETE",
+        message="Gross weight mismatch",
+        resolution_status="OPEN",
+        created_at=old,
+        updated_at=old,
+    )
+    session.add(comparison)
+    session.flush()
+
+    field_comparison = FieldComparisonRecord(
+        comparison_result_id=comparison.id,
+        si_field_id=si_field.id,
+        bl_field_id=bl_field.id,
+        field_name="gross_weight_kg",
+        si_raw_value="1000 KG",
+        bl_raw_value="900 KG",
+        si_canonical_value=1000,
+        bl_canonical_value=900,
+        si_normalized_value=1000,
+        bl_normalized_value=900,
+        comparison_layer="L1",
+        status="MISMATCH",
+        reason_code="VALUE_MISMATCH",
+        evidence={},
+        created_at=old,
+    )
+    override = HumanReviewFieldOverrideRecord(
+        review_case_id=review.id,
+        document_side="BL",
+        field_name="gross_weight_kg",
+        original_field_id=bl_field.id,
+        corrected_value="1000 KG",
+        corrected_canonical_value=1000,
+        reviewer_name="Captain Jack",
+        note="Corrected from SI evidence",
+        active=True,
+        created_at=old,
+    )
+    old_audit = AuditEventRecord(
+        event_type="LEGACY_AUDIT_EVENT",
+        actor_type="SYSTEM",
+        actor_name="test",
+        source="TEST",
+        entity_type="EMAIL",
+        entity_id=email.id,
+        metadata_json={"should_survive_cleanup": True},
+        created_at=old,
+    )
+    session.add_all([field_comparison, override, old_audit])
+
     review_event = HumanReviewEventRecord(
         review_case_id=review.id,
         action="CASE_CREATED",
@@ -139,13 +297,13 @@ def _seed_case(session):
     )
     session.add_all([review_event, suggestion])
     session.commit()
-    return email.id, attachment.id, review.id
+    return email.id, attachment.id, review.id, comparison.id, field_comparison.id, override.id, old_audit.id
 
 
 @pytest.mark.req("DLM-01")
 def test_data_lifecycle_dry_run_records_summary_without_mutating_data(db_factory):
     with db_factory() as session:
-        email_id, attachment_id, _review_id = _seed_case(session)
+        email_id, attachment_id, *_protected_ids = _seed_case(session)
 
         run = DataLifecycleService(session, _policy(), now=utcnow()).run(dry_run=True)
 
@@ -174,7 +332,7 @@ def test_data_lifecycle_dry_run_records_summary_without_mutating_data(db_factory
 @pytest.mark.req("DLM-01")
 def test_data_lifecycle_apply_cleans_transient_data_and_preserves_review_audit(db_factory):
     with db_factory() as session:
-        email_id, attachment_id, review_id = _seed_case(session)
+        email_id, attachment_id, review_id, comparison_id, field_comparison_id, override_id, old_audit_id = _seed_case(session)
 
         run = DataLifecycleService(session, _policy(), now=utcnow()).run(dry_run=False)
 
@@ -196,6 +354,10 @@ def test_data_lifecycle_apply_cleans_transient_data_and_preserves_review_audit(d
 
         assert session.get(HumanReviewCaseRecord, review_id) is not None
         assert session.scalar(select(HumanReviewEventRecord)) is not None
+        assert session.get(ComparisonResultRecord, comparison_id) is not None
+        assert session.get(FieldComparisonRecord, field_comparison_id) is not None
+        assert session.get(HumanReviewFieldOverrideRecord, override_id) is not None
+        assert session.get(AuditEventRecord, old_audit_id) is not None
         audit = session.scalar(select(AuditEventRecord).where(AuditEventRecord.entity_id == run.id))
         assert audit is not None
         assert audit.metadata_json["status"] == "APPLIED"
