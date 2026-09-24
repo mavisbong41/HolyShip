@@ -291,7 +291,7 @@ class SecureAIGateway:
                 if not isinstance(item, dict):
                     continue
                 field_name = item.get("field")
-                if affected_set and field_name not in affected_set:
+                if not affected_set or field_name not in affected_set:
                     continue
                 fields.append(
                     {
@@ -311,12 +311,12 @@ class SecureAIGateway:
                 "mismatched_fields": [
                     field
                     for field in (comparison_source.get("mismatched_fields") or [])
-                    if not affected_set or field in affected_set
+                    if affected_set and field in affected_set
                 ],
                 "unresolved_fields": [
                     field
                     for field in (comparison_source.get("unresolved_fields") or [])
-                    if not affected_set or field in affected_set
+                    if affected_set and field in affected_set
                 ],
                 "fields": fields,
             }
@@ -346,7 +346,7 @@ class SecureAIGateway:
             if not isinstance(item, dict):
                 continue
             field_name = item.get("field")
-            if affected_set and field_name not in affected_set:
+            if not affected_set or field_name not in affected_set:
                 continue
             active_overrides.append(
                 {
