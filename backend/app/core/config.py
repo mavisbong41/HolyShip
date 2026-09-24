@@ -59,6 +59,17 @@ class Settings(BaseSettings):
     polling_backoff_initial_seconds: float = Field(default=1.0, gt=0.0, le=3600.0)
     polling_backoff_max_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
     polling_source_type: str = "STATIC_BUNDLE"
+    data_lifecycle_enabled: bool = True
+    data_lifecycle_dry_run: bool = True
+    data_lifecycle_run_on_startup: bool = False
+    data_lifecycle_interval_hours: float = Field(default=24.0, gt=0.0, le=24 * 31)
+    retention_raw_email_body_days: int = Field(default=30, ge=1, le=3650)
+    retention_attachment_days: int = Field(default=90, ge=1, le=3650)
+    retention_cache_days: int = Field(default=7, ge=1, le=3650)
+    retention_processing_jobs_days: int = Field(default=30, ge=1, le=3650)
+    retention_processing_events_days: int = Field(default=90, ge=1, le=3650)
+    retention_ai_suggestions_days: int = Field(default=30, ge=1, le=3650)
+    retention_ingestion_checkpoints_days: int = Field(default=90, ge=1, le=3650)
     cors_allowed_origins: str = "http://localhost:5173,http://127.0.0.1:5173,http://localhost:5174,http://127.0.0.1:5174,http://localhost:3000,http://127.0.0.1:3000,http://localhost:4173,http://127.0.0.1:4173,https://localhost:3200,https://127.0.0.1:3200,https://holyship.onrender.com,https://holyship-backend.onrender.com"
     cors_allow_origin_regex: str | None = None
 
