@@ -218,15 +218,38 @@ class OpenAIProvider:
         context: dict[str, Any],
         question: str,
     ) -> tuple[str, str, str]:
-        minimized, audit = self.gateway.prepare_payload(
-            purpose=PURPOSE_HUMAN_REVIEW,
-            data={"context": context, "question": question},
-            feature="human_review_assistant",
-            model=self.model,
-        )
+        try:
+            minimized, audit = self.gateway.prepare_payload(
+                purpose=PURPOSE_HUMAN_REVIEW,
+                data={"context": context, "question": question},
+                feature="human_review_assistant",
+                model=self.model,
+                provider=self.provider_name,
+                endpoint=self.endpoint,
+            )
+        except AIGatewayPolicyError:
+            self.last_audit_metadata = {
+                "purpose": PURPOSE_HUMAN_REVIEW,
+                "feature": "human_review_assistant",
+                "provider": self.provider_name,
+                "model": self.model,
+                "privacy_mode": self.gateway.enterprise_privacy_mode,
+                "request_status": "BLOCKED_BY_POLICY",
+                "response_status": "NOT_SENT",
+            }
+            return (
+                json.dumps(
+                    {
+                        "message": "AI request was blocked by Enterprise Privacy Mode.",
+                        "mode": "INSUFFICIENT_EVIDENCE",
+                        "suggestion": None,
+                    }
+                ),
+                self.provider_name,
+                self.model,
+            )
         self.last_audit_metadata = {
             **audit,
-            "provider": self.provider_name,
             "request_status": "SENT",
         }
         user_prompt = (
