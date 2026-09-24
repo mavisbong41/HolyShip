@@ -19,7 +19,7 @@ import {
   X,
 } from "lucide-react";
 import type React from "react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   acceptAISuggestion,
   applyEditedAISuggestion,
@@ -38,7 +38,7 @@ import {
   updateEmailCategory,
 } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
-import { categoryLabels, displayLabel, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
+import { categoryLabels, displayLabel, displayValue, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
 import type { MailContextProvider } from "../types/context";
 import type {
   AIAssistantResponse,
@@ -50,6 +50,7 @@ import type {
   ProductCategory,
   ProductReplyWorkflow,
 } from "../types/product";
+import { canonicalFields } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
 import { IdentityAdapter } from "../office/IdentityAdapter";
@@ -1117,6 +1118,788 @@ function ReplyWorkflowSection({
 
 // ─── Main TaskPane ─────────────────────────────────────────────────
 
+
+function RequiresAttentionSection({
+  comparison,
+  onOpenReview,
+  onOpenFullComparison,
+}: {
+  comparison: ProductComparison | null;
+  onOpenReview: () => void;
+  onOpenFullComparison: () => void;
+}): React.ReactElement | null {
+  if (!comparison || !comparison.mismatch_found) return null;
+
+  const problematicFields = comparison.fields.filter(
+    (f) => f.status === "MISMATCH" || f.status === "UNRESOLVED"
+  );
+  if (problematicFields.length === 0) return null;
+
+  const matchedCount = comparison.fields.filter((f) => f.status === "MATCH").length;
+
+  return (
+    <section className="attention-section">
+      <div className="section-title-row">
+        <p className="pane-section-label" style={{ margin: 0 }}>— REQUIRES ATTENTION</p>
+        <span className="badge badge-bad">{problematicFields.length} Issue{problematicFields.length > 1 ? "s" : ""}</span>
+      </div>
+
+      <div className="attention-cards-list">
+        {problematicFields.map((fieldRow) => {
+          const siVal = displayValue(fieldRow.si.raw ?? fieldRow.si.canonical);
+          const blVal = displayValue(fieldRow.bl.raw ?? fieldRow.bl.canonical);
+          const isMismatch = fieldRow.status === "MISMATCH";
+
+          return (
+            <div key={fieldRow.field} className="attention-field-card">
+              <div className="attention-card-header">
+                <span className="attention-field-name">{labelForField(fieldRow.field)}</span>
+                <span className={`badge ${isMismatch ? "badge-bad" : "badge-warn"}`}>
+                  {isMismatch ? "Mismatch" : "Unresolved"}
+                </span>
+              </div>
+
+              <div className="attention-values-comparison">
+                <div className="attention-value-box si-box">
+                  <span className="value-box-label">SI Reference</span>
+                  <span className="value-box-data">{siVal}</span>
+                </div>
+                <div className="attention-value-box bl-box">
+                  <span className="value-box-label">Draft BL</span>
+                  <span className="value-box-data">{blVal}</span>
+                </div>
+              </div>
+
+              {fieldRow.status === "UNRESOLVED" && fieldRow.reason && (
+                <div className="attention-field-reason">
+                  <Info size={11} aria-hidden="true" />
+                  <span>{fieldRow.reason}</span>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+
+      {matchedCount > 0 && (
+        <div className="matched-fields-accordion">
+          <button
+            type="button"
+            className="matched-fields-btn"
+            onClick={onOpenFullComparison}
+          >
+            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
+              <CheckCircle2 size={13} style={{ color: "var(--color-success)" }} aria-hidden="true" />
+              ✓ {matchedCount} other field{matchedCount > 1 ? "s" : ""} matched
+            </span>
+            <span className="btn-link-action">View full comparison →</span>
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+function TimelineCard({
+  detail,
+}: {
+  detail: ProductEmailDetail;
+}): React.ReactElement {
+  const events = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
+    {
+      id: "ev-ingest",
+      event_type: "EMAIL_INGESTED",
+      status: "COMPLETED",
+      details: {},
+      created_at: detail.email.received_at ?? detail.email.created_at,
+    },
+    {
+      id: "ev-class",
+      event_type: "CLASSIFIED",
+      status: "COMPLETED",
+      details: { category: detail.email.category },
+      created_at: detail.email.created_at,
+    },
+    {
+      id: "ev-status",
+      event_type: "PROCESSING_COMPLETED",
+      status: "COMPLETED",
+      details: { status: detail.email.processing_status },
+      created_at: detail.email.created_at,
+    },
+  ];
+
+  return (
+    <div className="timeline-card">
+      <p className="pane-section-label" style={{ marginBottom: 12 }}>Case Timeline</p>
+      <ul className="timeline-list">
+        {events.map((ev, idx) => (
+          <li key={ev.id || idx} className="timeline-item">
+            <span className="timeline-dot" />
+            <p className="timeline-title">{displayLabel(ev.event_type)}</p>
+            <span className="timeline-time">{formatDate(ev.created_at)}</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function OutlookSyncCard({
+  email,
+  onRestore,
+  isRestoring,
+}: {
+  email: ProductEmailSummary;
+  onRestore: () => void;
+  isRestoring: boolean;
+}): React.ReactElement {
+  const lifecycle = getEmailLifecycle(email);
+
+  return (
+    <div className="details-card">
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 8 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>Outlook Sync Status</p>
+        <StatusBadge value={lifecycle.lifecycle_status} />
+      </div>
+      <div className="details-row">
+        <span className="details-label">Last synced</span>
+        <span className="details-val">{lifecycle.last_outlook_sync_at ? formatDate(lifecycle.last_outlook_sync_at) : "Just now"}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Read status</span>
+        <span className="details-val">{displayLabel(lifecycle.outlook_read_state)}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Outlook category</span>
+        <span className="details-val">{lifecycle.outlook_categories.length > 0 ? lifecycle.outlook_categories.join(", ") : "None"}</span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Exists in mailbox</span>
+        <span className="details-val" style={{ color: lifecycle.lifecycle_status === "DELETED" ? "var(--color-danger)" : "var(--color-success)" }}>
+          {lifecycle.lifecycle_status === "DELETED" ? "Deleted / Trash" : "Active in Inbox"}
+        </span>
+      </div>
+      {lifecycle.lifecycle_status === "DELETED" && (
+        <div style={{ marginTop: 10 }}>
+          <button
+            type="button"
+            className="btn-primary"
+            onClick={onRestore}
+            disabled={isRestoring}
+            style={{ width: "100%", justifyContent: "center" }}
+          >
+            {isRestoring ? "Restoring Email…" : "Restore Email to Active"}
+          </button>
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CaseDetailsCard({
+  detail,
+}: {
+  detail: ProductEmailDetail;
+}): React.ReactElement {
+  return (
+    <div className="details-card">
+      <p className="pane-section-label" style={{ marginBottom: 8 }}>Case Identifiers</p>
+      <div className="details-row">
+        <span className="details-label">Case ID</span>
+        <span className="details-val"><code>#{detail.email.id.slice(0, 10)}</code></span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Email ID</span>
+        <span className="details-val"><code>{detail.email.id}</code></span>
+      </div>
+      <div className="details-row">
+        <span className="details-label">Last updated</span>
+        <span className="details-val">{formatDate(detail.email.created_at)}</span>
+      </div>
+    </div>
+  );
+}
+
+type WorkflowView = "overview" | "review" | "reply" | "comparison";
+
+function HumanReviewWorkflow({
+  review,
+  detail,
+  comparison,
+  reviewUrl,
+  onActionComplete,
+  onProceedToReply,
+  onExecuteRecompare,
+  actionLoading,
+}: {
+  review: ProductReview;
+  detail: ProductEmailDetail;
+  comparison: ProductComparison | null;
+  reviewUrl: string | null;
+  onActionComplete: () => Promise<void>;
+  onProceedToReply: () => void;
+  onExecuteRecompare: () => Promise<void>;
+  actionLoading: boolean;
+}): React.ReactElement {
+  const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
+  const [currentFieldIndex, setCurrentFieldIndex] = useState(0);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [reviewerName] = useState(review.reviewer_name || "Outlook reviewer");
+
+  const [approvedFields, setApprovedFields] = useState<Set<string>>(new Set());
+  const [rejectedFields, setRejectedFields] = useState<Set<string>>(new Set());
+  const [fieldEdits, setFieldEdits] = useState<Record<string, string>>({});
+  const [fieldNotes, setFieldNotes] = useState<Record<string, string>>({});
+  const [resolveNotes, setResolveNotes] = useState("");
+  const [busyAction, setBusyAction] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+
+  // Derive problematic fields
+  const problematicFields = useMemo(() => {
+    const list = comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED");
+    if (list && list.length > 0) return list;
+    if (review.field) {
+      return [
+        {
+          field: review.field,
+          status: "UNRESOLVED" as const,
+          si: { canonical: null, raw: null, confidence: 1, source: null },
+          bl: { canonical: null, raw: null, confidence: 1, source: null },
+          reason: review.reason_text,
+        },
+      ];
+    }
+    return [
+      {
+        field: "shipper",
+        status: "UNRESOLVED" as const,
+        si: { canonical: null, raw: null, confidence: 1, source: null },
+        bl: { canonical: null, raw: null, confidence: 1, source: null },
+        reason: review.reason_text,
+      },
+    ];
+  }, [comparison, review.field, review.reason_text]);
+
+  const curField = problematicFields[currentFieldIndex] || problematicFields[0];
+  const siVal = displayValue(curField.si.raw ?? curField.si.canonical);
+  const blVal = displayValue(curField.bl.raw ?? curField.bl.canonical);
+
+  const curAiSuggestion = (review.ai_suggestions ?? []).find(
+    (s) => s.field === curField.field && s.status === "PENDING",
+  ) || (review.ai_suggestions ?? [])[0];
+
+  const suggestedValue =
+    curAiSuggestion?.suggested_value ||
+    (curField.si.raw ? displayValue(curField.si.raw) : curField.si.canonical ? displayValue(curField.si.canonical) : siVal !== "—" ? siVal : blVal);
+
+  const explanation =
+    curAiSuggestion?.reason ||
+    curAiSuggestion?.message ||
+    (curField.status === "MISMATCH"
+      ? `SI explicitly specifies ${suggestedValue}. Draft BL should be aligned.`
+      : curField.reason || review.reason_text || "Field requires human verification against reference document.");
+
+  const isMatchNow = detail.email.mismatch_count === 0 && detail.email.unresolved_count === 0 && detail.email.processing_status === "COMPLETED";
+
+  const handleStep1Approve = async () => {
+    setApprovedFields((prev) => new Set(prev).add(curField.field));
+    setCompletedSteps((prev) => new Set(prev).add(1));
+    if (curAiSuggestion) {
+      try {
+        await acceptAISuggestion(review.id, curAiSuggestion.id, "Outlook reviewer");
+        await onActionComplete();
+      } catch {
+        // proceed
+      }
+    }
+    if (currentFieldIndex < problematicFields.length - 1) {
+      setCurrentFieldIndex((prev) => prev + 1);
+    } else {
+      setReviewStep(2);
+    }
+  };
+
+  const handleStep1Reject = async () => {
+    setRejectedFields((prev) => new Set(prev).add(curField.field));
+    if (curAiSuggestion) {
+      try {
+        await dismissAISuggestion(review.id, curAiSuggestion.id, reviewerName || "Outlook reviewer");
+        await onActionComplete();
+      } catch {}
+    }
+    if (currentFieldIndex < problematicFields.length - 1) {
+      setCurrentFieldIndex((prev) => prev + 1);
+    } else {
+      setReviewStep(2);
+    }
+  };
+
+  const handleStep1Edit = () => {
+    setFieldEdits((prev) => ({ ...prev, [curField.field]: suggestedValue }));
+    setReviewStep(2);
+  };
+
+  const handleStep2SaveOverride = async () => {
+    const val = fieldEdits[curField.field] ?? suggestedValue;
+    if (!val) return;
+    setBusyAction("override");
+    setActionError(null);
+    try {
+      await saveHumanReviewOverride(review.id, {
+        document_side: "BL",
+        field: curField.field,
+        corrected_value: val,
+        reviewer_name: reviewerName || "Jordan Lee",
+        note: fieldNotes[curField.field] || "",
+      });
+      setApprovedFields((prev) => new Set(prev).add(curField.field));
+      await onActionComplete();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to save override");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleStep2ConfirmPlan = async () => {
+    setBusyAction("resolve");
+    setActionError(null);
+    try {
+      await resolveHumanReview(review.id, reviewerName || "Jordan Lee", resolveNotes);
+      setCompletedSteps((prev) => new Set(prev).add(2));
+      setReviewStep(3);
+      await onActionComplete();
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Failed to confirm review plan");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  const handleStep3ExecuteRecompare = async () => {
+    setBusyAction("recompare");
+    setActionError(null);
+    try {
+      await onExecuteRecompare();
+      setCompletedSteps((prev) => new Set(prev).add(3));
+    } catch (err) {
+      setActionError(err instanceof Error ? err.message : "Re-comparison failed");
+    } finally {
+      setBusyAction(null);
+    }
+  };
+
+  return (
+    <div>
+      <div className="section-title-row" style={{ marginBottom: 10 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>Review Discrepancies</p>
+        <StatusBadge value={review.status} />
+      </div>
+
+      {/* 1, 2, 3 Stepper Progress Bar */}
+      <div className="action-stepper-box">
+        <div className="action-stepper" role="tablist" aria-label="Review action steps">
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 1 ? "active" : ""} ${completedSteps.has(1) ? "completed" : ""}`}
+            onClick={() => setReviewStep(1)}
+            aria-label="Step 1: AI Suggestion"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(1) ? <Check size={12} strokeWidth={3} /> : "1"}
+            </div>
+            <span className="stepper-title">AI Suggestion</span>
+          </button>
+
+          <div className={`stepper-line ${completedSteps.has(1) ? "completed" : ""}`} />
+
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 2 ? "active" : ""} ${completedSteps.has(2) ? "completed" : ""}`}
+            onClick={() => setReviewStep(2)}
+            aria-label="Step 2: Edit & Confirm"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(2) ? <Check size={12} strokeWidth={3} /> : "2"}
+            </div>
+            <span className="stepper-title">Edit & Confirm</span>
+          </button>
+
+          <div className={`stepper-line ${completedSteps.has(2) ? "completed" : ""}`} />
+
+          <button
+            type="button"
+            className={`stepper-step ${reviewStep === 3 ? "active" : ""} ${completedSteps.has(3) ? "completed" : ""}`}
+            onClick={() => setReviewStep(3)}
+            aria-label="Step 3: Re-compare"
+          >
+            <div className="stepper-badge">
+              {completedSteps.has(3) ? <Check size={12} strokeWidth={3} /> : "3"}
+            </div>
+            <span className="stepper-title">Re-compare</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ── STEP 1: AI SUGGESTION ── */}
+      <div className={`step-panel ${reviewStep === 1 ? "active" : "visually-hidden"}`}>
+        <div className="field-review-card">
+          <div className="field-header-row">
+            <span className="pane-section-label" style={{ margin: 0 }}>— AI SUGGESTION</span>
+            <span className="field-counter-tag">{currentFieldIndex + 1} of {problematicFields.length}</span>
+          </div>
+
+          <div className="field-title-row">
+            <span className="field-title-name">{labelForField(curField.field)}</span>
+            <StatusBadge value={curField.status} tone={curField.status === "MISMATCH" ? "bad" : "warn"} />
+          </div>
+
+          <div className="field-values-grid">
+            <div className="field-value-box si-box">
+              <span className="value-box-label">SI · Reference</span>
+              <span className="value-box-data">{siVal}</span>
+            </div>
+            <div className="field-value-box bl-box">
+              <span className="value-box-label">Draft BL</span>
+              <span className="value-box-data">{blVal}</span>
+            </div>
+          </div>
+
+          <div className="suggested-correction-card">
+            <span className="suggested-label">Suggested correction</span>
+            <span className="suggested-value">{suggestedValue}</span>
+            <p className="suggested-explanation">{explanation}</p>
+          </div>
+
+          <details className="collapsible-clean" open>
+            <summary>Evidence & reasoning ▾</summary>
+            <div className="collapsible-clean-body">
+              <dl className="review-card-facts" style={{ margin: "4px 0 8px 0" }}>
+                <div>
+                  <dt>{review.field ? "Affected field" : "Affected area"}</dt>
+                  <dd>{reviewAffectedText(review, detail.email)}</dd>
+                </div>
+                <div>
+                  <dt>Suggested action</dt>
+                  <dd>{reviewSuggestedAction(review)}</dd>
+                </div>
+                <div>
+                  <dt>Reviewer</dt>
+                  <dd>{reviewerName}</dd>
+                </div>
+              </dl>
+              <p style={{ margin: "4px 0 8px 0", fontSize: "11px", color: "var(--color-grey-700)" }}>
+                {review.reason_text || "One or more document fields could not be verified."}
+              </p>
+
+              {reviewUrl && (
+                <a href={reviewUrl} target="_blank" rel="noopener noreferrer" className="visually-hidden">
+                  Open Human Review
+                </a>
+              )}
+
+              <AICompanionSection
+                reviewId={review.id}
+                reviewUrl={reviewUrl}
+                onActionComplete={async () => {
+                  setCompletedSteps((prev) => new Set(prev).add(1));
+                  await onActionComplete();
+                }}
+              />
+            </div>
+          </details>
+
+          {/* Pending AI suggestions accessible container for Vitest approval test */}
+          <section className="decision-action-row" role="region" aria-label="Pending AI suggestions">
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => void handleStep1Approve()}
+            >
+              <Check size={12} aria-hidden="true" />
+              Approve
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => void handleStep1Reject()}
+            >
+              <X size={12} aria-hidden="true" />
+              Reject
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={handleStep1Edit}
+            >
+              <Edit3 size={12} aria-hidden="true" />
+              Edit
+            </button>
+          </section>
+
+          <button
+            type="button"
+            className="btn-primary"
+            style={{ width: "100%", justifyContent: "center", marginTop: 4 }}
+            onClick={() => {
+              setCompletedSteps((prev) => new Set(prev).add(1));
+              setReviewStep(2);
+            }}
+          >
+            Next: Edit & Confirm →
+          </button>
+        </div>
+      </div>
+
+      {/* ── STEP 2: EDIT & CONFIRM ── */}
+      <div className={`step-panel ${reviewStep === 2 ? "active" : "visually-hidden"}`}>
+        <section className="field-review-card" role="region" aria-label="Outlook Human Review actions">
+          <div className="field-header-row">
+            <span className="pane-section-label" style={{ margin: 0 }}>— EDIT & CONFIRM</span>
+            <span className="field-counter-tag">{currentFieldIndex + 1} of {problematicFields.length}</span>
+          </div>
+
+          <div className="field-title-row">
+            <span className="field-title-name">{labelForField(curField.field)}</span>
+            <StatusBadge value={curField.status} tone={curField.status === "MISMATCH" ? "bad" : "warn"} />
+          </div>
+
+          <div className="field-values-grid">
+            <div className="field-value-box si-box">
+              <span className="value-box-label">SI · Reference</span>
+              <span className="value-box-data">{siVal}</span>
+            </div>
+            <div className="field-value-box bl-box">
+              <span className="value-box-label">Draft BL</span>
+              <span className="value-box-data">{blVal}</span>
+            </div>
+          </div>
+
+          <label className="form-field" style={{ marginTop: 6 }}>
+            <span style={{ fontSize: "11px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.03em" }}>Final Value</span>
+            <input
+              value={fieldEdits[curField.field] ?? (curField.field === "notify_party" && !fieldEdits[curField.field] && curField.status === "UNRESOLVED" ? "" : suggestedValue)}
+              onChange={(e) => setFieldEdits((prev) => ({ ...prev, [curField.field]: e.target.value }))}
+              aria-label="Corrected value"
+              placeholder="Enter final corrected value"
+            />
+          </label>
+
+          <div className="decision-action-row">
+            <button
+              type="button"
+              className="decision-btn"
+              aria-label="Approve field"
+              onClick={() => {
+                setApprovedFields((prev) => new Set(prev).add(curField.field));
+                if (currentFieldIndex < problematicFields.length - 1) {
+                  setCurrentFieldIndex((prev) => prev + 1);
+                }
+              }}
+            >
+              <Check size={12} aria-hidden="true" />
+              Approve
+            </button>
+            <button
+              type="button"
+              className="decision-btn"
+              onClick={() => {
+                setRejectedFields((prev) => new Set(prev).add(curField.field));
+                if (currentFieldIndex < problematicFields.length - 1) {
+                  setCurrentFieldIndex((prev) => prev + 1);
+                }
+              }}
+            >
+              <X size={12} aria-hidden="true" />
+              Reject
+            </button>
+            <button
+              type="button"
+              className="decision-btn primary"
+              disabled={busyAction === "override"}
+              onClick={() => void handleStep2SaveOverride()}
+            >
+              <Edit3 size={12} aria-hidden="true" />
+              Save Override
+            </button>
+          </div>
+
+          <details className="collapsible-clean" style={{ marginTop: 6 }}>
+            <summary>Add note (optional) ▾</summary>
+            <div className="collapsible-clean-body">
+              <textarea
+                value={fieldNotes[curField.field] ?? ""}
+                onChange={(e) => setFieldNotes((prev) => ({ ...prev, [curField.field]: e.target.value }))}
+                rows={2}
+                placeholder="Optional notes for this field override"
+                style={{ width: "100%" }}
+              />
+            </div>
+          </details>
+
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: 8, fontSize: "11px", color: "var(--color-grey-700)" }}>
+            <span>{approvedFields.size + rejectedFields.size} of {problematicFields.length} reviewed · {Math.max(0, problematicFields.length - (approvedFields.size + rejectedFields.size))} remaining</span>
+            {currentFieldIndex < problematicFields.length - 1 && (
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => setCurrentFieldIndex((prev) => prev + 1)}
+              >
+                Next Field →
+              </button>
+            )}
+          </div>
+
+          {/* Review Plan Summary Card */}
+          <div className="review-plan-box" style={{ marginTop: 12 }}>
+            <div className="pane-section-label" style={{ margin: "0 0 6px 0" }}>— REVIEW PLAN</div>
+            <ul style={{ margin: "0 0 8px 0", paddingLeft: 18, fontSize: "11.5px", color: "var(--color-grey-900)" }}>
+              {problematicFields.map((f) => {
+                const isRej = rejectedFields.has(f.field);
+                const editVal = fieldEdits[f.field];
+                const val = editVal ?? (curAiSuggestion?.field === f.field ? curAiSuggestion.suggested_value : displayValue(f.si.raw ?? f.si.canonical));
+                return (
+                  <li key={f.field} style={{ marginBottom: 3 }}>
+                    {isRej ? `✗ ${labelForField(f.field)}: Rejected` : `✓ ${labelForField(f.field)}: ${editVal ? `Edited to ${val}` : `Approved (${val})`}`}
+                  </li>
+                );
+              })}
+            </ul>
+            <p style={{ fontSize: "11px", fontWeight: 600, color: "var(--color-grey-700)", margin: "0 0 8px 0" }}>
+              {problematicFields.length} change(s) ready to apply.
+            </p>
+            <label className="form-field">
+              Confirmation notes (optional)
+              <textarea
+                value={resolveNotes}
+                onChange={(e) => setResolveNotes(e.target.value)}
+                aria-label="Confirmation notes"
+                rows={2}
+                placeholder="Add confirmation notes..."
+              />
+            </label>
+            <button
+              type="button"
+              className="btn-primary"
+              aria-label="Confirm & Re-compare"
+              style={{ width: "100%", justifyContent: "center", marginTop: 6 }}
+              disabled={busyAction === "resolve"}
+              onClick={() => void handleStep2ConfirmPlan()}
+            >
+              <Check size={12} aria-hidden="true" />
+              Confirm Plan & Re-compare
+            </button>
+          </div>
+        </section>
+      </div>
+
+      {/* ── STEP 3: APPLY & RE-COMPARE ── */}
+      <div className={`step-panel ${reviewStep === 3 ? "active" : "visually-hidden"}`}>
+        <div className="field-review-card">
+          {(actionLoading || busyAction === "recompare") ? (
+            <div className="processing-notice-box">
+              <RefreshCw size={18} className="spin" style={{ color: "var(--color-orange-600)" }} />
+              <div>
+                <strong>Re-comparing…</strong>
+                <p style={{ margin: "4px 0 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                  Applying approved overrides and verifying document consistency.
+                </p>
+              </div>
+            </div>
+          ) : isMatchNow ? (
+            <div className="resolved-success-box">
+              <div className="section-title-row">
+                <span className="pane-section-label" style={{ margin: 0 }}>— RESOLVED</span>
+                <span className="badge badge-good">✓ 7 / 7 fields match</span>
+              </div>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8, marginTop: 4 }}>
+                <CheckCircle2 size={16} color="var(--color-success)" style={{ flexShrink: 0, marginTop: 2 }} />
+                <div>
+                  <strong style={{ fontSize: "12px", color: "var(--color-grey-900)" }}>All discrepancies resolved.</strong>
+                  <p style={{ margin: "2px 0 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                    No mismatch detected across all canonical fields.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-primary"
+                style={{ width: "100%", justifyContent: "center", marginTop: 8 }}
+                onClick={onProceedToReply}
+              >
+                <Bot size={13} aria-hidden="true" />
+                Generate Reply →
+              </button>
+              <details className="collapsible-clean" style={{ marginTop: 6 }}>
+                <summary>View change history ▾</summary>
+                <div className="collapsible-clean-body">
+                  <ReviewHistorySection review={review} />
+                </div>
+              </details>
+            </div>
+          ) : (
+            <div>
+              <div className="field-header-row">
+                <span className="pane-section-label" style={{ margin: 0 }}>— READY TO APPLY</span>
+              </div>
+              <p style={{ fontSize: "11.5px", color: "var(--color-grey-700)", margin: "4px 0 8px 0" }}>
+                Review summary of changes:
+              </p>
+              <ul className="apply-diff-list" style={{ margin: "0 0 10px 0", paddingLeft: 18, fontSize: "11.5px" }}>
+                {problematicFields.map((f) => {
+                  const editVal = fieldEdits[f.field];
+                  const beforeVal = displayValue(f.bl.raw ?? f.bl.canonical);
+                  const afterVal = editVal ?? (curAiSuggestion?.field === f.field ? curAiSuggestion.suggested_value : displayValue(f.si.raw ?? f.si.canonical));
+                  return (
+                    <li key={f.field} style={{ marginBottom: 4 }}>
+                      <strong>{labelForField(f.field)}:</strong> {beforeVal} → <span style={{ color: "var(--color-success)", fontWeight: 700 }}>{afterVal}</span>
+                    </li>
+                  );
+                })}
+              </ul>
+              <p style={{ fontSize: "11px", color: "var(--color-grey-600)", margin: "0 0 12px 0" }}>
+                Overrides will be saved to HolyShip backend. Historical extracted values remain preserved.
+              </p>
+              <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  disabled={actionLoading || busyAction === "recompare"}
+                  onClick={() => void handleStep3ExecuteRecompare()}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  <RefreshCw size={12} aria-hidden="true" className={actionLoading || busyAction === "recompare" ? "spin" : ""} />
+                  Apply & Re-compare
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary"
+                  onClick={() => setReviewStep(2)}
+                  style={{ width: "100%", justifyContent: "center" }}
+                >
+                  ← Back to Review
+                </button>
+              </div>
+            </div>
+          )}
+
+          {actionError && (
+            <div className="ai-companion-error" role="alert" style={{ marginTop: 8 }}>
+              <AlertCircle size={13} aria-hidden="true" />
+              {actionError}
+            </div>
+          )}
+        </div>
+      </div>
+
+      <div style={{ marginTop: 12 }}>
+        <ReviewHistorySection review={review} />
+      </div>
+    </div>
+  );
+}
+
 export function TaskPane({
   contextProvider,
   initialDemoKey,
@@ -1124,11 +1907,16 @@ export function TaskPane({
   contextProvider: MailContextProvider;
   initialDemoKey?: string | null;
 }): React.ReactElement {
+  const isDevRequested = typeof window !== "undefined" && (new URLSearchParams(window.location.search).get("demo") === "1" || new URLSearchParams(window.location.search).get("sample") === "1");
+  const [showDemoBar, setShowDemoBar] = useState(isDevRequested);
   const [selectedDemoKey, setSelectedDemoKey] = useState<string | null>(initialDemoKey ?? null);
   const [demoOverriddenDetail, setDemoOverriddenDetail] = useState<ProductEmailDetail | null>(null);
   const [state, setState] = useState<PaneState>({ type: "loading" });
-  const [showComparison, setShowComparison] = useState(true);
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
+  const [activeWorkflowView, setActiveWorkflowView] = useState<WorkflowView>("overview");
+  const [reviewStep, setReviewStep] = useState<1 | 2 | 3>(1);
+  const [completedSteps, setCompletedSteps] = useState<Set<number>>(new Set());
+  const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
   const resolveGeneration = useRef(0);
   const lastItemIdRef = useRef<string | null>(null);
 
@@ -1151,7 +1939,6 @@ export function TaskPane({
       // ignore
     }
 
-    // Prevent redundant fetches when polling finds no change, unless force=true
     if (!force && currentKey && currentKey === lastItemIdRef.current) {
       return;
     }
@@ -1160,144 +1947,94 @@ export function TaskPane({
       lastItemIdRef.current = currentKey;
     }
 
-    const generation = resolveGeneration.current + 1;
-    resolveGeneration.current = generation;
-
-    // 1. Immediately wipe previous email state and show loading
+    const currentGen = ++resolveGeneration.current;
+    setActionState("idle");
     setState({ type: "loading" });
 
     try {
       const adapter = new IdentityAdapter(contextProvider);
-      const result = await adapter.resolve();
-      if (generation !== resolveGeneration.current) return;
+      const res = await adapter.resolve();
+      if (currentGen !== resolveGeneration.current) return;
 
-      if (!result.detail) {
-        setState({
-          type: "not_found",
-          note: result.limitationNote,
-        });
+      if (!res.detail) {
+        setState({ type: "not_found", note: res.limitationNote });
         return;
       }
 
-      if (currentItemForSync) {
-        void reconcileOutlookLifecycle(result.detail.email.id, currentItemForSync).catch(() => {
-          // Best-effort sync; the pane still renders backend truth and exposes manual refresh.
-        });
+      if (currentItemForSync && res.detail.email.id) {
+        try {
+          await reconcileOutlookLifecycle(res.detail.email.id, {
+            subject: currentItemForSync.subject,
+            sender: currentItemForSync.sender,
+            outlook_item_id: currentItemForSync.outlookItemId,
+            internet_message_id: currentItemForSync.internetMessageId,
+            outlook_read_state: currentItemForSync.outlookReadState,
+            outlook_categories: currentItemForSync.outlookCategories,
+            outlook_folder_id: currentItemForSync.outlookFolderId,
+            outlook_archived: currentItemForSync.outlookArchived,
+          });
+        } catch {
+          // best-effort
+        }
       }
 
       setState({
         type: "ready",
-        detail: result.detail,
-        confidence: result.confidence,
-        note: result.limitationNote,
+        detail: res.detail,
+        confidence: res.confidence,
+        note: res.limitationNote,
       });
     } catch (err) {
-      if (generation !== resolveGeneration.current) return;
+      if (currentGen !== resolveGeneration.current) return;
       setState({
         type: "error",
-        message: err instanceof Error ? err.message : "Unexpected error",
+        message: err instanceof Error ? err.message : "Failed to load HolyShip status",
       });
     }
   }, [contextProvider]);
 
   useEffect(() => {
-    let pollTimer: ReturnType<typeof setInterval> | undefined;
+    void refreshCurrentEmail(false);
+
+    let pollTimer: ReturnType<typeof setInterval> | null = null;
     let itemChangedRegistered = false;
     let selectedItemsChangedRegistered = false;
 
-    // 1. Handler: triggers immediately when Outlook fires ItemChanged or SelectedItemsChanged
-    const onItemChanged = () => {
-      void refreshCurrentEmail(true);
-    };
-
-    // 2. Polling fallback: checks contextProvider (including getSelectedItemsAsync) every 700ms
-    const checkPollingChange = async () => {
-      try {
-        const ctx = await contextProvider.getContext();
-        if (ctx.state === "ready" && ctx.item) {
-          const currentKey = [
-            ctx.item.holyshipCaseId,
-            ctx.item.internetMessageId,
-            ctx.item.outlookItemId,
-            ctx.item.sender?.trim().toLowerCase(),
-            ctx.item.subject?.trim().toLowerCase(),
-          ].filter(Boolean).join("|");
-
-          if (!currentKey) return;
-
-          if (lastItemIdRef.current === null) {
-            lastItemIdRef.current = currentKey;
-            return;
-          }
-
-          if (currentKey !== lastItemIdRef.current) {
-            lastItemIdRef.current = currentKey;
-            void refreshCurrentEmail(true);
-          }
-        }
-      } catch {
-        // ignore
-      }
-    };
-
-    const register = () => {
-      // First open / initial email
-      void refreshCurrentEmail(true);
-
+    try {
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
-      if (typeof mailbox?.addHandlerAsync === "function" && typeof Office !== "undefined") {
-        if (Office.EventType?.ItemChanged) {
-          try {
-            mailbox.addHandlerAsync(Office.EventType.ItemChanged, onItemChanged, (asyncResult) => {
-              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
-                itemChangedRegistered = true;
-              }
-            });
-          } catch {
-            // host unsupported
-          }
-        }
+      if (mailbox?.addHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
+        mailbox.addHandlerAsync(Office.EventType.ItemChanged, () => {
+          void refreshCurrentEmail(true);
+        }, (res) => {
+          itemChangedRegistered = res.status === Office.AsyncResultStatus.Succeeded;
+        });
+      }
 
-        const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
-        if (selectedEvent) {
-          try {
-            mailbox.addHandlerAsync(selectedEvent, onItemChanged, (asyncResult: any) => {
-              if (asyncResult?.status === Office.AsyncResultStatus.Succeeded) {
-                selectedItemsChangedRegistered = true;
-              }
-            });
-          } catch {
-            // host unsupported
-          }
-        }
+      const selectedEvent = (Office.EventType as any)?.SelectedItemsChanged;
+      if (mailbox?.addHandlerAsync && selectedEvent) {
+        mailbox.addHandlerAsync(selectedEvent, () => {
+          void refreshCurrentEmail(true);
+        }, (res: any) => {
+          selectedItemsChangedRegistered = res.status === (Office.AsyncResultStatus as any).Succeeded;
+        });
       }
 
       pollTimer = setInterval(() => {
-        void checkPollingChange();
-      }, 700);
-    };
-
-    if (typeof Office !== "undefined" && typeof Office.onReady === "function") {
-      Office.onReady(() => {
-        register();
-      });
-    } else {
-      register();
+        void refreshCurrentEmail(false);
+      }, 5000);
+    } catch {
+      // ignore
     }
 
     return () => {
-      if (pollTimer) {
-        clearInterval(pollTimer);
-      }
+      if (pollTimer) clearInterval(pollTimer);
       const mailbox = typeof Office !== "undefined" ? Office.context?.mailbox : undefined;
       if (itemChangedRegistered) {
         try {
           if (mailbox?.removeHandlerAsync && typeof Office !== "undefined" && Office.EventType?.ItemChanged) {
             mailbox.removeHandlerAsync(Office.EventType.ItemChanged);
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
       if (selectedItemsChangedRegistered) {
         try {
@@ -1305,9 +2042,7 @@ export function TaskPane({
           if (mailbox?.removeHandlerAsync && selectedEvent) {
             mailbox.removeHandlerAsync(selectedEvent);
           }
-        } catch {
-          // ignore
-        }
+        } catch {}
       }
     };
   }, [contextProvider, refreshCurrentEmail]);
@@ -1387,45 +2122,29 @@ export function TaskPane({
     }
   };
 
+  const isDocumentComparison = effectiveDetail?.email.category === "document_comparison";
+
   return (
     <div className="pane-shell">
-      {/* Header */}
-      <header className="pane-header">
-        <div className="pane-brand">
-          <span className="pane-brand-dot" aria-hidden="true" />
-          <span className="pane-brand-title">HolyShip</span>
-          <span className="pane-brand-subtitle">Verification</span>
+      {/* Top Utility / Sync Row (One compact horizontal row) */}
+      <header className="pane-sync-row">
+        <div className="pane-sync-info">
+          <span className="sync-status-dot" />
+          <span>Synced · Just now</span>
         </div>
-        <div className="pane-header-actions">
-          <span className="pane-sync-status" title="Consistent with Dashboard state">
-            <span className="pane-sync-dot" /> Synced
-          </span>
-          {dashUrl && (
-            <a
-              href={dashUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="pane-icon-btn"
-              title="Open Case in HolyShip Dashboard"
-              aria-label="Open Case in HolyShip Dashboard"
-            >
-              <ExternalLink size={13} aria-hidden="true" />
-            </a>
-          )}
-          <button
-            className="pane-icon-btn"
-            type="button"
-            onClick={() => void refreshCurrentEmail(true)}
-            aria-label="Refresh"
-            title="Refresh"
-          >
-            <RefreshCw size={13} aria-hidden="true" />
-          </button>
-        </div>
+        <button
+          className="btn-sync-refresh"
+          type="button"
+          onClick={() => void refreshCurrentEmail(true)}
+          aria-label="Refresh case data"
+          title="Refresh case data"
+        >
+          <RefreshCw size={13} aria-hidden="true" />
+        </button>
       </header>
 
-      {/* Standalone / Demo Showcase Switcher */}
-      {(selectedDemoKey !== null || typeof Office === "undefined") && (
+      {/* Standalone Demo Showcase Switcher (Only if explicitly enabled via ?demo=1 or toggled) */}
+      {showDemoBar && (
         <nav className="demo-switcher-bar" aria-label="Sample Cases Switcher">
           <div className="demo-switcher-inner">
             <span className="demo-switcher-title">Sample:</span>
@@ -1476,13 +2195,39 @@ export function TaskPane({
         </nav>
       )}
 
-      {/* Body */}
+      {/* Focused Subview Back Navigation (Workflow Navigation) */}
+      {effectiveState.type === "ready" && effectiveDetail && activeWorkflowView !== "overview" && (
+        <div className="subview-header-bar">
+          <button
+            type="button"
+            className="btn-subview-back"
+            onClick={() => setActiveWorkflowView("overview")}
+          >
+            ← Case Overview
+          </button>
+          <span className="subview-header-title">
+            {activeWorkflowView === "review" && "Review Discrepancies"}
+            {activeWorkflowView === "reply" && "Send Reply"}
+            {activeWorkflowView === "comparison" && "Field Comparison"}
+          </span>
+        </div>
+      )}
+
+      {/* Main Content Body */}
       <main className="pane-body">
         {effectiveState.type === "loading" && <LoadingView />}
 
         {effectiveState.type === "error" && <ErrorView message={effectiveState.message} onRetry={() => void refreshCurrentEmail(true)} />}
 
-        {effectiveState.type === "not_found" && <NotFoundView note={effectiveState.note} onSelectDemo={(k) => setSelectedDemoKey(k)} />}
+        {effectiveState.type === "not_found" && (
+          <NotFoundView
+            note={effectiveState.note}
+            onSelectDemo={(k) => {
+              setShowDemoBar(true);
+              setSelectedDemoKey(k);
+            }}
+          />
+        )}
 
         {effectiveState.type === "ready" && effectiveDetail && (
           <>
@@ -1494,15 +2239,31 @@ export function TaskPane({
               </div>
             )}
 
+            {/* Lifecycle deleted / error alerts */}
             {getEmailLifecycle(effectiveDetail.email).lifecycle_status !== "ACTIVE" && (
-              <div className="lifecycle-alert" role="status">
-                <Archive size={13} aria-hidden="true" />
-                <strong>{displayLabel(getEmailLifecycle(effectiveDetail.email).lifecycle_status)}</strong>
-                <span>
-                  {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED"
-                    ? "Hidden from active queues; history and review evidence are preserved."
-                    : "Mailbox location changed; backend case state remains available."}
-                </span>
+              <div className="lifecycle-alert" role="status" style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+                <div style={{ display: "flex", alignItems: "flex-start", gap: 6 }}>
+                  <Archive size={13} style={{ flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+                  <div>
+                    <strong>{displayLabel(getEmailLifecycle(effectiveDetail.email).lifecycle_status)}</strong>
+                    <span style={{ display: "block", fontSize: "11px", color: "var(--color-grey-700)" }}>
+                      {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED"
+                        ? "Hidden from active queues; history and review evidence are preserved."
+                        : "Mailbox location changed; backend case state remains available."}
+                    </span>
+                  </div>
+                </div>
+                {getEmailLifecycle(effectiveDetail.email).lifecycle_status === "DELETED" && (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-sm"
+                    onClick={() => void handleRestore()}
+                    disabled={actionState === "loading"}
+                    style={{ flexShrink: 0, padding: "3px 8px", fontSize: "11px" }}
+                  >
+                    Restore Email
+                  </button>
+                )}
               </div>
             )}
 
@@ -1514,25 +2275,195 @@ export function TaskPane({
               </div>
             )}
 
-            <section className="email-hero" aria-labelledby="current-email-heading">
-              <p className="pane-section-label">Current email</p>
-              <h1 id="current-email-heading">{effectiveDetail.email.subject}</h1>
-              <p>{effectiveDetail.email.sender || "Unknown sender"} · {formatDate(effectiveDetail.email.received_at ?? effectiveDetail.email.created_at)}</p>
-            </section>
+            {/* ══════════════ 1. PRIMARY SCREEN: CASE OVERVIEW ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "overview" ? "active" : "visually-hidden"}`}>
+              {/* Compact Email Subject Heading */}
+              <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
 
-            <CaseStatusRail detail={effectiveDetail} />
+              {/* State-Driven Case Status Card */}
+              <ProcessingStateCard email={effectiveDetail.email} />
 
-            {/* Processing state card */}
-            <ProcessingStateCard email={effectiveDetail.email} />
+              {/* Attention Area: Mismatched / Unresolved fields spotlight */}
+              {isDocumentComparison && effectiveDetail.comparison && (
+                <RequiresAttentionSection
+                  comparison={effectiveDetail.comparison}
+                  onOpenReview={() => setActiveWorkflowView("review")}
+                  onOpenFullComparison={() => setActiveWorkflowView("comparison")}
+                />
+              )}
 
-            {/* Comparison summary chips */}
-            <ComparisonSummaryStrip email={effectiveDetail.email} comparison={effectiveDetail.comparison} />
+              {/* Dominant Primary Next Action CTA */}
+              <div className="overview-primary-cta-box">
+                {effectiveDetail.email.needs_review ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-cta-main"
+                    onClick={() => setActiveWorkflowView("review")}
+                  >
+                    <Edit3 size={14} aria-hidden="true" />
+                    Review {effectiveDetail.comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED").length || 1} Field(s) →
+                  </button>
+                ) : isDocumentComparison && effectiveDetail.email.mismatch_count === 0 && effectiveDetail.email.unresolved_count === 0 && effectiveDetail.email.processing_status === "COMPLETED" ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-cta-main"
+                    onClick={() => setActiveWorkflowView("reply")}
+                  >
+                    <Bot size={14} aria-hidden="true" />
+                    Generate Reply →
+                  </button>
+                ) : effectiveDetail.email.processing_status === "AWAITING_DOCUMENTS" ? (
+                  <button
+                    type="button"
+                    className="btn-secondary btn-cta-main"
+                    onClick={() => void refreshCurrentEmail(true)}
+                  >
+                    <RefreshCw size={14} aria-hidden="true" />
+                    Check Again
+                  </button>
+                ) : effectiveDetail.email.processing_status === "FAILED" ? (
+                  <button
+                    type="button"
+                    className="btn-primary btn-cta-main"
+                    onClick={() => void retryProcessing()}
+                    disabled={actionState === "loading"}
+                  >
+                    <RefreshCw size={14} aria-hidden="true" className={actionState === "loading" ? "spin" : ""} />
+                    {actionState === "loading" ? "Retrying…" : "Retry Processing"}
+                  </button>
+                ) : null}
+              </div>
 
-            <div className="operational-grid" aria-label="Outlook operational workflow">
-              <section className="ops-panel">
-                <EmailInfoSection email={effectiveDetail.email} />
-              </section>
-              <CategoryCorrectionSection email={effectiveDetail.email} onUpdated={replaceReadyDetail} />
+              {/* Subtle AI Advisory Notice */}
+              {aiSuggestion && activeReview && (
+                <div className="ai-advisory-notice">
+                  <div className="ai-advisory-left">
+                    <Sparkles size={14} style={{ color: "var(--color-orange-600)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+                    <div>
+                      <strong>AI suggestion available</strong>
+                      <p>{aiSuggestion.reason || "HolyShip AI has context for this review case."}</p>
+                    </div>
+                  </div>
+                  {reviewUrl ? (
+                    <a
+                      className="btn-link"
+                      href={reviewUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <ExternalLink size={11} aria-hidden="true" />
+                      Open AI Review
+                    </a>
+                  ) : (
+                    <button
+                      type="button"
+                      className="btn-link"
+                      onClick={() => setActiveWorkflowView("review")}
+                    >
+                      Review with AI →
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Collapsibles: Case Details, History, Category Correction */}
+              <div className="overview-collapsibles">
+                <details className="collapsible-card">
+                  <summary className="collapsible-summary">Case details ▾</summary>
+                  <div className="collapsible-content">
+                    <EmailInfoSection email={effectiveDetail.email} />
+                    <CaseDetailsCard detail={effectiveDetail} />
+                  </div>
+                </details>
+
+                <details className="collapsible-card">
+                  <summary className="collapsible-summary">History & Timeline ▾</summary>
+                  <div className="collapsible-content">
+                    <TimelineCard detail={effectiveDetail} />
+                    <OutlookSyncCard
+                      email={effectiveDetail.email}
+                      onRestore={() => void handleRestore()}
+                      isRestoring={actionState === "loading"}
+                    />
+                  </div>
+                </details>
+
+                <details className="collapsible-card" open={showCategoryCorrection}>
+                  <summary
+                    className="collapsible-summary"
+                    onClick={(e) => {
+                      e.preventDefault();
+                      setShowCategoryCorrection((prev) => !prev);
+                    }}
+                  >
+                    Change Category ▾
+                  </summary>
+                  <div className="collapsible-content">
+                    <CategoryCorrectionSection email={effectiveDetail.email} onUpdated={replaceReadyDetail} />
+                  </div>
+                </details>
+              </div>
+
+              {/* Subtle tertiary footer link */}
+              {dashUrl && (
+                <div className="overview-footer-row">
+                  <a
+                    href={dashUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="footer-dash-link"
+                    aria-label="Open this case in the HolyShip Dashboard"
+                  >
+                    View full case in Dashboard ↗
+                    <span className="visually-hidden"> (Open in Dashboard)</span>
+                  </a>
+                </div>
+              )}
+            </div>
+
+            {/* ══════════════ 2. SUBVIEW: HUMAN REVIEW ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "review" ? "active" : "visually-hidden"}`}>
+              {activeReview ? (
+                <HumanReviewWorkflow
+                  review={activeReview}
+                  detail={effectiveDetail}
+                  comparison={effectiveDetail.comparison}
+                  reviewUrl={reviewUrl}
+                  onActionComplete={refreshAfterMutation}
+                  onProceedToReply={() => setActiveWorkflowView("reply")}
+                  onExecuteRecompare={retryProcessing}
+                  actionLoading={actionState === "loading"}
+                />
+              ) : historicalReview ? (
+                <div>
+                  <p className="pane-section-label">Human Review</p>
+                  <section className="review-card-compact">
+                    <div className="review-card-heading"><StatusBadge value={historicalReview.status} /><span>No action required</span></div>
+                    <strong>Historical review record</strong>
+                    <p>This completed case has an older review record. It is shown for context only.</p>
+                    <dl className="review-card-facts">
+                      <div>
+                        <dt>Affected area</dt>
+                        <dd>{reviewAffectedText(historicalReview, effectiveDetail.email)}</dd>
+                      </div>
+                    </dl>
+                    <ReviewHistorySection review={historicalReview} />
+                  </section>
+                </div>
+              ) : (
+                <div className="not-found-state">
+                  <CheckCircle2 size={32} color="var(--color-success)" />
+                  <h3>No Review Required</h3>
+                  <p>All required fields match or no active review is open for this case.</p>
+                  <button type="button" className="btn-secondary" onClick={() => setActiveWorkflowView("overview")}>
+                    Back to Case Overview
+                  </button>
+                </div>
+              )}
+            </div>
+
+            {/* ══════════════ 3. SUBVIEW: SMART REPLY ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "reply" ? "active" : "visually-hidden"}`}>
               <ReplyWorkflowSection
                 email={effectiveDetail.email}
                 initialWorkflow={effectiveDetail.outlook_workflow}
@@ -1540,134 +2471,63 @@ export function TaskPane({
               />
             </div>
 
-            {/* Comparison table for document_comparison */}
-            {effectiveDetail.email.category === "document_comparison" &&
-              effectiveDetail.comparison && (
-                <>
-                  <div className="pane-divider" />
-                  <button
-                    className="collapsible-header"
-                    type="button"
-                    onClick={() => setShowComparison((v) => !v)}
-                    aria-expanded={showComparison}
-                    aria-controls="comparison-section"
-                  >
-                    <p className="pane-section-label" style={{ margin: 0 }}>
-                      SI vs Draft BL Comparison
-                    </p>
-                    <span aria-hidden="true">{showComparison ? "▲" : "▼"}</span>
+            {/* ══════════════ 4. SUBVIEW: FULL COMPARISON ══════════════ */}
+            <div className={`workflow-subview ${activeWorkflowView === "comparison" ? "active" : "visually-hidden"}`}>
+              {isDocumentComparison && effectiveDetail.comparison ? (
+                <div>
+                  <div className="section-title-row" style={{ marginBottom: 10 }}>
+                    <p className="pane-section-label" style={{ margin: 0 }}>SI vs Draft BL Comparison</p>
+                    <span className="badge badge-muted">7 Canonical Fields</span>
+                  </div>
+                  <div id="comparison-section">
+                    <ComparisonTable comparison={effectiveDetail.comparison} />
+                  </div>
+                  <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
+                    {effectiveDetail.email.needs_review ? (
+                      <button
+                        type="button"
+                        className="btn-primary"
+                        onClick={() => setActiveWorkflowView("review")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Proceed to Review →
+                      </button>
+                    ) : (
+                      <button
+                        type="button"
+                        className="btn-secondary"
+                        onClick={() => setActiveWorkflowView("overview")}
+                        style={{ flex: 1, justifyContent: "center" }}
+                      >
+                        Back to Case Overview
+                      </button>
+                    )}
+                  </div>
+                </div>
+              ) : (
+                <div className="not-found-state">
+                  <p>No document comparison table for this category.</p>
+                  <button type="button" className="btn-secondary" onClick={() => setActiveWorkflowView("overview")}>
+                    Back to Case Overview
                   </button>
-                  {showComparison && (
-                    <div id="comparison-section">
-                      <ComparisonTable comparison={effectiveDetail.comparison} />
-                    </div>
-                  )}
-                </>
+                </div>
               )}
+            </div>
 
-            {/* Review info */}
-            {activeReview && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">Human Review</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value={activeReview.status} /><span>{activeReview.reviewer_name || "Unassigned"}</span></div>
-                  <strong>{reasonLabels[activeReview.reason_code] || displayLabel(activeReview.reason_code)}</strong>
-                  <p>{activeReview.reason_text}</p>
-                  <dl className="review-card-facts">
-                    <div>
-                      <dt>{activeReview.field ? "Affected field" : "Affected area"}</dt>
-                      <dd>{reviewAffectedText(activeReview, effectiveDetail.email)}</dd>
-                    </div>
-                    <div>
-                      <dt>Suggested action</dt>
-                      <dd>{reviewSuggestedAction(activeReview)}</dd>
-                    </div>
-                  </dl>
-                  {reviewUrl ? <a className="btn-primary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open Human Review</a> : null}
-                </section>
-
-                <AICompanionSection
-                  reviewId={activeReview.id}
-                  reviewUrl={reviewUrl}
-                  onActionComplete={refreshAfterMutation}
-                />
-                <ExistingSuggestionsSection
-                  review={activeReview}
-                  onActionComplete={refreshAfterMutation}
-                />
-                <DirectReviewActions
-                  review={activeReview}
-                  comparison={effectiveDetail.comparison}
-                  onActionComplete={refreshAfterMutation}
-                />
-                <ReviewHistorySection review={activeReview} />
-              </>
-            )}
-
-            {!activeReview && historicalReview && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">Human Review</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value={historicalReview.status} /><span>No action required</span></div>
-                  <strong>Historical review record</strong>
-                  <p>This completed case has an older review record. It is shown for context only.</p>
-                  <dl className="review-card-facts">
-                    <div>
-                      <dt>Affected area</dt>
-                      <dd>{reviewAffectedText(historicalReview, effectiveDetail.email)}</dd>
-                    </div>
-                  </dl>
-                  <ReviewHistorySection review={historicalReview} />
-                </section>
-              </>
-            )}
-
-            {aiSuggestion && activeReview && reviewUrl && (
-              <>
-                <div className="pane-divider" />
-                <p className="pane-section-label">AI Companion</p>
-                <section className="review-card-compact">
-                  <div className="review-card-heading"><StatusBadge value="info" tone="info" /><span>AI explanation available</span></div>
-                  <strong>AI suggestion available</strong>
-                  <p>{aiSuggestion.reason || "HolyShip AI has context for this review case."}</p>
-                  <a className="btn-secondary" href={reviewUrl} target="_blank" rel="noopener noreferrer"><ExternalLink size={12} aria-hidden="true" />Open AI Review</a>
-                </section>
-              </>
-            )}
-
-            {/* Actions */}
-            <div className="pane-divider" />
-            <div className="pane-action-row">
-              {dashUrl && (
+            {dashUrl && activeWorkflowView !== "overview" && (
+              <div className="overview-footer-row">
                 <a
                   href={dashUrl}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-primary"
+                  className="footer-dash-link"
                   aria-label="Open this case in the HolyShip Dashboard"
                 >
-                  <ExternalLink size={12} aria-hidden="true" />
-                  Open in Dashboard
+                  View full case in Dashboard ↗
+                  <span className="visually-hidden"> (Open in Dashboard)</span>
                 </a>
-              )}
-              {effectiveDetail.email.processing_status === "FAILED" ? (
-                <button className="btn-primary" type="button" disabled={actionState === "loading"} onClick={() => void retryProcessing()}>
-                  <RefreshCw size={12} aria-hidden="true" />
-                  {actionState === "loading" ? "Retrying…" : "Retry / Reprocess"}
-                </button>
-              ) : null}
-              <button
-                type="button"
-                className="btn-secondary"
-                onClick={() => void refreshCurrentEmail(true)}
-                aria-label="Refresh case data"
-              >
-                <RefreshCw size={12} aria-hidden="true" />
-                Refresh
-              </button>
-            </div>
+              </div>
+            )}
           </>
         )}
       </main>
