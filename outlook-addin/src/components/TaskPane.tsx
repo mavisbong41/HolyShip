@@ -180,8 +180,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
             <div className="state-card-icon icon-good" aria-hidden="true">
               <CheckCircle2 size={18} />
             </div>
-            <h2>No mismatch detected</h2>
-            <p>All seven fields match between SI and Draft BL.</p>
+            <div className="state-card-body">
+              <h2>No mismatch detected</h2>
+              <p>All seven fields match between SI and Draft BL.</p>
+            </div>
           </div>
         );
       }
@@ -190,11 +192,13 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
           <div className="state-card-icon icon-bad" aria-hidden="true">
             <AlertTriangle size={18} />
           </div>
-          <h2>Confirmed Discrepancy</h2>
-          <p>
-            {email.mismatch_count > 0 && `${email.mismatch_count} field${email.mismatch_count > 1 ? "s" : ""} mismatched. `}
-            {email.unresolved_count > 0 && `${email.unresolved_count} field${email.unresolved_count > 1 ? "s" : ""} unresolved.`}
-          </p>
+          <div className="state-card-body">
+            <h2>Confirmed Discrepancy</h2>
+            <p>
+              {email.mismatch_count > 0 && `${email.mismatch_count} field${email.mismatch_count > 1 ? "s" : ""} mismatched. `}
+              {email.unresolved_count > 0 && `${email.unresolved_count} field${email.unresolved_count > 1 ? "s" : ""} unresolved.`}
+            </p>
+          </div>
         </div>
       );
     }
@@ -203,8 +207,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-good" aria-hidden="true">
           <CheckCircle2 size={18} />
         </div>
-        <h2>Completed</h2>
-        <p>{email.category ? categoryLabels[email.category] : "Processed"}</p>
+        <div className="state-card-body">
+          <h2>Completed</h2>
+          <p>{email.category ? categoryLabels[email.category] : "Processed"}</p>
+        </div>
       </div>
     );
   }
@@ -215,11 +221,13 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-warn" aria-hidden="true">
           <Clock size={18} />
         </div>
-        <h2>Waiting for Documents</h2>
-        <p>
-          This is a Document Comparison case. Required documents have not been
-          received yet.
-        </p>
+        <div className="state-card-body">
+          <h2>Waiting for Documents</h2>
+          <p>
+            This is a Document Comparison case. Required documents have not been
+            received yet.
+          </p>
+        </div>
       </div>
     );
   }
@@ -230,12 +238,14 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-warn" aria-hidden="true">
           <AlertTriangle size={18} />
         </div>
-        <h2>Needs Review</h2>
-        <p>
-          {email.review_reason
-            ? reasonLabels[email.review_reason] || displayLabel(email.review_reason)
-            : "Human Review is required for this case."}
-        </p>
+        <div className="state-card-body">
+          <h2>Needs Review</h2>
+          <p>
+            {email.review_reason
+              ? reasonLabels[email.review_reason] || displayLabel(email.review_reason)
+              : "Human Review is required for this case."}
+          </p>
+        </div>
       </div>
     );
   }
@@ -246,8 +256,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-bad" aria-hidden="true">
           <AlertCircle size={18} />
         </div>
-        <h2>Processing failed</h2>
-        <p>A technical error occurred. Check the Dashboard for details.</p>
+        <div className="state-card-body">
+          <h2>Processing failed</h2>
+          <p>A technical error occurred. Check the Dashboard for details.</p>
+        </div>
       </div>
     );
   }
@@ -269,8 +281,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         <div className="state-card-icon icon-orange" aria-hidden="true">
           <RefreshCw size={18} />
         </div>
-        <h2>Processing email</h2>
-        <p>{progressMsg}</p>
+        <div className="state-card-body">
+          <h2>Processing email</h2>
+          <p>{progressMsg}</p>
+        </div>
       </div>
     );
   }
@@ -280,8 +294,10 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
       <div className="state-card-icon icon-neutral" aria-hidden="true">
         <Info size={18} />
       </div>
-      <h2>{statusLabels[email.processing_status] ?? email.processing_status}</h2>
-      <p>See Dashboard for details.</p>
+      <div className="state-card-body">
+        <h2>{statusLabels[email.processing_status] ?? email.processing_status}</h2>
+        <p>See Dashboard for details.</p>
+      </div>
     </div>
   );
 }
