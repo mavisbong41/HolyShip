@@ -494,6 +494,69 @@ def test_gateway_enterprise_allowlist_defaults_are_restrictive():
     assert gateway.allowed_endpoint_hosts == {"generativelanguage.googleapis.com"}
 
 
+def test_gateway_preserves_explicit_empty_allowlists():
+    gateway = SecureAIGateway(
+        enterprise_privacy_mode=True,
+        allowed_providers=set(),
+        allowed_endpoint_hosts=set(),
+    )
+    with pytest.raises(AIGatewayPolicyError, match="provider"):
+        gateway.prepare_payload(
+            purpose=PURPOSE_HUMAN_REVIEW,
+            feature="human_review_assistant",
+            model="gemini-2.5-flash",
+            provider="gemini",
+            endpoint="https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent",
+            data={"question": "test", "context": {}},
+        )
+
+
+def test_gateway_requires_https_for_external_ai_in_privacy_mode():
+    gateway = SecureAIGateway(
+        allowed_providers={"gemini"},
+        allowed_endpoint_hosts={"generativelanguage.googleapis.com"},
+    )
+    with patch("backend.app.security.ai_gateway.urllib.request.urlopen") as mocked:
+        with pytest.raises(AIGatewayPolicyError, match="HTTPS"):
+            gateway.invoke_gemini_json(
+                api_key="test-key",
+                model="gemini-2.5-flash",
+                purpose=PURPOSE_FIELD_SEMANTIC_COMPARISON,
+                feature="l2_semantic_comparison",
+                data={
+                    "field": "port_of_loading",
+                    "si_value": "Port Klang",
+                    "bl_value": "Port Klang",
+                    "si_evidence": "Port Klang",
+                    "bl_evidence": "Port Klang",
+                },
+                system_instruction="Return JSON.",
+                timeout_seconds=1,
+                endpoint="http://generativelanguage.googleapis.com/v1beta/models",
+            )
+        mocked.assert_not_called()
+
+
+def test_gateway_redacts_common_secret_assignments_in_free_text():
+    gateway = SecureAIGateway()
+    payload, _audit = gateway.prepare_payload(
+        purpose=PURPOSE_HUMAN_REVIEW,
+        feature="human_review_assistant",
+        model="gemini-2.5-flash",
+        data={
+            "question": (
+                "client_secret=abc access_token=def refresh-token=ghi "
+                "secret=jkl password=mno"
+            ),
+            "context": {},
+        },
+    )
+    serialized = json.dumps(payload)
+    for secret in ("abc", "def", "ghi", "jkl", "mno"):
+        assert secret not in serialized
+    assert serialized.count("[REDACTED]") >= 5
+
+
 def test_gateway_blocks_unapproved_provider_model_and_endpoint_before_network():
     gateway = SecureAIGateway(
         allowed_providers={"gemini"},
