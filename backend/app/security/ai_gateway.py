@@ -217,6 +217,27 @@ class SecureAIGateway:
         )
 
     def _minimize_field_extraction(self, data: dict[str, Any]) -> dict[str, Any]:
+        batch = data.get("requests")
+        if isinstance(batch, list):
+            minimized_batch = []
+            for item in batch:
+                if not isinstance(item, dict):
+                    raise AIGatewayPolicyError(
+                        "Field-extraction batch entries must be mappings"
+                    )
+                minimized_batch.append(
+                    {
+                        "field": item.get("field"),
+                        "document_role": item.get("document_role"),
+                        "evidence": item.get("evidence"),
+                        "escalation_reason": item.get("escalation_reason"),
+                    }
+                )
+            if not minimized_batch:
+                raise AIGatewayPolicyError(
+                    "Field-extraction batch must contain at least one request"
+                )
+            return {"requests": minimized_batch}
         return {
             "field": data.get("field"),
             "document_role": data.get("document_role"),
@@ -387,10 +408,20 @@ class SecureAIGateway:
 
     @staticmethod
     def _disclosed_fields(purpose: str, payload: dict[str, Any]) -> list[str]:
-        if purpose in {
-            PURPOSE_FIELD_EXTRACTION,
-            PURPOSE_FIELD_SEMANTIC_COMPARISON,
-        }:
+        if purpose == PURPOSE_FIELD_EXTRACTION:
+            batch = payload.get("requests")
+            if isinstance(batch, list):
+                fields: list[str] = []
+                for item in batch:
+                    if not isinstance(item, dict):
+                        continue
+                    field = item.get("field")
+                    if field and str(field) not in fields:
+                        fields.append(str(field))
+                return fields
+            field = payload.get("field")
+            return [str(field)] if field else []
+        if purpose == PURPOSE_FIELD_SEMANTIC_COMPARISON:
             field = payload.get("field")
             return [str(field)] if field else []
         case = payload.get("case")
