@@ -1,6 +1,7 @@
 import type {
   AIAssistantResponse,
   EmailQueuePage,
+  EmailLifecycleStatus,
   OutlookReadState,
   ProductCategory,
   ProductEmailDetail,
@@ -245,14 +246,25 @@ export async function sendReplyDraft(
 
 export async function reconcileOutlookLifecycle(
   emailId: string,
-  item: MailContextItem,
+  item: Partial<MailContextItem> & { lifecycle_status?: EmailLifecycleStatus | "RESTORED" },
 ): Promise<void> {
+  const folder = (item.outlookFolderId || "").toLowerCase();
+  const isDeletedFolder =
+    folder.includes("deleted") ||
+    folder.includes("trash") ||
+    folder === "deleteditems" ||
+    folder === "deleted items" ||
+    folder === "trashbin";
+
+  const lifecycleStatus =
+    item.lifecycle_status ?? (isDeletedFolder ? "DELETED" : "ACTIVE");
+
   await request(`/outlook/reconcile`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({
       email_id: emailId,
-      lifecycle_status: "ACTIVE",
+      lifecycle_status: lifecycleStatus,
       outlook_read_state: (item.outlookReadState ?? "UNKNOWN") as OutlookReadState,
       outlook_categories: item.outlookCategories ?? [],
       outlook_folder_id: item.outlookFolderId ?? undefined,
