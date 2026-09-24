@@ -62,7 +62,7 @@ class Settings(BaseSettings):
     data_lifecycle_enabled: bool = True
     data_lifecycle_dry_run: bool = True
     data_lifecycle_run_on_startup: bool = False
-    data_lifecycle_interval_hours: float = Field(default=24.0, gt=0.0, le=24 * 31)
+    data_lifecycle_interval_hours: float = Field(default=168.0, gt=0.0, le=24 * 31)
     retention_raw_email_body_days: int = Field(default=30, ge=1, le=3650)
     retention_attachment_days: int = Field(default=90, ge=1, le=3650)
     retention_cache_days: int = Field(default=7, ge=1, le=3650)
