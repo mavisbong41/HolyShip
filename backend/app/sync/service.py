@@ -453,6 +453,10 @@ class SyncService:
         # ---- INGEST --------------------------------------------------- #
         record, changed = self._email_repo.upsert_message(message)
 
+        if record.lifecycle_status == "DELETED":
+            logger.info("Email %s is marked DELETED — skipping processing to preserve historical state", ext_id)
+            return EmailSyncOutcome(external_message_id=ext_id, status="SKIPPED")
+
         resumable = {
             "NEW",
             "QUEUED",
