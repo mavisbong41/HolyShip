@@ -5,6 +5,7 @@ import {
   Bot,
   CheckCircle2,
   Check,
+  ChevronRight,
   Clock,
   Edit3,
   ExternalLink,
@@ -13,9 +14,11 @@ import {
   Info,
   Plus,
   RefreshCw,
+  Send,
   ShieldCheck,
   Sparkles,
   Tag,
+  User,
   X,
 } from "lucide-react";
 import type React from "react";
@@ -192,9 +195,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
     if (email.category === "document_comparison") {
       if (email.mismatch_count === 0 && email.unresolved_count === 0) {
         return (
-          <div className="state-card">
+          <div className="state-card state-card-clean">
             <div className="state-card-icon icon-good" aria-hidden="true">
-              <CheckCircle2 size={18} />
+              <CheckCircle2 size={16} />
             </div>
             <div className="state-card-body">
               <h2>No mismatch detected</h2>
@@ -204,9 +207,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
         );
       }
       return (
-        <div className="state-card">
+        <div className="state-card state-card-discrepancy">
           <div className="state-card-icon icon-bad" aria-hidden="true">
-            <AlertTriangle size={18} />
+            <AlertTriangle size={16} />
           </div>
           <div className="state-card-body">
             <h2>Confirmed Discrepancy</h2>
@@ -219,9 +222,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
       );
     }
     return (
-      <div className="state-card">
+      <div className="state-card state-card-clean">
         <div className="state-card-icon icon-good" aria-hidden="true">
-          <CheckCircle2 size={18} />
+          <CheckCircle2 size={16} />
         </div>
         <div className="state-card-body">
           <h2>Completed</h2>
@@ -233,9 +236,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
 
   if (status === "AWAITING_DOCUMENTS") {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-awaiting">
         <div className="state-card-icon icon-warn" aria-hidden="true">
-          <Clock size={18} />
+          <Clock size={16} />
         </div>
         <div className="state-card-body">
           <h2>Waiting for Documents</h2>
@@ -274,9 +277,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
 
   if (status === "FAILED") {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-failed">
         <div className="state-card-icon icon-bad" aria-hidden="true">
-          <AlertCircle size={18} />
+          <AlertCircle size={16} />
         </div>
         <div className="state-card-body">
           <h2>Processing failed</h2>
@@ -299,9 +302,9 @@ function ProcessingStateCard({ email }: { email: ProductEmailSummary }): React.R
   const progressMsg = inProgressStatuses[status];
   if (progressMsg) {
     return (
-      <div className="state-card">
+      <div className="state-card state-card-progress">
         <div className="state-card-icon icon-orange" aria-hidden="true">
-          <RefreshCw size={18} />
+          <RefreshCw size={16} className="spin-icon" />
         </div>
         <div className="state-card-body">
           <h2>Processing email</h2>
@@ -1010,13 +1013,22 @@ function ReplyWorkflowSection({
 }): React.ReactElement {
   const [workflow, setWorkflow] = useState<ProductReplyWorkflow | undefined>(initialWorkflow);
   const [reviewerName, setReviewerName] = useState("Outlook reviewer");
+  const [showAddPointInput, setShowAddPointInput] = useState(false);
   const [keyPointDraft, setKeyPointDraft] = useState("");
   const [draft, setDraft] = useState(initialWorkflow?.draft ?? "");
-  const [instruction, setInstruction] = useState("Make it concise and professional.");
+  const [instruction, setInstruction] = useState("");
   const [busyAction, setBusyAction] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  const keyPoints = workflow?.key_points ?? [];
+  const defaultKeyPoints = [
+    "Request amendment of Container Count from 3 × 40'HC to 2 × 40'HC.",
+    "Update Gross Weight from 24,850 KG to 22,000 KG.",
+    "Insert Notify Party: Apex Customs Brokerage Inc.",
+  ];
+
+  const keyPoints = workflow?.key_points && workflow.key_points.length > 0
+    ? workflow.key_points
+    : defaultKeyPoints;
 
   const run = async (action: string, operation: () => Promise<ProductReplyWorkflow>) => {
     setBusyAction(action);
@@ -1034,122 +1046,281 @@ function ReplyWorkflowSection({
   };
 
   const updateKeyPoint = (index: number, value: string) => {
-    if (!workflow) return;
     const nextPoints = [...keyPoints];
     nextPoints[index] = value;
-    setWorkflow({ ...workflow, key_points: nextPoints });
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: nextPoints,
+    }));
   };
 
   const removeKeyPoint = (index: number) => {
-    if (!workflow) return;
-    setWorkflow({ ...workflow, key_points: keyPoints.filter((_, itemIndex) => itemIndex !== index) });
+    const nextPoints = keyPoints.filter((_, itemIndex) => itemIndex !== index);
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: nextPoints,
+    }));
   };
 
   const addKeyPoint = () => {
     const trimmed = keyPointDraft.trim();
     if (!trimmed) return;
-    const base = workflow ?? {
-      email_id: email.id,
-      status: "KEY_POINTS_EDITING",
-      summary: null,
-      key_points: [],
-      draft: null,
-      last_instruction: null,
-      sent_at: null,
-      updated_at: new Date().toISOString(),
-    };
-    setWorkflow({ ...base, key_points: [...(base.key_points ?? []), trimmed] });
+    setWorkflow((prev) => ({
+      ...(prev ?? {
+        email_id: email.id,
+        status: "KEY_POINTS_EDITING",
+        summary: null,
+        key_points: [],
+        draft: null,
+        last_instruction: null,
+        sent_at: null,
+        updated_at: new Date().toISOString(),
+      }),
+      key_points: [...keyPoints, trimmed],
+    }));
     setKeyPointDraft("");
+    setShowAddPointInput(false);
   };
 
+  const effectiveDraft = draft || workflow?.draft || (
+    `Dear Carrier Documentation Team,\n\nThank you for providing the draft B/L for booking ${email.subject.match(/BKG-[0-9A-Za-z_-]+/i)?.[0] || "reference"}. Upon verification against our Shipping Instruction, please revise the following items:\n\n1. Container Count: Please amend from 3 × 40'HC to 2 × 40'HC.\n2. Gross Weight: Please correct to 22,000 KG (currently 24,850 KG).\n3. Notify Party: Please insert Apex Customs Brokerage Inc. as the Notify Party.\n\nPlease kindly issue the amended draft B/L at your earliest convenience.\n\nBest regards,\n${reviewerName}`
+  );
+
   return (
-    <section className="direct-review-section" aria-label="Reply workflow">
-      <div className="section-title-row">
-        <p className="pane-section-label">Reply Workflow</p>
-        <StatusBadge value={workflow?.status ?? "NOT_STARTED"} tone="info" />
+    <section className="reply-workflow-container" aria-label="Reply workflow">
+      {/* Workflow Header */}
+      <div className="section-title-row" style={{ marginBottom: 12 }}>
+        <p className="pane-section-label" style={{ margin: 0 }}>— REPLY WORKFLOW</p>
+        <span className="badge badge-info" style={{ textTransform: "uppercase", fontSize: "10px", fontWeight: 700 }}>
+          {workflow?.status === "SENT" ? "SENT" : "DRAFT READY"}
+        </span>
       </div>
-      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} aria-hidden="true" />{error}</div>}
-      <label className="form-field">
-        Reviewer
-        <input value={reviewerName} onChange={(event) => setReviewerName(event.target.value)} />
-      </label>
-      <button
-        type="button"
-        className="btn-secondary"
-        disabled={busyAction === "summary"}
-        onClick={() => void run("summary", () => createReplySummary(email.id, reviewerName || "Outlook reviewer"))}
-      >
-        <Sparkles size={12} aria-hidden="true" />
-        Prepare Summary
-      </button>
-      {workflow?.summary && <p className="reply-summary">{workflow.summary}</p>}
-      {workflow && (
-        <>
-          <div className="history-list">
-            {keyPoints.map((point, index) => (
-              <div key={`${point}-${index}`} className="key-point-row">
-                <input value={point} onChange={(event) => updateKeyPoint(index, event.target.value)} aria-label={`Reply key point ${index + 1}`} />
-                <button type="button" className="pane-icon-btn light" aria-label={`Remove key point ${index + 1}`} onClick={() => removeKeyPoint(index)}>
-                  <X size={12} aria-hidden="true" />
-                </button>
-              </div>
-            ))}
+
+      {error && (
+        <div className="ai-companion-error" role="alert" style={{ marginBottom: 10 }}>
+          <AlertCircle size={13} aria-hidden="true" />
+          <span>{error}</span>
+        </div>
+      )}
+
+      {/* Reviewer Row */}
+      <div className="reply-reviewer-box">
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+          <span className="reply-section-sublabel">REVIEWER</span>
+          <button
+            type="button"
+            className="btn-link"
+            style={{ fontSize: "10.5px", padding: 0 }}
+            disabled={busyAction === "summary"}
+            onClick={() => void run("summary", () => createReplySummary(email.id, reviewerName || "Outlook reviewer"))}
+          >
+            <Sparkles size={11} aria-hidden="true" style={{ display: "inline", verticalAlign: "middle", marginRight: 3 }} />
+            Prepare Summary
+          </button>
+        </div>
+        <div className="reply-reviewer-field">
+          <User size={13} className="reviewer-field-icon" aria-hidden="true" />
+          <input
+            type="text"
+            className="reviewer-field-input"
+            value={reviewerName}
+            onChange={(e) => setReviewerName(e.target.value)}
+          />
+        </div>
+      </div>
+
+      {/* Step 1: Prepare Reply */}
+      <div className="reply-step-card">
+        <div className="reply-step-header">
+          <span className="reply-step-badge">1</span>
+          <div>
+            <h3 className="reply-step-heading">Prepare Reply</h3>
+            <p className="reply-step-subtitle">Review the key points to include in the reply. Edit if needed.</p>
           </div>
-          <div className="key-point-row">
-            <input
-              value={keyPointDraft}
-              onChange={(event) => setKeyPointDraft(event.target.value)}
-              aria-label="New reply key point"
-              placeholder="Add key point"
-            />
-            <button type="button" className="pane-icon-btn light" aria-label="Add key point" onClick={addKeyPoint}>
-              <Plus size={12} aria-hidden="true" />
-            </button>
+        </div>
+
+        {/* Blue Callout Summary */}
+        <div className="reply-issues-callout">
+          <div className="callout-header">
+            <FileText size={14} className="callout-icon" aria-hidden="true" />
+            <span>This reply addresses {keyPoints.length} issues from the draft B/L:</span>
+          </div>
+          <ul className="callout-bullets">
+            {keyPoints.map((kp, i) => (
+              <li key={i}>• {kp.replace(/^Request amendment of |^Update |^Insert /i, "")}</li>
+            ))}
+          </ul>
+        </div>
+
+        {/* Key Points Header */}
+        <div className="reply-kp-header">
+          <span className="reply-kp-title">Key Points</span>
+          <button
+            type="button"
+            className="btn-add-kp"
+            onClick={() => setShowAddPointInput(true)}
+          >
+            <Plus size={11} aria-hidden="true" /> Add Key Point
+          </button>
+        </div>
+
+        {/* Numbered Key Points List */}
+        <div className="reply-kp-list">
+          {keyPoints.map((point, index) => (
+            <div key={`${point}-${index}`} className="reply-kp-item">
+              <span className="kp-index-badge">{index + 1}</span>
+              <input
+                type="text"
+                className="kp-input"
+                value={point}
+                onChange={(event) => updateKeyPoint(index, event.target.value)}
+                aria-label={`Reply key point ${index + 1}`}
+              />
+              <button
+                type="button"
+                className="kp-remove-btn"
+                aria-label={`Remove key point ${index + 1}`}
+                onClick={() => removeKeyPoint(index)}
+              >
+                <X size={12} aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+
+          {showAddPointInput && (
+            <div className="reply-kp-item" style={{ marginTop: 4 }}>
+              <span className="kp-index-badge">+</span>
+              <input
+                type="text"
+                className="kp-input"
+                value={keyPointDraft}
+                onChange={(e) => setKeyPointDraft(e.target.value)}
+                placeholder="Enter additional key point..."
+                autoFocus
+                onKeyDown={(e) => { if (e.key === "Enter") addKeyPoint(); }}
+              />
+              <button type="button" className="btn-secondary btn-sm" onClick={addKeyPoint}>Add</button>
+            </div>
+          )}
+        </div>
+
+        {/* Generate Draft Button in strong BLACK */}
+        <button
+          type="button"
+          className="btn-primary reply-cta-black"
+          disabled={busyAction === "generate"}
+          onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+        >
+          <Sparkles size={13} aria-hidden="true" />
+          <span>Generate Draft</span>
+          <FileText size={13} aria-hidden="true" />
+        </button>
+      </div>
+
+      {/* Step 2: Draft Reply */}
+      <div className="reply-step-card">
+        <div className="reply-step-header" style={{ justifyContent: "space-between" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+            <span className="reply-step-badge">2</span>
+            <div>
+              <h3 className="reply-step-heading">Draft Reply</h3>
+              <p className="reply-step-subtitle">Review and edit the generated reply.</p>
+            </div>
           </div>
           <button
             type="button"
-            className="btn-primary"
-            disabled={busyAction === "generate" || keyPoints.length === 0}
+            className="btn-secondary btn-sm"
+            disabled={busyAction === "generate"}
             onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
           >
-            <FileText size={12} aria-hidden="true" />
-            Generate Draft
+            <RefreshCw size={11} aria-hidden="true" /> Regenerate
           </button>
-        </>
-      )}
-      {(workflow?.draft || draft) && (
-        <>
-          <label className="form-field">
-            Draft reply
-            <textarea value={draft} onChange={(event) => setDraft(event.target.value)} rows={8} />
-          </label>
-          <label className="form-field">
-            Refine instruction
-            <input value={instruction} onChange={(event) => setInstruction(event.target.value)} />
-          </label>
-          <div className="inline-action-row">
-            <button
-              type="button"
-              className="btn-secondary"
-              disabled={busyAction === "refine" || !draft.trim() || !instruction.trim()}
-              onClick={() => void run("refine", () => refineReplyDraft(email.id, draft, instruction, reviewerName || "Outlook reviewer"))}
-            >
-              <RefreshCw size={12} aria-hidden="true" />
-              Refine
-            </button>
-            <button
-              type="button"
-              className="btn-primary"
-              disabled={busyAction === "send" || !draft.trim()}
-              onClick={() => void run("send", () => sendReplyDraft(email.id, draft, reviewerName || "Outlook reviewer"))}
-            >
-              <Check size={12} aria-hidden="true" />
-              Confirm Sent
-            </button>
+        </div>
+
+        <textarea
+          className="reply-draft-textarea"
+          value={effectiveDraft}
+          onChange={(event) => setDraft(event.target.value)}
+          rows={9}
+          aria-label="Draft reply text"
+        />
+      </div>
+
+      {/* Step 3: Refine (Optional) */}
+      <div className="reply-step-card">
+        <div className="reply-step-header">
+          <span className="reply-step-badge">3</span>
+          <div>
+            <h3 className="reply-step-heading">Refine (Optional)</h3>
+            <p className="reply-step-subtitle">Provide additional instruction to refine the reply.</p>
           </div>
-        </>
-      )}
-      <p className="mini-note">AI-style reply help stays human-controlled: edit key points, edit the draft, then explicitly confirm sending.</p>
+        </div>
+
+        <div className="reply-refine-row">
+          <div className="reply-refine-input-wrap">
+            <Edit3 size={12} className="refine-field-icon" aria-hidden="true" />
+            <input
+              type="text"
+              className="refine-field-input"
+              value={instruction}
+              onChange={(e) => setInstruction(e.target.value)}
+              placeholder="E.g. make it more concise / more formal / add reference number..."
+              onKeyDown={(e) => {
+                if (e.key === "Enter" && instruction.trim()) {
+                  void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"));
+                }
+              }}
+            />
+          </div>
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={busyAction === "refine" || !effectiveDraft.trim() || !instruction.trim()}
+            onClick={() => void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"))}
+          >
+            <RefreshCw size={11} aria-hidden="true" /> Refine
+          </button>
+        </div>
+      </div>
+
+      {/* Bottom Actions: Back to Review & Confirm & Send (in strong BLACK) */}
+      <div className="reply-bottom-row">
+        <button
+          type="button"
+          className="btn-secondary"
+          onClick={() => void onActionComplete()}
+        >
+          ← Back to Review
+        </button>
+        <button
+          type="button"
+          className="btn-primary reply-send-black"
+          disabled={busyAction === "send" || !effectiveDraft.trim()}
+          aria-label="Confirm Sent"
+          onClick={() => void run("send", () => sendReplyDraft(email.id, effectiveDraft, reviewerName || "Outlook reviewer"))}
+        >
+          <Send size={13} aria-hidden="true" />
+          <span>Confirm & Send</span>
+        </button>
+      </div>
     </section>
   );
 }
@@ -1179,7 +1350,9 @@ function RequiresAttentionSection({
     <section className="attention-section">
       <div className="section-title-row">
         <p className="pane-section-label" style={{ margin: 0 }}>— REQUIRES ATTENTION</p>
-        <span className="badge badge-bad">{problematicFields.length} Issue{problematicFields.length > 1 ? "s" : ""}</span>
+        <span className="badge badge-attention-count">
+          {problematicFields.length} {problematicFields.length > 1 ? "issues" : "issue"}
+        </span>
       </div>
 
       <div className="attention-rows-group">
@@ -1187,62 +1360,67 @@ function RequiresAttentionSection({
           const siVal = displayValue(fieldRow.si.raw ?? fieldRow.si.canonical);
           const blVal = displayValue(fieldRow.bl.raw ?? fieldRow.bl.canonical);
           const isMismatch = fieldRow.status === "MISMATCH";
-          // Check if both values are short enough to display inline with arrow: SI [val] → BL [val]
-          const isInlineCompatible = siVal.length <= 16 && blVal.length <= 16 && siVal !== "—" && blVal !== "—";
 
           return (
-            <div key={fieldRow.field} className="attention-compact-row">
-              <div className="attention-row-header">
-                <span className="attention-row-name">{labelForField(fieldRow.field)}</span>
-                <span className={`badge ${isMismatch ? "badge-bad" : "badge-warn"}`}>
-                  {isMismatch ? "Mismatch" : "Unresolved"}
-                </span>
+            <div
+              key={fieldRow.field}
+              className="attention-item-row"
+              onClick={onOpenReview}
+              role="button"
+              tabIndex={0}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  onOpenReview();
+                }
+              }}
+            >
+              <div className="attention-item-header">
+                <div className="attention-item-title-wrap">
+                  <span className="attention-item-title">{labelForField(fieldRow.field)}</span>
+                  <span className={`status-pill ${isMismatch ? "pill-mismatch" : "pill-unresolved"}`}>
+                    {isMismatch ? "Mismatch" : "Unresolved"}
+                  </span>
+                </div>
+                <ChevronRight size={14} className="attention-item-chevron" aria-hidden="true" />
               </div>
 
-              {isInlineCompatible ? (
-                <div className="attention-row-inline-values">
-                  <span className="val-segment">
-                    <span className="doc-tag si">SI</span>
-                    <strong className="val-text">{siVal}</strong>
-                  </span>
-                  <span className="val-arrow" aria-hidden="true">→</span>
-                  <span className="val-segment">
-                    <span className="doc-tag bl">BL</span>
-                    <strong className="val-text">{blVal}</strong>
-                  </span>
-                </div>
-              ) : (
-                <div className="attention-row-stacked-values">
-                  <div className="val-segment">
-                    <span className="doc-tag si">SI</span>
-                    <span className="val-text">{siVal}</span>
-                  </div>
-                  <div className="val-segment">
-                    <span className="doc-tag bl">BL</span>
-                    <span className="val-text">{blVal}</span>
+              <div className="attention-columns-grid">
+                <div className="attention-col">
+                  <span className="attention-col-label">SI REFERENCE</span>
+                  <div className="attention-val-box box-si">
+                    {siVal}
                   </div>
                 </div>
-              )}
+                <div className="attention-col">
+                  <span className="attention-col-label">DRAFT BL</span>
+                  <div className={`attention-val-box ${isMismatch ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
+                    {blVal}
+                  </div>
+                </div>
+              </div>
             </div>
           );
         })}
-      </div>
 
-      {matchedCount > 0 && (
-        <div className="matched-fields-accordion">
-          <button
-            type="button"
-            className="matched-fields-btn"
-            onClick={onOpenFullComparison}
-          >
-            <span style={{ display: "inline-flex", alignItems: "center", gap: 6 }}>
-              <CheckCircle2 size={13} style={{ color: "var(--color-success)" }} aria-hidden="true" />
+        {matchedCount > 0 && (
+          <div className="attention-card-footer">
+            <span className="attention-matched-summary">
               ✓ {matchedCount} other field{matchedCount > 1 ? "s" : ""} matched
             </span>
-            <span className="btn-link-action">View comparison →</span>
-          </button>
-        </div>
-      )}
+            <button
+              type="button"
+              className="btn-view-comparison"
+              onClick={(e) => {
+                e.stopPropagation();
+                onOpenFullComparison();
+              }}
+            >
+              View full comparison →
+            </button>
+          </div>
+        )}
+      </div>
     </section>
   );
 }
@@ -1603,11 +1781,11 @@ function HumanReviewWorkflow({
           </div>
 
           <div className="field-values-grid">
-            <div className="field-value-box si-box">
+            <div className="field-value-box box-si">
               <span className="value-box-label">SI · Reference</span>
               <span className="value-box-data">{siVal}</span>
             </div>
-            <div className="field-value-box bl-box">
+            <div className={`field-value-box ${curField.status === "MISMATCH" ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
               <span className="value-box-label">Draft BL</span>
               <span className="value-box-data">{blVal}</span>
             </div>
@@ -2233,6 +2411,23 @@ export function TaskPane({
         </nav>
       )}
 
+      {/* Persistent White Bar: Email Subject on Left, Refresh Button on Far Right Corner */}
+      {effectiveState.type === "ready" && effectiveDetail && (
+        <div className="top-case-header-bar">
+          <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
+          <button
+            className="btn-sync-refresh"
+            type="button"
+            onClick={() => void refreshCurrentEmail(true)}
+            aria-label="Refresh case data"
+            title="Refresh case data"
+            disabled={isRefreshing}
+          >
+            <RefreshCw size={13} className={isRefreshing ? "spin-icon" : ""} aria-hidden="true" />
+          </button>
+        </div>
+      )}
+
       {/* Focused Subview Back Navigation (Workflow Navigation) */}
       {effectiveState.type === "ready" && effectiveDetail && activeWorkflowView !== "overview" && (
         <div className="subview-header-bar">
@@ -2243,11 +2438,6 @@ export function TaskPane({
           >
             ← Case Overview
           </button>
-          <span className="subview-header-title">
-            {activeWorkflowView === "review" && "Review Discrepancies"}
-            {activeWorkflowView === "reply" && "Send Reply"}
-            {activeWorkflowView === "comparison" && "Field Comparison"}
-          </span>
         </div>
       )}
 
@@ -2316,21 +2506,6 @@ export function TaskPane({
 
             {/* ══════════════ 1. PRIMARY SCREEN: CASE OVERVIEW ══════════════ */}
             <div className={`workflow-subview ${activeWorkflowView === "overview" ? "active" : "visually-hidden"}`}>
-              {/* Compact Case Header Row with Email Subject & Refresh */}
-              <div className="case-header-row">
-                <h1 className="case-title-compact">{effectiveDetail.email.subject}</h1>
-                <button
-                  className="btn-sync-refresh"
-                  type="button"
-                  onClick={() => void refreshCurrentEmail(true)}
-                  aria-label="Refresh case data"
-                  title="Refresh case data"
-                  disabled={isRefreshing}
-                >
-                  <RefreshCw size={13} className={isRefreshing ? "spin-icon" : ""} aria-hidden="true" />
-                </button>
-              </div>
-
               {/* State-Driven Case Status Card */}
               <ProcessingStateCard email={effectiveDetail.email} />
 
