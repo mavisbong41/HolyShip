@@ -413,17 +413,17 @@ describe("TaskPane", () => {
 
     await user.click(screen.getByRole("button", { name: /prepare summary/i }));
     await waitFor(() => {
-      expect(mockSummary).toHaveBeenCalledWith("email-001", "Outlook reviewer");
+      expect(mockSummary).toHaveBeenCalledWith("email-001", "Captain Jack");
     });
 
     await user.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => {
-      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Outlook reviewer");
+      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Captain Jack");
     });
 
     await user.click(await screen.findByRole("button", { name: /confirm sent/i }));
     await waitFor(() => {
-      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Outlook reviewer");
+      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Captain Jack");
     });
   });
 

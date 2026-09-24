@@ -54,12 +54,13 @@ button:disabled {
   position: relative;
   background: var(--color-white, #ffffff);
   border-bottom: 1px solid var(--color-grey-200);
-  padding: 8px 12px;
+  padding: 16px 12px 10px 12px;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 8px;
   width: 100%;
+  min-height: 48px;
   box-sizing: border-box;
   flex-shrink: 0;
   overflow: hidden;
@@ -71,11 +72,11 @@ button:disabled {
   top: 0;
   left: 0;
   width: 100%;
-  height: 24px;
+  height: 12px;
   pointer-events: none;
   z-index: 0;
   overflow: hidden;
-  opacity: 0.85;
+  opacity: 0.9;
 }
 
 .top-case-header-bar .case-title-compact {
@@ -2449,12 +2450,50 @@ button:disabled {
   width: 20px;
   height: 20px;
   border-radius: 50%;
-  background: var(--color-black, #111827);
+  background: var(--color-orange-500, #f97316);
   color: #ffffff;
   font-size: 11px;
   font-weight: 700;
   flex-shrink: 0;
   margin-top: 1px;
+  box-shadow: 0 1px 3px rgba(249, 115, 22, 0.25);
+}
+
+.callout-bullets {
+  margin: 6px 0 0 0;
+  padding-left: 18px;
+  list-style-type: disc;
+}
+.callout-bullets li {
+  margin-bottom: 3px;
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--color-grey-800);
+}
+
+.reply-section-sublabel,
+.reply-kp-title {
+  color: var(--color-orange-600, #ea580c);
+  font-weight: 700;
+}
+
+.btn-add-kp {
+  background: var(--color-white);
+  border: 1px solid rgba(249, 115, 22, 0.4);
+  color: var(--color-orange-600, #ea580c);
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 2px 7px;
+  border-radius: var(--radius-sm);
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  transition: all 120ms ease;
+}
+.btn-add-kp:hover {
+  background: var(--color-orange-50, #fff7ed);
+  border-color: var(--color-orange-500);
 }
 
 .reply-step-heading {
@@ -2721,31 +2760,33 @@ button:disabled {
 
 /* Timeline & Audit Trail Styles */
 .timeline-card {
-  padding: 10px 12px;
+  padding: 12px 14px;
   background: #ffffff;
   border: 1px solid var(--color-grey-200);
   border-radius: var(--radius-md);
   margin-bottom: 10px;
+  box-sizing: border-box;
+  overflow: hidden;
 }
 .timeline-list {
   list-style: none;
-  padding: 0;
+  padding: 2px 0 2px 8px;
   margin: 0;
   position: relative;
 }
 .timeline-list::before {
   content: "";
   position: absolute;
-  top: 6px;
-  bottom: 6px;
-  left: 5px;
+  top: 8px;
+  bottom: 8px;
+  left: 13px;
   width: 2px;
   background: var(--color-grey-200);
 }
 .timeline-item {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: 12px;
   padding: 6px 0;
   position: relative;
 }
