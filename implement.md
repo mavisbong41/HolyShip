@@ -1709,3 +1709,10 @@ Current document-level limitations:
 - **Why:** The 1280×720 preview still showed the final lead line touching the progress bar.
 - **Files:** `presentation/holyship-presentation.html` only.
 - **Validation:** Rechecked the 1280×720 local Chrome preview; Slide 1 now has visible separation between the lead copy and controls. `git diff --check` and static structure checks pass.
+
+### 2026-09-25 — Screenshot contrast and responsive layout fix
+
+- **Changed:** Increased contrast for Human Review action labels, tightened the low-height Benchmark layout, added a portrait/narrow-viewport presentation mode, and darkened the orange closing-slide metadata and emphasis text.
+- **Why:** Addressed screenshot feedback where dark labels disappeared on dark buttons, Benchmark footers met the controls, Slide 1 was clipped in narrow captures, and closing-slide text blended into the orange background.
+- **Files:** `presentation/holyship-presentation.html` only.
+- **Validation:** Local Chrome preview checked Slide 1, Human Review, Benchmark, and closing slides at the available narrow-height viewport; `git diff --check` and static structure checks remain required before commit.
