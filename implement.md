@@ -1646,3 +1646,35 @@ Current document-level limitations:
 - **Files:** `frontend/src/components/discrepancies/ConfirmedDiscrepanciesPageView.tsx`, `frontend/tests/DiscrepancyWorkflow.test.tsx`, `implement.md`.
 - **Validation:** Backend focused scenario suite 49 passed / 22 skipped; Dashboard focused discrepancy test 5 passed; Dashboard full test suite 39 passed; Dashboard typecheck and production build passed; Outlook TaskPane test 34 passed and Outlook typecheck passed; `git diff --check` passed.
 - **Next:** Live Graph/Gemini verification remains external; keep any future UI changes tied to the shared product API so Dashboard and Outlook stay consistent.
+
+### 2026-09-25 — HTML presentation deck
+
+- **Changed:** Added a self-contained 11-slide HolyShip presentation at `presentation/holyship-presentation.html` with keyboard/click navigation, autoplay, progress tracking, animated workflow diagrams, evidence cards, comparison layers, review states, and evaluation charts.
+- **Why:** Turn the supplied 10-minute script into a judge-facing visual narrative using the existing dashboard orange/grey/black/white design system.
+- **Files:** `presentation/holyship-presentation.html`.
+- **Validation:** `git diff --check` passed; static structure check found 11 opening and 11 closing slide sections plus one balanced script block. The in-app browser blocks local `file://` preview, so final visual preview remains a manual browser-open step.
+- **Next:** If needed, tune slide pacing or replace demo placeholders with live dashboard screenshots before presenting.
+
+### 2026-09-25 — HTML deck content pass
+
+- **Changed:** Expanded the presentation copy so important spoken claims also appear on-slide: dataset complexity, five-way classification versus readiness, backend source-of-truth flow, content-based document validation, seven-field contract, L0/L1/L2 comparison logic, selective AI rationale, evidence-led Human Review, five-step demo flow, and the distinction between operational reliability and labeled decision quality.
+- **Why:** The first version was visually strong but too dependent on narration for core product logic.
+- **Files:** `presentation/holyship-presentation.html`.
+- **Validation:** `git diff --check` passed; HTML structure remains balanced at 11 slide sections, 6 explanatory note blocks, 2 bullet groups, 5 demo steps, and one balanced script block.
+- **Next:** Open the latest file in a normal browser once more to confirm the denser copy fits the chosen viewport.
+
+### 2026-09-25 — HTML deck readability pass
+
+- **Changed:** Moved slide numbers above the bottom navigation controls and added a short-screen responsive rule that reduces copy scale, increases bottom safe area, and keeps dense sections clear of the control bar.
+- **Why:** Ensure explanatory copy remains readable and is not covered by navigation or clipped on smaller presentation windows.
+- **Files:** `presentation/holyship-presentation.html`.
+- **Validation:** `git diff --check` passed; 11 slide sections, 11 slide numbers, one control bar, and one balanced script block were detected. Browser reload is still a manual step because the in-app browser blocks local-file navigation refreshes.
+- **Next:** Present from a normal browser at 16:9 where the responsive safety rules can be visually confirmed.
+
+### 2026-09-25 — Projector visibility and stage-readability pass
+
+- **Changed:** Kept the 11-slide story and redesigned the dense visual sections without adding slides: Slide 04 now uses a six-step ribbon; Slide 05 uses three document examples, three evidence rows, and a preserved-source callout; Slide 07 uses a clear not-sent-versus-minimum-necessary comparison; Slide 08 uses Approve/Edit/Reject/Manual Correction actions with a zero-silent-auto-apply callout; Slide 10 separates the public operational benchmark from the 40-case stress test; Slide 11 closes with Verify/Escalate/Control concepts.
+- **Why:** Improve projected readability and make each slide communicate one message within three seconds.
+- **Files:** `presentation/holyship-presentation.html` only. No application production code changed.
+- **Validation:** Local HTTP preview checked the opening slide and Slides 04, 05, 06, 07, 08, 10, and 11 at the available 16:9 viewport. Verified logo loading, keyboard navigation, animations, page-number placement, bottom-control safe areas, and no visible card/text overlap after animation completion. `git diff --check` passed. Static structure remains 11 balanced slides, 11 page numbers, one control bar, and one balanced script block.
+- **Preserved:** Verified metrics, technical claims, black/orange/light identity, navigation, and animations. The browser preview server was local-only and has been stopped after inspection.
