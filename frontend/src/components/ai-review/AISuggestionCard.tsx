@@ -72,7 +72,7 @@ export function AISuggestionCard({
       <div className="suggestion-notice">
         <AlertTriangle size={14} aria-hidden="true" />
         <span>
-          Original extraction is preserved. Accepting applies a Human Review override and triggers re-comparison.
+          Original extraction is preserved. Approving stages this proposal into the Review Plan for confirmation and re-comparison.
         </span>
       </div>
 
@@ -81,15 +81,17 @@ export function AISuggestionCard({
           <button
             type="button"
             className="button-primary btn-sm"
+            aria-label="Approve Suggestion (Accept & Implement)"
             disabled={isActionLoading || !sid}
             onClick={() => onAccept(sid)}
           >
             <Check size={14} aria-hidden="true" />
-            Accept & Implement
+            Approve Suggestion (Accept & Implement)
           </button>
           <button
             type="button"
             className="button-secondary btn-sm"
+            aria-label="Edit Before Applying"
             disabled={isActionLoading}
             onClick={() => onOpenEdit(suggestion, sid)}
           >
@@ -99,6 +101,7 @@ export function AISuggestionCard({
           <button
             type="button"
             className="button-danger-secondary btn-sm"
+            aria-label="Dismiss"
             disabled={isActionLoading || !sid}
             onClick={() => onDismiss(sid)}
           >

@@ -1212,6 +1212,8 @@ def add_review_plan_item(
                 document_side=payload.document_side, field_name=payload.field,
                 current_value=payload.current_value, proposed_value=payload.proposed_value,
                 reason=payload.reason, status=payload.status,
+                ai_suggestion_id=payload.ai_suggestion_id,
+                confidence=payload.confidence,
             ),
         )
         session.commit()

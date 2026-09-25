@@ -5857,3 +5857,32 @@ button:disabled {
   font-weight: 600;
 }
 
+
+/* Review Plan & AI Suggestion styling */
+.input-ai-suggested {
+  background-color: var(--color-grey-100) !important;
+  border-color: var(--color-grey-400) !important;
+  color: var(--color-grey-900) !important;
+}
+
+.ai-suggestion-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11.5px;
+  color: var(--color-orange-700);
+  margin-top: 4px;
+  font-weight: 550;
+}
+
+.ai-suggestion-meta.is-edited {
+  color: var(--color-grey-700);
+}
+
+.review-plan-card {
+  margin-top: 16px;
+  border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-md);
+  background: var(--color-white);
+  padding: 14px 16px;
+}
