@@ -1723,3 +1723,4 @@ Current document-level limitations:
 - **Why:** Make the deck available through the existing public Vercel deployment instead of relying on a local file or third-party HTML preview service.
 - **Files:** `scripts/copy_presentation.mjs`, `frontend/package.json`, `outlook-addin/package.json`.
 - **Validation:** Frontend and Outlook Add-in production builds passed; generated `frontend/dist/presentation/holyship-presentation.html` and `outlook-addin/dist/presentation/holyship-presentation.html`, then verified the latter with a local static preview. The public Vercel URL is awaiting redeploy after the next push.
+- **Deployment note:** The existing `holy-ship-five.vercel.app` project still returns 404 for the presentation path after the push, so its Vercel project/account must be opened or redeployed with the appropriate access before claiming that URL as live. A GitHub-backed HTML preview is available as an interim share link.
