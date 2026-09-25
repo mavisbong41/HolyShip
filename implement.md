@@ -1571,3 +1571,10 @@ Current document-level limitations:
 - **Files:** `README.md`, `implement.md`.
 - **Validation:** Cross-checked claims against `docs/enhancement_completion.md`, `docs/microsoft_graph_setup.md`, `docs/requirements_matrix.md`, `reports/latest/eval.json`, `reports/latest/performance_paths.json`, package manifests, and client/backend READMEs. Ran `git diff --check`; no application-code tests were needed for this documentation-only task.
 - **Next:** Keep README metrics synchronized with the latest verified reports when evaluation evidence changes.
+
+### 2026-09-25 — README visual formatting
+
+- **Changed:** Adjusted README-only presentation with a centered hero block, clearer section separators, and improved Markdown/HTML visual hierarchy.
+- **Why:** Improve scanability and first impression without changing any README wording, links, figures, or technical content.
+- **Files:** `README.md`, `implement.md`.
+- **Validation:** `git diff --check` passed; the diff contains formatting-only changes to `README.md`.

@@ -1,16 +1,22 @@
-# 🚢 HolyShip
+<div align="center">
 
-### An end-to-end shipping document verification platform that turns incoming email into a trusted SI–BL verification workflow.
+<h1>🚢 HolyShip</h1>
 
-**Team:** NJHL — Wong Jia Hui · Bong Zi Shan · Lee Mei Shuet · Christ Ting Shin Ling · Gan Rui En
+<p><strong>An end-to-end shipping document verification platform that turns incoming email into a trusted SI–BL verification workflow.</strong></p>
 
-[🌐 Dashboard](https://holyship.onrender.com/) · [⚙️ Backend API](https://holyship-backend.onrender.com) · [📘 API Docs](https://holyship-backend.onrender.com/docs) · [📑 Presentation Slides](https://canva.link/kflchdm6qu1pslv) · [🎥 Demo Video](https://youtu.be/mnfbrDJyGaQ)
+<p><strong>Team:</strong> NJHL — Wong Jia Hui · Bong Zi Shan · Lee Mei Shuet · Christ Ting Shin Ling · Gan Rui En</p>
 
-**Outlook Add-in Demo Account:** `captain.holyship@outlook.com` · Password: `captain12`
+<p><a href="https://holyship.onrender.com/">🌐 Dashboard</a> · <a href="https://holyship-backend.onrender.com">⚙️ Backend API</a> · <a href="https://holyship-backend.onrender.com/docs">📘 API Docs</a> · <a href="https://canva.link/kflchdm6qu1pslv">📑 Presentation Slides</a> · <a href="https://youtu.be/mnfbrDJyGaQ">🎥 Demo Video</a></p>
+
+<p><strong>Outlook Add-in Demo Account:</strong> <code>captain.holyship@outlook.com</code> · Password: <code>captain12</code></p>
+
+</div>
 
 <br>
 
 > HolyShip automates what is certain, escalates what is uncertain, and keeps humans in control of business-critical decisions.
+
+---
 
 ## Table of Contents
 
@@ -24,12 +30,16 @@
 - [Setup and running locally](#setup-and-running-locally)
 - [Live prototype / demo](#live-prototype--demo)
 
+---
+
 ## At a Glance
 
 - **End-to-end** — Outlook email in, verified SI–BL result out.
 - **Human-controlled AI** — zero silent auto-apply; every action is approved, edited, or rejected by a person.
 - **Enterprise privacy** — minimum-necessary AI disclosure, routed through a server-side gateway only.
 - **Evidence-backed** — 520 / 520 public-dataset emails processed, 0 technical failures, 410 / 410 backend tests passed, P95 160.6 ms.
+
+---
 
 ## Product overview
 
@@ -51,6 +61,8 @@ Incoming Email
 ```
 
 The core philosophy is **deterministic first → AI only where useful → human control for business-critical decisions**. Clear cases stay on deterministic paths. Semantic AI is used selectively for difficult residual comparisons and reviewer assistance. Uncertain cases remain `UNRESOLVED` or enter Human Review; AI proposes actions, while people approve, edit, or reject them.
+
+---
 
 ## What the system verifies
 
@@ -78,6 +90,8 @@ The SI is the reference document and the BL is the document being checked. The c
 
 Raw values, canonical values, normalized values, labels, confidence, and source evidence are preserved where available. Missing or uncertain values are not silently converted into matches or mismatches.
 
+---
+
 ## Layered comparison
 
 ```text
@@ -89,6 +103,8 @@ L2 — semantic resolution only if still uncertain
 ```
 
 Each field ends as `MATCH`, `MISMATCH`, or `UNRESOLVED`. Definite mismatches are valid completed results; uncertainty is never forced into a confident answer. The high-volume path is deterministic, with L2 reserved for plausible semantic equivalence that survives L0/L1.
+
+---
 
 ## Outlook and Dashboard
 
@@ -116,6 +132,8 @@ Outlook and Dashboard read and write the same persisted backend case state. Busi
 ![Human Review Plan](docs/screenshots/human-review-plan.png)
 -->
 
+---
+
 ## Structured Human Review
 
 Human Review uses a structured multi-action Review Plan:
@@ -132,6 +150,8 @@ AI / reviewer proposes actions
 ```
 
 Multiple actions may exist in one plan. AI suggestions are never automatically applied: only approved items are implemented. Reviewer-authored corrections are supported, original extracted values remain unchanged, comparison history is preserved, and a failed re-comparison does not erase the human decision. **Zero silent auto-apply.**
+
+---
 
 ## Smart Reply
 
@@ -150,6 +170,8 @@ Email / Case Context
 
 AI-extracted key points are editable. Draft generation uses the approved key points, AI cannot send automatically, and send status is recorded only after the provider confirms success. A deterministic fallback is available when Gemini is unavailable.
 
+---
+
 ## Microsoft Graph integration
 
 HolyShip implements server-side Microsoft Graph integration for reply sending, delta synchronization, new-message ingestion, delete and restore, read/unread state, category synchronization, durable delta cursors, webhook handling, subscription renewal and expiration handling, and duplicate/out-of-order notification safety.
@@ -163,6 +185,8 @@ Graph Webhook
 ```
 
 Webhook notifications are wake-up signals, not the mailbox source of truth. Delta reconciliation remains the convergence mechanism. The integration is covered by mock and PostgreSQL integration tests; live tenant verification is deployment-dependent and requires organization-specific Microsoft app registration and credentials.
+
+---
 
 ## Enterprise privacy and AI security
 
@@ -185,6 +209,8 @@ BL: PORT KLANG, MALAYSIA
 ```
 
 rather than the entire email, SI, BL, and unrelated customer information. Deterministic paths avoid unnecessary external AI disclosure. Raw prompts and provider envelopes are not durably persisted; sanitized audit metadata records purpose, provider/model, disclosed categories, payload hash/size, status, and latency. No formal certification or compliance claim is made here.
+
+---
 
 ## Architecture
 
@@ -229,12 +255,16 @@ Gemini calls → Secure AI Gateway → Minimum Necessary Disclosure
 
 The backend supports source-independent ingestion, initial backlog sync, idempotent processing, lazy attachment loading, controlled concurrency, document hashing and extraction caching, content-based SI/BL role validation, structured extraction, and persisted processing/audit state.
 
+---
+
 ## Technical stack
 
 - **Backend:** Python, FastAPI, Pydantic Settings, SQLAlchemy, Alembic, PostgreSQL, `pypdf`, `python-docx`, `openpyxl`, and Tesseract-compatible OCR integration for scanned-document fallback.
 - **Dashboard:** React 19, TypeScript, Vite, Vitest, Testing Library.
 - **Outlook Add-in:** React, TypeScript, Vite, Office.js, Vitest, Testing Library.
 - **Integration:** Microsoft Graph through a backend adapter and delta/checkpoint services; Gemini through the Secure AI Gateway.
+
+---
 
 ## Project structure
 
@@ -247,6 +277,8 @@ reports/       Evaluation, reliability, performance, and audit evidence
 scripts/       Demo, evaluation, and validation utilities
 data/          Public bundle and permitted local fixtures
 ```
+
+---
 
 ## Setup and running locally
 
@@ -312,6 +344,8 @@ python scripts/demo_phase7.py
 
 The backend product API includes `POST /api/v1/sync/initial`, `POST /api/v1/ingestion/email`, `GET /api/v1/emails`, `GET /api/v1/summary`, `GET /api/v1/human-review`, `POST /api/v1/human-review/{review_id}/resolve`, and polling-compatible `GET /api/v1/events`.
 
+---
+
 ## Validation and reliability
 
 ### Public dataset evaluation
@@ -370,6 +404,8 @@ These values describe the deterministic benchmark, not live Gemini-assisted perf
 
 The public participant bundle does not expose the organizer's official ground-truth labels. HolyShip therefore reports operational reliability and performance without fabricating accuracy, precision, recall, F1, or confusion-matrix metrics. The repository includes an isolated evaluation tool that can calculate those metrics when authorized ground truth is supplied.
 
+---
+
 ## Data lifecycle
 
 Operational retention support includes configurable cleanup, scheduled execution, safe dry-run mode, and protection for Human Review history, overrides, comparison history, and audit evidence.
@@ -379,17 +415,23 @@ DATA_LIFECYCLE_DRY_RUN=true
 DATA_LIFECYCLE_RUN_ON_STARTUP=false
 ```
 
+---
+
 ## Live prototype / demo
 
 The current public Dashboard deployment is available at [holyship.onrender.com](https://holyship.onrender.com/). The backend API and interactive documentation are available at [holyship-backend.onrender.com](https://holyship-backend.onrender.com) and its [OpenAPI docs](https://holyship-backend.onrender.com/docs).
 
 See the [presentation slides](https://canva.link/kflchdm6qu1pslv) and [demo video](https://youtu.be/mnfbrDJyGaQ) for the end-to-end product walkthrough.
 
+---
+
 ## Challenge submission summary
 
 HolyShip is an end-to-end shipping email workflow that classifies incoming messages, checks document readiness, extracts seven SI–BL fields, and produces deterministic `MATCH`, `MISMATCH`, or `UNRESOLVED` outcomes. Rather than forcing every case into an AI decision, HolyShip separates definite results from uncertainty and escalates only what requires human judgment — routing that uncertainty into a structured Human Review Plan where people approve, edit, or reject proposed actions before one re-comparison. Enterprise Privacy Mode, Secure AI Gateway routing, minimum-necessary disclosure, preserved source evidence, and audit history keep AI useful without making it authoritative. Smart Reply supports editable key points, draft refinement, manual editing, and explicit send confirmation.
 
 <!-- ~104 words — confirm this against the competition's submission word limit before final export. -->
+
+---
 
 ## Contributors
 
