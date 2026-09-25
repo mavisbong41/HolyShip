@@ -1772,8 +1772,6 @@ function EmailDetailContent({
         )}
       </div>
 
-      <ReplyEmailSection detail={detail} />
-
       <div className="detail-section">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
           <h3 style={{ margin: 0 }}>
@@ -1958,6 +1956,7 @@ function HumanReviewPageView({
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
   const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
+  const [replyDetail, setReplyDetail] = useState<ProductEmailDetail | null>(null);
   const [reviewSubTab, setReviewSubTab] = useState<"issue" | "compare" | "assistant" | "actions" | "resolve">("issue");
 
   const [showActionGuidance, setShowActionGuidance] = useState(false);
@@ -1965,6 +1964,18 @@ function HumanReviewPageView({
   useEffect(() => {
     setReviewSubTab("issue");
   }, [selected?.id]);
+
+  useEffect(() => {
+    let active = true;
+    setReplyDetail(null);
+    if (!selected?.email_id) return () => { active = false; };
+    void getEmailDetail(selected.email_id).then((detail) => {
+      if (active) setReplyDetail(detail);
+    }).catch(() => {
+      if (active) setReplyDetail(null);
+    });
+    return () => { active = false; };
+  }, [selected?.email_id, selected?.status, selected?.updated_at]);
 
   useEffect(() => {
     setShowActionGuidance(false);
@@ -3668,6 +3679,7 @@ function HumanReviewPageView({
                       <p className="body-copy email-body-box">{selected.body || "No body text available."}</p>
                     </div>
                   </div>
+                  <ReplyEmailSection detail={replyDetail} />
                 </div>
               )}
 

@@ -6,11 +6,11 @@ import { displayValue, labelForField } from "../lib/labels";
 
 type ReplyState = "REQUEST_INFORMATION" | "RESOLUTION_REPLY" | "NOT_AVAILABLE";
 
-export function ReplyEmailSection({ detail }: { detail: ProductEmailDetail }): React.ReactElement {
-  const policy = detail.reply_policy;
+export function ReplyEmailSection({ detail }: { detail: ProductEmailDetail | null }): React.ReactElement {
+  const policy = detail?.reply_policy;
   const state: ReplyState = policy?.mode === "REQUEST_INFORMATION"
     ? "REQUEST_INFORMATION" : policy?.mode === "RESOLUTION_REPLY" ? "RESOLUTION_REPLY" : "NOT_AVAILABLE";
-  const [subject, setSubject] = useState(`Re: ${detail.email.subject}`);
+  const [subject, setSubject] = useState("");
   const [draft, setDraft] = useState("");
   const [refinement, setRefinement] = useState("");
   const [busy, setBusy] = useState<"generate" | "refine" | "send" | null>(null);
@@ -18,12 +18,14 @@ export function ReplyEmailSection({ detail }: { detail: ProductEmailDetail }): R
   const [message, setMessage] = useState<string | null>(null);
   const [sent, setSent] = useState(false);
   const issueFields = useMemo(() => {
-    const names = new Set([...(detail.comparison?.unresolved_fields || []), ...(detail.comparison?.mismatched_fields || [])]);
-    return detail.comparison?.fields.filter((field) => names.has(field.field)) || [];
-  }, [detail.comparison]);
+    const names = new Set([...(detail?.comparison?.unresolved_fields || []), ...(detail?.comparison?.mismatched_fields || [])]);
+    return detail?.comparison?.fields.filter((field) => names.has(field.field)) || [];
+  }, [detail]);
+  React.useEffect(() => { setSubject(detail ? `Re: ${detail.email.subject}` : ""); }, [detail?.email.id, detail?.email.subject]);
   const errorMessage = (error: unknown, fallback: string) => error instanceof ApiError ? error.message : fallback;
   const generate = async () => {
     setBusy("generate"); setMessage(null); setConfirmSend(false); setSent(false);
+    if (!detail) return;
     try { const result = await generateReplyDraft(detail.email.id); setDraft(result.draft || ""); }
     catch (error) { setMessage(errorMessage(error, "Could not generate reply.")); }
     finally { setBusy(null); }
@@ -31,6 +33,7 @@ export function ReplyEmailSection({ detail }: { detail: ProductEmailDetail }): R
   const refine = async () => {
     if (!draft.trim() || !refinement.trim()) return;
     setBusy("refine"); setMessage(null);
+    if (!detail) return;
     try { const result = await refineReplyDraft(detail.email.id, draft, refinement); setDraft(result.draft || draft); setRefinement(""); }
     catch (error) { setMessage(errorMessage(error, "Could not refine reply.")); }
     finally { setBusy(null); }
@@ -39,6 +42,7 @@ export function ReplyEmailSection({ detail }: { detail: ProductEmailDetail }): R
     if (!draft.trim()) return;
     if (!confirmSend) { setConfirmSend(true); return; }
     setBusy("send"); setMessage(null);
+    if (!detail) return;
     try { await sendReplyDraft(detail.email.id, draft); setSent(true); setConfirmSend(false); }
     catch (error) { setMessage(errorMessage(error, "Could not send reply.")); }
     finally { setBusy(null); }

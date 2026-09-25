@@ -45,7 +45,7 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Dashboard Reply Email UI/UX
+**Updated by:** Dashboard Reply Email visibility fix
 
 ### Section 8: Delete and Restore Behaviour Completed:
 - **8.1 Delete Detection & Evidence Preservation**:
@@ -1233,6 +1233,13 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-25 — Dashboard Reply Email visibility fix
+- Changed: Mounted Reply Email in the actual Human Review `Email & Documents` tab instead of only the generic email inspector path.
+- Changed: Human Review now fetches the selected email detail for policy evaluation and renders `Reply Unavailable` while that detail is missing or fails to load; the section never disappears.
+- Files: `frontend/src/App.tsx`, `frontend/src/components/ReplyEmailSection.tsx`, `implement.md`.
+- Validation: Local browser verified a real Human Review case shows Reply Email in Email & Documents; Dashboard typecheck, 38 tests, and production build passed.
+- Known limitation: The currently deployed Dashboard still serves an older build and the live backend did not expose the reply policy during verification; deployment must pick up this commit and the shared-policy backend.
 
 ### 2026-09-25 — Dashboard Reply Email UI/UX
 - Changed: Reply Email under Email & Documents now presents compact Information Required, Ready to Reply, and Reply Unavailable states from the shared backend policy.
