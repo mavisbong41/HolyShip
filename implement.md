@@ -45,7 +45,15 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Independent labeled stress-test benchmark
+**Updated by:** HolyShip five-step demo workflow audit
+
+### Five-step demo workflow audit and evidence-trace closure
+- **Audit result:** Step 1 PASS, Step 2 PASS after the Dashboard evidence-trace UI fix below, Step 3 PASS, Step 4 PASS, Step 5 PASS.
+- **Already correct:** Backend readiness keeps legitimate `AWAITING_DOCUMENTS` cases out of active Human Review; comparison persists `MATCH`, `MISMATCH`, and `UNRESOLVED`; unresolved values are not forced into mismatches; active Human Review creates targeted exception cases with affected fields/reasons/evidence; corrections are additive overrides that trigger recomparison; genuine mismatches live in the Discrepancies workflow and can be acknowledged/resolved without fake corrections; reply workflows require explicit reviewer confirmation before send.
+- **Gap fixed:** The Dashboard confirmed-discrepancy document tab showed source documents but did not expose per-field extracted evidence there, making the demo's result-to-evidence trace less direct from that workflow.
+- **Changed:** `frontend/src/components/discrepancies/ConfirmedDiscrepanciesPageView.tsx` now shows a compact `Extracted field evidence` drawer per source document with canonical field, status, original/raw value, extracted/canonical value, evidence text or location, and raw label. `frontend/tests/DiscrepancyWorkflow.test.tsx` adds fixture evidence and a regression test for the drawer.
+- **Validation:** `npm test -- DiscrepancyWorkflow.test.tsx --run` passed 5/5; backend scenario sweep with `py -3.13 -m pytest backend\tests\test_processing_state_postgres.py backend\tests\test_phase4_comparison_core.py backend\tests\test_phase4_l1_comparison.py backend\tests\test_human_review_workflow_postgres.py backend\tests\test_discrepancy_workflow_postgres.py backend\tests\test_reply_policy.py backend\tests\test_api.py -q` passed 49, skipped 22 environment/service-dependent tests; frontend typecheck passed; Outlook TaskPane test passed 34/34 with the existing React `act` warning; Dashboard full tests passed 39/39; `git diff --check` passed; Dashboard production build passed; Outlook typecheck passed.
+- **Remaining limitation:** Live Microsoft Graph send/delta and live Gemini behavior remain external-service verification items; no demo-script sentence depends on silently claiming those live services ran in this local audit.
 
 ### README stress-test evidence update
 - **Changed:** Added the frozen 40-case Independent Labeled Stress Test to the README without mixing it with the public 520-email operational benchmark.
@@ -1630,3 +1638,11 @@ Current document-level limitations:
 - **Why:** Improve scanability and first impression without changing any README wording, links, figures, or technical content.
 - **Files:** `README.md`, `implement.md`.
 - **Validation:** `git diff --check` passed; the diff contains formatting-only changes to `README.md`.
+
+### 2026-09-25 — Five-step demo workflow audit
+
+- **Changed:** Audited the actual backend, Dashboard, and Outlook Add-in workflow against the five-step demo script; added source-document extracted-field evidence drawers to the Dashboard confirmed-discrepancy inspector; added a regression test proving the reviewer can trace original value, extracted value, and evidence from that workflow.
+- **Why:** Step 2's evidence trace was supported by the backend/product API and other views, but the discrepancy inspector's source-document tab did not directly expose per-field source evidence.
+- **Files:** `frontend/src/components/discrepancies/ConfirmedDiscrepanciesPageView.tsx`, `frontend/tests/DiscrepancyWorkflow.test.tsx`, `implement.md`.
+- **Validation:** Backend focused scenario suite 49 passed / 22 skipped; Dashboard focused discrepancy test 5 passed; Dashboard full test suite 39 passed; Dashboard typecheck and production build passed; Outlook TaskPane test 34 passed and Outlook typecheck passed; `git diff --check` passed.
+- **Next:** Live Graph/Gemini verification remains external; keep any future UI changes tied to the shared product API so Dashboard and Outlook stay consistent.

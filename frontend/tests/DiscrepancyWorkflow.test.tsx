@@ -160,7 +160,33 @@ const mockDiscrepancyDetail: ProductDiscrepancyDetail = {
       reader_used: "PdfReader",
       extraction_quality: 1.0,
       failure_reason: null,
-      fields: [],
+      fields: [
+        {
+          field: "consignee",
+          raw_label: "Consignee",
+          raw_value: "Beta Imports Corp",
+          canonical_value: "Beta Imports Corp",
+          status: "RESOLVED",
+          confidence: 0.99,
+          mapping_method: "exact_label",
+          extraction_method: "deterministic_text",
+          source_location: { page_number: 1 },
+          evidence: [
+            {
+              document_id: "doc-1",
+              document_role: "SI",
+              attachment_id: "att-1",
+              filename: "SI_9901.pdf",
+              page: 1,
+              text_span: "Consignee: Beta Imports Corp",
+              source_type: "text",
+              field: "consignee",
+              reason: null,
+              details: {},
+            },
+          ],
+        },
+      ],
     },
   ],
   overrides: [],
@@ -314,6 +340,23 @@ describe("Confirmed Discrepancies Workspace", () => {
     expect(await screen.findByText("Gamma Overseas Ltd")).toBeInTheDocument();
     expect(await screen.findByText("SI (Reference Document)")).toBeInTheDocument();
     expect(await screen.findByText("Draft BL (Document Checked)")).toBeInTheDocument();
+  });
+
+  it("shows extracted document field evidence in the discrepancy inspector", async () => {
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    setupDiscrepancyFetch();
+    render(<App />);
+
+    await user.click(await screen.findByRole("button", { name: /Discrepancies/i }));
+    await user.click(await screen.findByRole("button", { name: "Open Review" }));
+
+    await user.click(await screen.findByRole("button", { name: /Attachments & Docs/i }));
+    await user.click(await screen.findByText(/Extracted field evidence \(1\)/i));
+
+    expect(await screen.findByText(/Original:/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Extracted:/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Consignee: Beta Imports Corp/i)).toBeInTheDocument();
+    expect(await screen.findByText(/Label:/i)).toBeInTheDocument();
   });
 
   it("acknowledges an open discrepancy", async () => {

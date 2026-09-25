@@ -27,6 +27,7 @@ import type {
   LoadState,
   ProductDiscrepancyDetail,
   ProductDiscrepancySummary,
+  ProductExtractedField,
 } from "../../api/types";
 import { canonicalFields } from "../../api/types";
 import {
@@ -41,6 +42,30 @@ import { EmptyState, MetricCard } from "../common/MetricCard";
 
 function cx(...items: Array<string | false | null | undefined>): string {
   return items.filter(Boolean).join(" ");
+}
+
+function fieldEvidenceSummary(field: ProductExtractedField): string {
+  const primary = field.evidence?.find((item) => item.text_span || item.reason);
+  if (primary?.text_span) return primary.text_span;
+  if (primary?.reason) return primary.reason;
+  const location = field.source_location || {};
+  const cell = typeof location.cell === "string" ? location.cell : null;
+  const page =
+    typeof location.page === "number"
+      ? location.page
+      : typeof location.page_number === "number"
+      ? location.page_number
+      : null;
+  if (cell) return `Cell ${cell}`;
+  if (page) return `Page ${page}`;
+  return "Source evidence recorded";
+}
+
+function compactFieldsForDocument(fields: ProductExtractedField[]): ProductExtractedField[] {
+  const byName = new Map(fields.map((field) => [field.field, field]));
+  return canonicalFields
+    .map((field) => byName.get(field))
+    .filter((field): field is ProductExtractedField => Boolean(field));
 }
 
 interface ConfirmedDiscrepanciesPageViewProps {
@@ -826,6 +851,41 @@ export function ConfirmedDiscrepanciesPageView({
                                     <span className="badge badge-neutral">Reader: {doc.reader_used}</span>
                                   )}
                                 </div>
+                                {compactFieldsForDocument(doc.fields || []).length > 0 && (
+                                  <details style={{ marginTop: "8px" }}>
+                                    <summary style={{ fontSize: "11.5px", fontWeight: 650, cursor: "pointer", color: "var(--color-grey-700)" }}>
+                                      Extracted field evidence ({compactFieldsForDocument(doc.fields || []).length})
+                                    </summary>
+                                    <div style={{ display: "grid", gap: "6px", marginTop: "8px" }}>
+                                      {compactFieldsForDocument(doc.fields || []).map((field) => (
+                                        <div
+                                          key={`${doc.id}-${field.field}`}
+                                          style={{
+                                            border: "1px solid var(--color-grey-200)",
+                                            borderRadius: "var(--radius-sm)",
+                                            padding: "7px 8px",
+                                            background: "var(--color-grey-50)",
+                                          }}
+                                        >
+                                          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "8px", flexWrap: "wrap" }}>
+                                            <strong style={{ fontSize: "11.5px" }}>{labelForField(String(field.field))}</strong>
+                                            <span className={cx("badge", field.status === "RESOLVED" ? "badge-good" : "badge-warn")} style={{ fontSize: "10px" }}>
+                                              {displayLabel(field.status)}
+                                            </span>
+                                          </div>
+                                          <div style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)", gap: "6px", marginTop: "5px", fontSize: "11.5px" }}>
+                                            <span><strong>Original:</strong> {displayValue(field.raw_value)}</span>
+                                            <span><strong>Extracted:</strong> {displayValue(field.canonical_value ?? field.raw_value)}</span>
+                                          </div>
+                                          <div style={{ marginTop: "5px", fontSize: "11px", color: "var(--color-grey-600)", lineHeight: 1.4 }}>
+                                            <strong>Evidence:</strong> {fieldEvidenceSummary(field)}
+                                            {field.raw_label ? <> · <strong>Label:</strong> {field.raw_label}</> : null}
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </details>
+                                )}
                               </div>
                             </div>
                           ))}
