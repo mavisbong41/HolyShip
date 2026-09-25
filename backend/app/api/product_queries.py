@@ -5,7 +5,7 @@ from datetime import datetime
 from typing import Any
 from uuid import UUID
 
-from sqlalchemy import and_, exists, func, or_, select
+from sqlalchemy import and_, case, exists, func, or_, select
 from sqlalchemy.orm import Session, selectinload
 
 
@@ -71,13 +71,20 @@ def validate_page(*, skip: int, limit: int) -> tuple[int, int]:
 
 
 def _ranked(model: Any, *, partition: Any) -> Any:
+    order = [model.created_at.desc(), model.id.desc()]
+    if model is ClassificationResultRecord:
+        order = [
+            case((model.resolved_at_stage == "human_override", 1), else_=0).desc(),
+            model.created_at.desc(),
+            model.id.desc(),
+        ]
     return (
         select(
             model,
             func.row_number()
             .over(
                 partition_by=partition,
-                order_by=[model.created_at.desc(), model.id.desc()],
+                order_by=order,
             )
             .label("rank"),
         )
@@ -109,10 +116,13 @@ def _queue_sources() -> tuple[Any, Any, Any]:
 
 def _needs_review_expr(email: Any, comparison: Any, review: Any) -> Any:
     email_status = email.c.processing_status if hasattr(email, "c") else email.processing_status
-    return or_(
-        and_(review.c.case_origin == "ACTIVE", review.c.status.in_(["OPEN", "IN_REVIEW"])),
-        email_status == "BLOCKED",
-        comparison.c.comparison_state == "BLOCKED",
+    return func.coalesce(
+        or_(
+            and_(review.c.case_origin == "ACTIVE", review.c.status.in_(["OPEN", "IN_REVIEW"])),
+            email_status == "BLOCKED",
+            comparison.c.comparison_state == "BLOCKED",
+        ),
+        False,
     )
 
 
@@ -149,6 +159,7 @@ def _queue_statement(
     received_from: datetime | None,
     received_to: datetime | None,
     lifecycle_status: str | None,
+    sort: str,
 ) -> tuple[Any, Any]:
     classification, comparison, review = _queue_sources()
     attachment_count = (
@@ -167,6 +178,7 @@ def _queue_statement(
         EmailMessageRecord.subject,
         EmailMessageRecord.received_at,
         EmailMessageRecord.created_at,
+        EmailMessageRecord.updated_at,
         EmailMessageRecord.processing_status,
         attachment_count.label("attachment_count"),
         classification.c.category,
@@ -247,11 +259,18 @@ def _queue_statement(
         filters.append(EmailMessageRecord.lifecycle_status != "DELETED")
     if filters:
         statement = statement.where(*filters)
-    order = (
-        EmailMessageRecord.received_at.desc().nullslast(),
-        EmailMessageRecord.created_at.desc(),
-        EmailMessageRecord.id.desc(),
-    )
+    if sort == "oldest":
+        order = (EmailMessageRecord.received_at.asc().nullsfirst(), EmailMessageRecord.created_at.asc(), EmailMessageRecord.id.asc())
+    elif sort == "priority":
+        order = (needs_review_value.desc(), unresolved_count.desc(), mismatch_count.desc(), EmailMessageRecord.updated_at.desc(), EmailMessageRecord.id.desc())
+    elif sort == "status":
+        order = (EmailMessageRecord.processing_status.asc(), EmailMessageRecord.updated_at.desc(), EmailMessageRecord.id.desc())
+    elif sort == "category":
+        order = (classification.c.category.asc().nullslast(), EmailMessageRecord.updated_at.desc(), EmailMessageRecord.id.desc())
+    elif sort == "last_updated":
+        order = (EmailMessageRecord.updated_at.desc(), EmailMessageRecord.id.desc())
+    else:
+        order = (EmailMessageRecord.received_at.desc().nullslast(), EmailMessageRecord.created_at.desc(), EmailMessageRecord.id.desc())
     return statement.order_by(*order), select(func.count()).select_from(statement.order_by(None).subquery())
 
 
@@ -304,6 +323,7 @@ def list_email_queue(
     received_from: datetime | None = None,
     received_to: datetime | None = None,
     lifecycle_status: str | None = None,
+    sort: str = "newest",
 ) -> EmailQueuePage:
     validate_page(skip=skip, limit=limit)
     statement, count_statement = _queue_statement(
@@ -320,6 +340,7 @@ def list_email_queue(
         received_from=received_from,
         received_to=received_to,
         lifecycle_status=lifecycle_status,
+        sort=sort,
     )
     rows = session.execute(statement.offset(skip).limit(limit)).all()
     total = int(session.scalar(count_statement) or 0)
@@ -478,6 +499,12 @@ def get_product_sync_status(session: Session) -> ProductSyncStatus:
 
 def _latest(rows: Iterable[Any]) -> Any | None:
     return max(rows, key=lambda row: (row.created_at, str(row.id)), default=None)
+
+
+def _effective_classification(rows: Iterable[ClassificationResultRecord]) -> ClassificationResultRecord | None:
+    materialized = list(rows)
+    manual = [row for row in materialized if row.resolved_at_stage == "human_override"]
+    return _latest(manual or materialized)
 
 
 def _evidence_items(
@@ -720,7 +747,7 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
     record = _load_email_graph(session, email_id)
     if record is None:
         return None
-    classification_record = _latest(record.classification_results)
+    classification_record = _effective_classification(record.classification_results)
     comparison_record = _latest(record.comparison_results)
     review_records = sorted(record.human_review_cases, key=lambda item: (item.created_at, str(item.id)))
     latest_review = _latest(
@@ -957,7 +984,7 @@ def list_human_reviews(
     items = []
     for row in rows:
         email = row.email
-        email_classification = _latest(email.classification_results) if email else None
+        email_classification = _effective_classification(email.classification_results) if email else None
         email_comparison_record = _latest(email.comparison_results) if email else None
         email_summary = (
             _summary_from_record(

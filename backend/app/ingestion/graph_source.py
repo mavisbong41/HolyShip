@@ -89,7 +89,15 @@ class MicrosoftGraphSource(EmailSource):
             body=text,
             received_at=parsed_received_at,
             attachments=attachment_metadata,
-            source_metadata={"provider": "microsoft_graph", "payload_kind": "message"},
+            source_metadata={
+                "provider": "microsoft_graph",
+                "payload_kind": "message",
+                "graph_message_id": message_id,
+                "internet_message_id": payload.get("internetMessageId"),
+                "outlook_read_state": "READ" if payload.get("isRead") else "UNREAD",
+                "outlook_categories": list(payload.get("categories") or []),
+                "outlook_folder_id": payload.get("parentFolderId"),
+            },
             content_hash=build_content_hash(
                 source_type=self.source_type,
                 external_message_id=message_id,

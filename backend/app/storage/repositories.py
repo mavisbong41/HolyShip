@@ -357,6 +357,18 @@ class ClassificationResultRepository:
                 raise
         return record
 
+    def get_human_override(self, email_id: UUID) -> ClassificationResultRecord | None:
+        """Return the durable effective human category, regardless of later classifier runs."""
+        return self.session.scalar(
+            select(ClassificationResultRecord)
+            .where(
+                ClassificationResultRecord.email_id == email_id,
+                ClassificationResultRecord.resolved_at_stage == "human_override",
+                ClassificationResultRecord.reason_code == "MANUAL_CATEGORY_OVERRIDE",
+            )
+            .order_by(ClassificationResultRecord.created_at.desc(), ClassificationResultRecord.id.desc())
+        )
+
 
 class HumanReviewRepository:
     def __init__(self, session: Session):

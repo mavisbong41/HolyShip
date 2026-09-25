@@ -9,6 +9,7 @@ from backend.app.api.router import _build_sync_service, router
 from backend.app.core.config import Settings, get_settings
 from backend.app.data_lifecycle.runtime import DataLifecycleRuntime
 from backend.app.ingestion.runtime import IngestionRuntime
+from backend.app.ingestion.graph_sync import GraphSyncRuntime
 from backend.app.storage.database import SessionLocal
 
 logger = logging.getLogger(__name__)
@@ -32,14 +33,18 @@ def create_app(settings: Settings | None = None) -> FastAPI:
             configured,
             session_factory=SessionLocal,
         )
+        graph_sync_runtime = GraphSyncRuntime(configured, SessionLocal, processor_factory)
         app.state.ingestion_runtime = runtime
         app.state.data_lifecycle_runtime = data_lifecycle_runtime
+        app.state.graph_sync_runtime = graph_sync_runtime
         runtime.start()
         data_lifecycle_runtime.start()
+        graph_sync_runtime.start()
         try:
             yield
         finally:
             data_lifecycle_runtime.stop()
+            graph_sync_runtime.stop()
             runtime.stop()
 
     application = FastAPI(

@@ -309,3 +309,58 @@ def test_processing_events_query_returns_persisted_event_contract(db_factory):
         assert events[0].category == "document_comparison"
         assert events[0].mismatch_found is True
         assert events[0].reason_code == "COMPARISON_COMPLETE"
+
+
+def test_queue_sorts_full_matching_dataset_before_limit(db_factory):
+    categories = ["document_comparison", "new_si_request", "invoice_query", "general_message", "spam"]
+    statuses = ["AWAITING_DOCUMENTS", "BLOCKED", "CLASSIFIED", "COMPLETED", "FAILED"]
+    base = datetime(2026, 1, 1, tzinfo=timezone.utc)
+    with db_factory() as session:
+        expected: list[dict[str, object]] = []
+        for index in range(25):
+            received = base.replace(day=index + 1)
+            updated = base.replace(day=25 - index)
+            email = EmailMessageRecord(
+                external_message_id=f"sort-{index:02d}", source_type="INCOMING_API",
+                recipients=[], subject=f"Sort {index:02d}", body="sorting fixture",
+                received_at=received, created_at=received, updated_at=updated,
+                source_metadata={}, content_hash=hashlib.sha256(f"sort-{index}".encode()).hexdigest(),
+                processing_status=statuses[index % len(statuses)],
+            )
+            session.add(email)
+            session.flush()
+            category = categories[index % len(categories)]
+            session.add(ClassificationResultRecord(
+                email_id=email.id, category=category, confidence=1.0,
+                candidate_scores={category: 1.0}, reason="fixture", reason_code="FIXTURE",
+                evidence_summary={}, conflict_detected=False, resolved_at_stage="stage1",
+                classifier_version="sort-fixture", source_content_hash=email.content_hash,
+            ))
+            has_review_case = index in {2, 22}
+            needs_review = has_review_case or statuses[index % len(statuses)] == "BLOCKED"
+            if has_review_case:
+                session.add(HumanReviewCaseRecord(
+                    email_id=email.id, reason_code="SORT_FIXTURE", reason_text="Needs review",
+                    candidate_scores={}, evidence={}, status="OPEN", case_origin="ACTIVE",
+                    workflow_identity=f"sort:{index}",
+                ))
+            expected.append({
+                "id": str(email.id), "received": received, "updated": updated,
+                "status": statuses[index % len(statuses)], "category": category,
+                "needs_review": needs_review, "external_id": f"sort-{index:02d}",
+            })
+        session.commit()
+
+        keys = {
+            "newest": lambda row: (-row["received"].timestamp(), row["id"]),
+            "oldest": lambda row: (row["received"].timestamp(), row["id"]),
+            "priority": lambda row: (not row["needs_review"], -row["updated"].timestamp(), row["id"]),
+            "status": lambda row: (row["status"], -row["updated"].timestamp(), row["id"]),
+            "category": lambda row: (row["category"], -row["updated"].timestamp(), row["id"]),
+            "last_updated": lambda row: (-row["updated"].timestamp(), row["id"]),
+        }
+        for sort, key in keys.items():
+            page = list_email_queue(session, skip=0, limit=20, sort=sort)
+            expected_ids = [row["external_id"] for row in sorted(expected, key=key)[:20]]
+            assert [item.external_message_id for item in page.items] == expected_ids, sort
+            assert page.total == 25

@@ -6,8 +6,9 @@ import uuid
 from datetime import datetime
 from typing import Literal
 
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy import select
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import JSONResponse, PlainTextResponse
+from sqlalchemy import case, select
 from sqlalchemy.orm import Session, selectinload
 
 from backend.app.api.deps import get_session, get_settings_dep
@@ -87,6 +88,8 @@ from backend.app.api.product_schemas import (
     ProductReprocessOut,
     ProductReplyWorkflow,
     ProductReview,
+    ProductReviewPlan,
+    ProductReviewPlanItem,
     ProductSyncStatus,
     ProductSummary,
     ReplyGenerateIn,
@@ -97,9 +100,80 @@ from backend.app.api.product_schemas import (
     ReviewDismissIn,
     ReviewOverrideIn,
     ReviewResolveIn,
+    ReviewPlanConfirmIn,
+    ReviewPlanCreateIn,
+    ReviewPlanItemUpdateIn,
+    ReviewPlanItemCreateIn,
+    ReviewPlanActorIn,
 )
+from backend.app.ingestion.graph_client import GraphClientError, MicrosoftGraphClient
+from backend.app.security.ai_gateway import (
+    PURPOSE_REPLY_DRAFT,
+    PURPOSE_REPLY_REFINE,
+    PURPOSE_REPLY_SUMMARY,
+    SecureAIGateway,
+)
+from backend.app.review.plan_service import PlanItemInput, ReviewPlanApplyError, ReviewPlanService
 
 router = APIRouter()
+
+
+@router.post("/v1/graph/notifications", include_in_schema=True)
+async def microsoft_graph_notifications(
+    request: Request,
+    validationToken: str | None = Query(None),
+):
+    """Validate Graph subscriptions and use notifications only to wake delta sync."""
+    if validationToken is not None:
+        return PlainTextResponse(validationToken)
+    try:
+        payload = await request.json()
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail="Invalid Graph notification payload") from exc
+    notifications = payload.get("value") if isinstance(payload, dict) else None
+    if not isinstance(notifications, list) or not notifications:
+        raise HTTPException(status_code=400, detail="Graph notification payload has no notifications")
+    runtime = getattr(request.app.state, "graph_sync_runtime", None)
+    if runtime is None:
+        raise HTTPException(status_code=503, detail="Graph sync runtime is unavailable")
+    for notification in notifications:
+        if not isinstance(notification, dict) or not runtime.validate_client_state(notification.get("clientState")):
+            raise HTTPException(status_code=403, detail="Graph notification client state is invalid")
+    runtime.wake()
+    return JSONResponse(status_code=202, content={"accepted": len(notifications), "action": "DELTA_SYNC_TRIGGERED"})
+
+
+def _review_plan_out(plan) -> ProductReviewPlan:
+    return ProductReviewPlan(
+        id=plan.id,
+        review_case_id=plan.review_case_id,
+        status=plan.status,
+        created_by=plan.created_by,
+        confirmed_at=plan.confirmed_at,
+        confirmed_by=plan.confirmed_by,
+        applied_comparison_id=plan.applied_comparison_id,
+        error_message=plan.error_message,
+        items=[
+            ProductReviewPlanItem(
+                id=item.id,
+                ai_suggestion_id=item.ai_suggestion_id,
+                document_side=item.document_side,
+                field=item.field_name,
+                current_value=item.current_value,
+                proposed_value=item.proposed_value,
+                human_edited_value=item.human_edited_value,
+                reason=item.reason,
+                confidence=item.confidence,
+                action=item.action,
+                status=item.status,
+                created_at=item.created_at,
+                updated_at=item.updated_at,
+            )
+            for item in sorted(plan.items, key=lambda row: (row.created_at, str(row.id)))
+        ],
+        created_at=plan.created_at,
+        updated_at=plan.updated_at,
+    )
 
 
 def _reprocess_source(
@@ -300,7 +374,10 @@ def get_email_classification(
     result = session.scalar(
         select(ClassificationResultRecord)
         .where(ClassificationResultRecord.email_id == email_id)
-        .order_by(ClassificationResultRecord.created_at.desc())
+        .order_by(
+            case((ClassificationResultRecord.reason_code == "MANUAL_CATEGORY_OVERRIDE", 0), else_=1),
+            ClassificationResultRecord.created_at.desc(),
+        )
     )
     if not result:
         raise HTTPException(
@@ -448,6 +525,7 @@ def product_email_queue(
     received_from: datetime | None = Query(None),
     received_to: datetime | None = Query(None),
     lifecycle_status: Literal["ACTIVE", "DELETED", "ARCHIVED"] | None = Query(None),
+    sort: Literal["newest", "oldest", "priority", "status", "category", "last_updated"] = Query("newest"),
     session: Session = Depends(get_session),
 ):
     valid_statuses = {
@@ -480,6 +558,7 @@ def product_email_queue(
         received_from=received_from,
         received_to=received_to,
         lifecycle_status=lifecycle_status,
+        sort=sort,
     )
 
 
@@ -757,6 +836,27 @@ def _draft_from_points(points: list[str]) -> str:
     )
 
 
+def _reply_ai(settings: Settings, *, purpose: str, data: dict, instruction: str) -> tuple[dict | None, dict | None]:
+    secret = settings.gemini_api_key or settings.ai_review_api_key
+    if not settings.ai_review_enabled or secret is None:
+        return None, {"fallback_used": True, "fallback_reason": "AI_NOT_CONFIGURED", "purpose": purpose}
+    try:
+        result = SecureAIGateway.from_settings(settings).invoke_gemini_json(
+            api_key=secret.get_secret_value(), model=settings.ai_review_model,
+            purpose=purpose, feature="smart_reply", data=data,
+            system_instruction=instruction, timeout_seconds=settings.ai_review_timeout_seconds,
+            endpoint=settings.ai_review_endpoint, temperature=settings.ai_review_temperature,
+            max_output_tokens=settings.ai_review_max_tokens,
+        )
+        return result.structured_response, result.audit_metadata
+    except Exception as exc:
+        return None, {
+            "fallback_used": True,
+            "fallback_reason": type(exc).__name__,
+            "purpose": purpose,
+        }
+
+
 @router.patch(
     "/v1/emails/{email_id}/category",
     response_model=ProductEmailDetail,
@@ -766,6 +866,7 @@ def product_email_category_override(
     email_id: uuid.UUID,
     payload: CategoryOverrideIn,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
     existing_count = len(record.classification_results or [])
@@ -796,6 +897,20 @@ def product_email_category_override(
         details={"category": payload.category, "reviewer_name": payload.reviewer_name},
     )
     session.commit()
+    graph_message_id = (record.source_metadata or {}).get("graph_message_id") or (record.source_metadata or {}).get("outlook_item_id")
+    if not graph_message_id and record.source_type == "MICROSOFT_GRAPH":
+        graph_message_id = record.external_message_id
+    if settings.microsoft_graph_enabled and graph_message_id:
+        try:
+            MicrosoftGraphClient(settings).set_categories(str(graph_message_id), [payload.category])
+            record.outlook_categories = [payload.category]
+            record.last_outlook_sync_at = utcnow()
+            record.outlook_sync_error = None
+            _append_outlook_event(session, record, "OUTLOOK_CATEGORY_WRITEBACK_SUCCEEDED", details={"category": payload.category})
+        except GraphClientError as exc:
+            record.outlook_sync_error = str(exc)[:4000]
+            _append_outlook_event(session, record, "OUTLOOK_CATEGORY_WRITEBACK_FAILED", details={"error_type": type(exc).__name__})
+        session.commit()
     detail = get_email_detail(session, email_id)
     if detail is None:
         raise HTTPException(status_code=404, detail="Email not found")
@@ -811,6 +926,7 @@ def product_reply_summary(
     email_id: uuid.UUID,
     payload: ReplySummaryIn,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
     detail = get_email_detail(session, email_id)
@@ -818,6 +934,16 @@ def product_reply_summary(
         raise HTTPException(status_code=404, detail="Email not found")
     summary = f"{detail.email.subject} — {detail.comparison.message if detail.comparison else 'case reviewed in HolyShip'}"
     key_points = _reply_seed_points(detail)
+    generated, audit = _reply_ai(settings, purpose=PURPOSE_REPLY_SUMMARY, data={
+        "subject": detail.email.subject, "body": detail.body,
+        "comparison_state": detail.comparison.state if detail.comparison else None,
+        "mismatched_fields": detail.comparison.mismatched_fields if detail.comparison else [],
+        "unresolved_fields": detail.comparison.unresolved_fields if detail.comparison else [],
+    }, instruction="Return JSON with summary and key_points. Use only supplied facts and make no commitments.")
+    if generated:
+        summary = str(generated.get("summary") or summary)[:2000]
+        proposed = [str(item).strip() for item in generated.get("key_points") or [] if str(item).strip()]
+        key_points = proposed[:12] or key_points
     workflow = _workflow_payload(
         record,
         status="KEY_POINTS_READY",
@@ -826,6 +952,8 @@ def product_reply_summary(
         draft=None,
         last_instruction=None,
         sent_at=None,
+        generation_mode="AI" if generated else "DETERMINISTIC_FALLBACK",
+        ai_audit=audit,
     )
     _append_outlook_event(session, record, "REPLY_KEY_POINTS_CREATED", details={"reviewer_name": payload.reviewer_name})
     session.commit()
@@ -841,6 +969,7 @@ def product_reply_generate(
     email_id: uuid.UUID,
     payload: ReplyGenerateIn,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
     points = [point.strip() for point in payload.key_points if point.strip()]
@@ -849,11 +978,15 @@ def product_reply_generate(
         if detail is None:
             raise HTTPException(status_code=404, detail="Email not found")
         points = _reply_seed_points(detail)
+    generated, audit = _reply_ai(settings, purpose=PURPOSE_REPLY_DRAFT, data={"key_points": points}, instruction="Return JSON with draft. Use only approved key points; invent no dates, promises, or shipping facts.")
+    draft = str(generated.get("draft"))[:8000] if generated and generated.get("draft") else _draft_from_points(points)
     workflow = _workflow_payload(
         record,
         status="DRAFT_READY",
         key_points=points,
-        draft=_draft_from_points(points),
+        draft=draft,
+        generation_mode="AI" if generated else "DETERMINISTIC_FALLBACK",
+        ai_audit=audit,
     )
     _append_outlook_event(session, record, "REPLY_DRAFT_GENERATED", details={"reviewer_name": payload.reviewer_name})
     session.commit()
@@ -869,11 +1002,17 @@ def product_reply_refine(
     email_id: uuid.UUID,
     payload: ReplyRefineIn,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
     instruction = payload.instruction.strip()
     refined = payload.draft.strip()
-    if "short" in instruction.lower() or "concise" in instruction.lower():
+    existing = dict((record.source_metadata or {}).get("outlook_workflow") or {})
+    approved_points = [str(point) for point in existing.get("key_points") or []]
+    generated, audit = _reply_ai(settings, purpose=PURPOSE_REPLY_REFINE, data={"key_points": approved_points, "draft": refined, "instruction": instruction}, instruction="Return JSON with draft. Preserve the approved key points and only improve wording as instructed.")
+    if generated and generated.get("draft"):
+        refined = str(generated["draft"])[:8000]
+    elif "short" in instruction.lower() or "concise" in instruction.lower():
         refined = "\n".join(line for line in refined.splitlines() if line.strip())[:1200]
     else:
         refined = f"{refined}\n\nNote: {instruction}"
@@ -882,6 +1021,8 @@ def product_reply_refine(
         status="DRAFT_REFINED",
         draft=refined,
         last_instruction=instruction,
+        generation_mode="AI" if generated else "DETERMINISTIC_FALLBACK",
+        ai_audit=audit,
     )
     _append_outlook_event(session, record, "REPLY_DRAFT_REFINED", details={"reviewer_name": payload.reviewer_name})
     session.commit()
@@ -897,16 +1038,37 @@ def product_reply_send(
     email_id: uuid.UUID,
     payload: ReplySendIn,
     session: Session = Depends(get_session),
+    settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
+    if not payload.confirmed:
+        raise HTTPException(status_code=422, detail="Explicit human send confirmation is required")
+    existing = dict((record.source_metadata or {}).get("outlook_workflow") or {})
+    if existing.get("status") == "SENT" and existing.get("idempotency_key") == payload.idempotency_key:
+        return ProductReplyWorkflow(email_id=record.id, **existing)
+    if existing.get("status") == "SENT":
+        raise HTTPException(status_code=409, detail="This reply was already sent; refusing a possible duplicate")
+    graph_message_id = (record.source_metadata or {}).get("graph_message_id") or (record.source_metadata or {}).get("outlook_item_id")
+    if not graph_message_id and record.source_type == "MICROSOFT_GRAPH":
+        graph_message_id = record.external_message_id
+    if not graph_message_id:
+        raise HTTPException(status_code=409, detail="This email has no Microsoft Graph message identity")
+    try:
+        MicrosoftGraphClient(settings).reply(str(graph_message_id), payload.final_message)
+    except GraphClientError as exc:
+        workflow = _workflow_payload(
+            record, status="SEND_FAILED", draft=payload.final_message,
+            send_error=str(exc), provider="microsoft_graph", idempotency_key=payload.idempotency_key,
+        )
+        _append_outlook_event(session, record, "REPLY_SEND_FAILED", details={"error_type": type(exc).__name__})
+        session.commit()
+        raise HTTPException(status_code=502, detail={"message": str(exc), "workflow": workflow.model_dump(mode="json")}) from exc
     sent_at = utcnow()
     workflow = _workflow_payload(
-        record,
-        status="SENT",
-        draft=payload.final_message,
-        sent_at=sent_at.isoformat(),
+        record, status="SENT", draft=payload.final_message, sent_at=sent_at.isoformat(),
+        send_error=None, provider="microsoft_graph", idempotency_key=payload.idempotency_key,
     )
-    _append_outlook_event(session, record, "REPLY_SENT_CONFIRMED", details={"reviewer_name": payload.reviewer_name})
+    _append_outlook_event(session, record, "REPLY_SENT_CONFIRMED", details={"reviewer_name": payload.reviewer_name, "provider": "microsoft_graph"})
     session.commit()
     return workflow
 
@@ -918,6 +1080,195 @@ def product_reply_send(
 )
 def product_human_review_analytics(session: Session = Depends(get_session)):
     return get_human_review_analytics(session)
+
+
+@router.post(
+    "/v1/human-review/{review_id}/plans",
+    response_model=ProductReviewPlan,
+    summary="Create a structured multi-action review plan",
+)
+def create_review_plan(
+    review_id: uuid.UUID,
+    payload: ReviewPlanCreateIn,
+    session: Session = Depends(get_session),
+):
+    try:
+        plan = ReviewPlanService(session).create(
+            review_id,
+            created_by=payload.created_by,
+            items=[
+                PlanItemInput(
+                    document_side=item.document_side,
+                    field_name=item.field,
+                    current_value=item.current_value,
+                    proposed_value=item.proposed_value,
+                    reason=item.reason,
+                    confidence=item.confidence,
+                    ai_suggestion_id=item.ai_suggestion_id,
+                    status=item.status,
+                )
+                for item in payload.items
+            ],
+        )
+        session.commit()
+        return _review_plan_out(plan)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.get(
+    "/v1/human-review/{review_id}/plans",
+    response_model=list[ProductReviewPlan],
+    summary="List structured review plans for a case",
+)
+def list_review_plans(review_id: uuid.UUID, session: Session = Depends(get_session)):
+    return [_review_plan_out(plan) for plan in ReviewPlanService(session).list_for_case(review_id)]
+
+
+@router.patch(
+    "/v1/human-review/{review_id}/plans/{plan_id}/items/{item_id}",
+    response_model=ProductReviewPlan,
+    summary="Approve, edit, or reject one review-plan action",
+)
+def update_review_plan_item(
+    review_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    item_id: uuid.UUID,
+    payload: ReviewPlanItemUpdateIn,
+    session: Session = Depends(get_session),
+):
+    try:
+        service = ReviewPlanService(session)
+        plan = service.get(plan_id)
+        if plan.review_case_id != review_id:
+            raise LookupError("Review plan not found for this case")
+        plan = service.update_item(plan_id, item_id, status=payload.status, edited_value=payload.edited_value)
+        session.commit()
+        return _review_plan_out(plan)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.post(
+    "/v1/human-review/{review_id}/plans/{plan_id}/items",
+    response_model=ProductReviewPlan,
+    summary="Add a reviewer-authored manual correction to a draft plan",
+)
+def add_review_plan_item(
+    review_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    payload: ReviewPlanItemCreateIn,
+    actor_name: str | None = Query(None, max_length=255),
+    session: Session = Depends(get_session),
+):
+    try:
+        service = ReviewPlanService(session)
+        plan = service.get(plan_id)
+        if plan.review_case_id != review_id:
+            raise LookupError("Review plan not found for this case")
+        plan = service.add_item(
+            plan_id,
+            actor=actor_name,
+            item=PlanItemInput(
+                document_side=payload.document_side, field_name=payload.field,
+                current_value=payload.current_value, proposed_value=payload.proposed_value,
+                reason=payload.reason, status=payload.status,
+            ),
+        )
+        session.commit()
+        return _review_plan_out(plan)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+
+
+@router.delete(
+    "/v1/human-review/{review_id}/plans/{plan_id}/items/{item_id}",
+    response_model=ProductReviewPlan,
+    summary="Remove a reviewer-authored correction from a draft plan",
+)
+def remove_review_plan_item(
+    review_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    item_id: uuid.UUID,
+    actor_name: str | None = Query(None, max_length=255),
+    session: Session = Depends(get_session),
+):
+    try:
+        service = ReviewPlanService(session)
+        plan = service.get(plan_id)
+        if plan.review_case_id != review_id:
+            raise LookupError("Review plan not found for this case")
+        plan = service.remove_manual_item(plan_id, item_id, actor=actor_name)
+        session.commit()
+        return _review_plan_out(plan)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/v1/human-review/{review_id}/plans/{plan_id}/cancel",
+    response_model=ProductReviewPlan,
+    summary="Cancel a draft review plan",
+)
+def cancel_review_plan(
+    review_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    payload: ReviewPlanActorIn,
+    session: Session = Depends(get_session),
+):
+    try:
+        service = ReviewPlanService(session)
+        plan = service.get(plan_id)
+        if plan.review_case_id != review_id:
+            raise LookupError("Review plan not found for this case")
+        plan = service.cancel(plan_id, actor=payload.actor_name)
+        session.commit()
+        return _review_plan_out(plan)
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+
+
+@router.post(
+    "/v1/human-review/{review_id}/plans/{plan_id}/confirm",
+    response_model=ProductReviewPlan,
+    summary="Confirm selected actions, persist overrides, and re-compare",
+)
+def confirm_review_plan(
+    review_id: uuid.UUID,
+    plan_id: uuid.UUID,
+    payload: ReviewPlanConfirmIn,
+    session: Session = Depends(get_session),
+):
+    try:
+        service = ReviewPlanService(session)
+        plan = service.get(plan_id)
+        if plan.review_case_id != review_id:
+            raise LookupError("Review plan not found for this case")
+        return _review_plan_out(service.confirm(plan_id, confirmed_by=payload.confirmed_by))
+    except ReviewPlanApplyError as exc:
+        raise HTTPException(status_code=503, detail={"message": str(exc), "plan": _review_plan_out(exc.plan).model_dump(mode="json")}) from exc
+    except LookupError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ReviewConflictError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
 
 @router.get(
     "/v1/human-review-reconciliation",

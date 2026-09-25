@@ -17,9 +17,12 @@ from unittest.mock import MagicMock, patch
 
 import pytest
 from fastapi.testclient import TestClient
+from pydantic import SecretStr
 
 from backend.app.main import app
+from backend.app.api.deps import get_settings_dep
 from backend.app.api.product_schemas import ProductEmailDetail, ProductEmailSummary
+from backend.app.core.config import Settings
 from backend.app.storage.models import EmailMessageRecord
 from backend.app.sync.service import EmailSyncOutcome, SyncReport
 
@@ -50,6 +53,32 @@ def test_health_returns_ok():
         resp = c.get("/api/health")
     assert resp.status_code == 200
     assert resp.json()["ok"] is True
+
+
+def test_graph_webhook_validation_and_notifications_only_wake_delta_sync(client):
+    tc, _ = client
+    runtime = MagicMock()
+    runtime.validate_client_state.side_effect = lambda value: value == "expected-state"
+    tc.app.state.graph_sync_runtime = runtime
+
+    validation = tc.post("/api/v1/graph/notifications?validationToken=opaque-token")
+    assert validation.status_code == 200
+    assert validation.text == "opaque-token"
+
+    notification = tc.post("/api/v1/graph/notifications", json={"value": [
+        {"subscriptionId": "sub-1", "clientState": "expected-state", "sequenceNumber": "2"},
+        {"subscriptionId": "sub-1", "clientState": "expected-state", "sequenceNumber": "1"},
+        {"subscriptionId": "sub-1", "clientState": "expected-state", "sequenceNumber": "2"},
+    ]})
+    assert notification.status_code == 202
+    assert notification.json()["action"] == "DELTA_SYNC_TRIGGERED"
+    assert notification.json()["accepted"] == 3
+    runtime.wake.assert_called_once_with()
+
+    rejected = tc.post("/api/v1/graph/notifications", json={"value": [
+        {"subscriptionId": "sub-1", "clientState": "wrong"},
+    ]})
+    assert rejected.status_code == 403
 
 
 # ---------------------------------------------------------------------------
@@ -326,14 +355,50 @@ def test_v1_category_override_persists_manual_classification(client):
     assert any(getattr(item, "category", None) == "invoice_query" for item in mock_session.add.call_args_list[0].args)
 
 
+def test_v1_category_override_keeps_human_choice_when_graph_writeback_fails(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id, external_message_id="graph-category-1", source_type="MICROSOFT_GRAPH",
+        recipients=[], subject="Draft BL", body="Please compare.", content_hash="abc123",
+        processing_status="COMPLETED", source_metadata={},
+    )
+    record.classification_results = []
+    mock_session.get.return_value = record
+    settings = Settings(
+        _env_file=None, microsoft_graph_enabled=True,
+        microsoft_graph_tenant_id="tenant", microsoft_graph_client_id="client",
+        microsoft_graph_client_secret=SecretStr("secret"), microsoft_graph_mailbox="ops@example.com",
+    )
+    app.dependency_overrides[get_settings_dep] = lambda: settings
+    from backend.app.ingestion.graph_client import GraphClientError
+    with (
+        patch("backend.app.api.router.get_email_detail", return_value=_product_detail(email_id, "document_comparison")),
+        patch("backend.app.api.router.MicrosoftGraphClient") as graph,
+    ):
+        graph.return_value.set_categories.side_effect = GraphClientError("provider unavailable")
+        response = tc.patch(
+            f"/api/v1/emails/{email_id}/category",
+            json={"category": "document_comparison", "reviewer_name": "Reviewer"},
+        )
+
+    assert response.status_code == 200
+    assert any(
+        getattr(call.args[0], "reason_code", None) == "MANUAL_CATEGORY_OVERRIDE"
+        for call in mock_session.add.call_args_list
+    )
+    assert record.outlook_sync_error == "provider unavailable"
+    graph.return_value.set_categories.assert_called_once_with("graph-category-1", ["document_comparison"])
+
+
 @pytest.mark.req("OUTLOOK-05")
-def test_v1_reply_workflow_records_human_confirmed_send(client):
+def test_v1_reply_workflow_records_human_confirmed_send_only_after_graph_success(client):
     tc, mock_session = client
     email_id = uuid.uuid4()
     record = EmailMessageRecord(
         id=email_id,
         external_message_id="msg-001",
-        source_type="simulated_api",
+        source_type="MICROSOFT_GRAPH",
         sender="shipper@example.com",
         recipients=[],
         subject="Draft BL",
@@ -344,10 +409,12 @@ def test_v1_reply_workflow_records_human_confirmed_send(client):
     )
     mock_session.get.return_value = record
 
-    resp = tc.post(
-        f"/api/v1/emails/{email_id}/reply/send",
-        json={"final_message": "Dear Customer, confirmed.", "reviewer_name": "Outlook reviewer"},
-    )
+    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        resp = tc.post(
+            f"/api/v1/emails/{email_id}/reply/send",
+            json={"final_message": "Dear Customer, confirmed.", "reviewer_name": "Outlook reviewer", "confirmed": True, "idempotency_key": "reply-test-001"},
+        )
+        graph.return_value.reply.assert_called_once_with("msg-001", "Dear Customer, confirmed.")
 
     assert resp.status_code == 200
     data = resp.json()
@@ -355,6 +422,39 @@ def test_v1_reply_workflow_records_human_confirmed_send(client):
     assert data["draft"] == "Dear Customer, confirmed."
     assert record.source_metadata["outlook_workflow"]["status"] == "SENT"
     assert record.source_metadata["outlook_events"][-1]["reason_code"] == "REPLY_SENT_CONFIRMED"
+
+
+def test_v1_reply_send_requires_confirmation_and_preserves_failed_draft(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(
+        id=email_id, external_message_id="graph-1", source_type="MICROSOFT_GRAPH",
+        recipients=[], subject="Draft BL", body="Please confirm.", content_hash="abc123",
+        processing_status="COMPLETED", source_metadata={},
+    )
+    mock_session.get.return_value = record
+    unconfirmed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": False, "idempotency_key": "reply-test-002"})
+    assert unconfirmed.status_code == 422
+    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        from backend.app.ingestion.graph_client import GraphClientError
+        graph.return_value.reply.side_effect = GraphClientError("timeout")
+        failed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+    assert failed.status_code == 502
+    assert record.source_metadata["outlook_workflow"]["status"] == "SEND_FAILED"
+    assert record.source_metadata["outlook_workflow"]["draft"] == "Draft"
+
+    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        retried = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+        assert retried.status_code == 200
+        graph.return_value.reply.assert_called_once_with("graph-1", "Draft")
+
+    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        duplicate = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+        assert duplicate.status_code == 200
+        graph.return_value.reply.assert_not_called()
+
+    conflicting = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-004"})
+    assert conflicting.status_code == 409
 
 
 @pytest.mark.req("SYNC-06")

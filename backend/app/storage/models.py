@@ -107,6 +107,9 @@ class IngestionCheckpointRecord(TimestampMixin, Base):
     poll_count: Mapped[int] = mapped_column(Integer, nullable=False, default=0)
     last_error_code: Mapped[str | None] = mapped_column(String(80))
     last_error_message: Mapped[str | None] = mapped_column(Text)
+    cursor_value: Mapped[str | None] = mapped_column(Text)
+    cursor_updated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    metadata_json: Mapped[dict] = mapped_column(JSONB, nullable=False, default=dict)
 
 
 class AttachmentRecord(Base):
@@ -567,6 +570,11 @@ class HumanReviewCaseRecord(TimestampMixin, Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    review_plans: Mapped[list[ReviewPlanRecord]] = relationship(
+        back_populates="review_case",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class HumanReviewFieldOverrideRecord(Base):
@@ -712,6 +720,74 @@ class AISuggestionRecord(Base):
     created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False, index=True)
 
     review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="ai_suggestions")
+
+
+class ReviewPlanRecord(TimestampMixin, Base):
+    __tablename__ = "review_plans"
+    __table_args__ = (
+        CheckConstraint(
+            "status IN ('DRAFT','CONFIRMED','APPLIED','APPLY_FAILED','CANCELLED')",
+            name="ck_review_plan_status",
+        ),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    review_case_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True),
+        ForeignKey("human_review_cases.id", ondelete="CASCADE"),
+        nullable=False,
+        index=True,
+    )
+    status: Mapped[str] = mapped_column(String(30), nullable=False, default="DRAFT", index=True)
+    created_by: Mapped[str | None] = mapped_column(String(255))
+    confirmed_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+    confirmed_by: Mapped[str | None] = mapped_column(String(255))
+    applied_comparison_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("comparison_results.id", ondelete="SET NULL")
+    )
+    error_message: Mapped[str | None] = mapped_column(Text)
+
+    review_case: Mapped[HumanReviewCaseRecord] = relationship(back_populates="review_plans")
+    items: Mapped[list[ReviewPlanItemRecord]] = relationship(
+        back_populates="plan", cascade="all, delete-orphan", passive_deletes=True
+    )
+
+
+class ReviewPlanItemRecord(Base):
+    __tablename__ = "review_plan_items"
+    __table_args__ = (
+        CheckConstraint("document_side IN ('SI','BL')", name="ck_review_plan_item_side"),
+        CheckConstraint(
+            "field_name IN ('shipper','consignee','notify_party','port_of_loading','port_of_discharge','container_count','gross_weight_kg')",
+            name="ck_review_plan_item_field",
+        ),
+        CheckConstraint(
+            "status IN ('PROPOSED','APPROVED','EDITED','REJECTED','APPLIED')",
+            name="ck_review_plan_item_status",
+        ),
+        UniqueConstraint("plan_id", "document_side", "field_name", name="uq_review_plan_item_target"),
+    )
+
+    id: Mapped[uuid.UUID] = mapped_column(UUID(as_uuid=True), primary_key=True, default=new_uuid)
+    plan_id: Mapped[uuid.UUID] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("review_plans.id", ondelete="CASCADE"), nullable=False, index=True
+    )
+    ai_suggestion_id: Mapped[uuid.UUID | None] = mapped_column(
+        UUID(as_uuid=True), ForeignKey("ai_suggestions.id", ondelete="SET NULL"), index=True
+    )
+    document_side: Mapped[str] = mapped_column(String(10), nullable=False)
+    field_name: Mapped[str] = mapped_column(String(80), nullable=False)
+    current_value: Mapped[object | None] = mapped_column(JSONB)
+    proposed_value: Mapped[object] = mapped_column(JSONB, nullable=False)
+    human_edited_value: Mapped[object | None] = mapped_column(JSONB)
+    reason: Mapped[str] = mapped_column(Text, nullable=False, default="")
+    confidence: Mapped[float | None] = mapped_column(Float)
+    action: Mapped[str] = mapped_column(String(40), nullable=False, default="REPLACE")
+    status: Mapped[str] = mapped_column(String(20), nullable=False, default="PROPOSED")
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, nullable=False)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow, nullable=False)
+
+    plan: Mapped[ReviewPlanRecord] = relationship(back_populates="items")
 
 
 class DataLifecycleRunRecord(Base):

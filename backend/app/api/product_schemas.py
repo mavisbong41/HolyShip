@@ -339,6 +339,65 @@ class AISuggestionDismissIn(BaseModel):
     reviewer_label: str = Field(min_length=1, max_length=255)
 
 
+class ReviewPlanItemCreateIn(BaseModel):
+    document_side: Literal["SI", "BL"]
+    field: str
+    current_value: Any | None = None
+    proposed_value: Any
+    reason: str = Field(default="", max_length=4000)
+    confidence: float | None = Field(default=None, ge=0.0, le=1.0)
+    ai_suggestion_id: uuid.UUID | None = None
+    status: Literal["PROPOSED", "APPROVED", "REJECTED"] = "PROPOSED"
+
+
+class ReviewPlanCreateIn(BaseModel):
+    created_by: str | None = Field(default=None, max_length=255)
+    items: list[ReviewPlanItemCreateIn] = Field(min_length=1, max_length=14)
+
+
+class ReviewPlanItemUpdateIn(BaseModel):
+    status: Literal["APPROVED", "EDITED", "REJECTED"]
+    edited_value: Any | None = None
+
+
+class ReviewPlanConfirmIn(BaseModel):
+    confirmed_by: str = Field(min_length=1, max_length=255)
+
+
+class ReviewPlanActorIn(BaseModel):
+    actor_name: str | None = Field(default=None, max_length=255)
+
+
+class ProductReviewPlanItem(BaseModel):
+    id: uuid.UUID
+    ai_suggestion_id: uuid.UUID | None = None
+    document_side: Literal["SI", "BL"]
+    field: str
+    current_value: Any | None = None
+    proposed_value: Any
+    human_edited_value: Any | None = None
+    reason: str
+    confidence: float | None = None
+    action: str
+    status: str
+    created_at: datetime
+    updated_at: datetime
+
+
+class ProductReviewPlan(BaseModel):
+    id: uuid.UUID
+    review_case_id: uuid.UUID
+    status: str
+    created_by: str | None = None
+    confirmed_at: datetime | None = None
+    confirmed_by: str | None = None
+    applied_comparison_id: uuid.UUID | None = None
+    error_message: str | None = None
+    items: list[ProductReviewPlanItem]
+    created_at: datetime
+    updated_at: datetime
+
+
 class ProductReviewAction(BaseModel):
     id: uuid.UUID
     action: str
@@ -415,6 +474,11 @@ class ProductReplyWorkflow(BaseModel):
     draft: str | None = None
     last_instruction: str | None = None
     sent_at: datetime | None = None
+    send_error: str | None = None
+    provider: str | None = None
+    idempotency_key: str | None = None
+    generation_mode: str | None = None
+    ai_audit: dict[str, Any] | None = None
     updated_at: datetime
 
 
@@ -436,6 +500,8 @@ class ReplyRefineIn(BaseModel):
 class ReplySendIn(BaseModel):
     final_message: str = Field(min_length=1, max_length=8000)
     reviewer_name: str | None = Field(default=None, min_length=1, max_length=255)
+    confirmed: bool = False
+    idempotency_key: str = Field(min_length=8, max_length=120)
 
 
 class HumanReviewPage(BaseModel):

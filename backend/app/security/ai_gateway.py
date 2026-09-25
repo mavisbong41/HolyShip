@@ -16,12 +16,18 @@ from backend.app.core.config import Settings
 PURPOSE_FIELD_EXTRACTION = "FIELD_EXTRACTION"
 PURPOSE_FIELD_SEMANTIC_COMPARISON = "FIELD_SEMANTIC_COMPARISON"
 PURPOSE_HUMAN_REVIEW = "HUMAN_REVIEW"
+PURPOSE_REPLY_SUMMARY = "REPLY_SUMMARY"
+PURPOSE_REPLY_DRAFT = "REPLY_DRAFT"
+PURPOSE_REPLY_REFINE = "REPLY_REFINE"
 
 _ALLOWED_PURPOSES = frozenset(
     {
         PURPOSE_FIELD_EXTRACTION,
         PURPOSE_FIELD_SEMANTIC_COMPARISON,
         PURPOSE_HUMAN_REVIEW,
+        PURPOSE_REPLY_SUMMARY,
+        PURPOSE_REPLY_DRAFT,
+        PURPOSE_REPLY_REFINE,
     }
 )
 
@@ -146,8 +152,10 @@ class SecureAIGateway:
             minimized = self._minimize_field_extraction(data)
         elif purpose == PURPOSE_FIELD_SEMANTIC_COMPARISON:
             minimized = self._minimize_semantic_comparison(data)
-        else:
+        elif purpose == PURPOSE_HUMAN_REVIEW:
             minimized = self._minimize_human_review(data)
+        else:
+            minimized = self._minimize_reply(purpose, data)
 
         minimized = self._sanitize(minimized)
         encoded = json.dumps(
@@ -469,6 +477,24 @@ class SecureAIGateway:
             },
         }
 
+    def _minimize_reply(self, purpose: str, data: dict[str, Any]) -> dict[str, Any]:
+        key_points = [str(item)[:500] for item in (data.get("key_points") or []) if str(item).strip()][:12]
+        if purpose == PURPOSE_REPLY_DRAFT:
+            return {"approved_key_points": key_points}
+        if purpose == PURPOSE_REPLY_REFINE:
+            return {
+                "approved_key_points": key_points,
+                "draft": str(data.get("draft") or "")[:8000],
+                "instruction": str(data.get("instruction") or "")[:1000],
+            }
+        return {
+            "subject": str(data.get("subject") or "")[:500],
+            "relevant_message_excerpt": str(data.get("body") or "")[:4000],
+            "comparison_state": data.get("comparison_state"),
+            "mismatched_fields": list(data.get("mismatched_fields") or [])[:7],
+            "unresolved_fields": list(data.get("unresolved_fields") or [])[:7],
+        }
+
     def _sanitize(self, value: Any) -> Any:
         if isinstance(value, dict):
             return {
@@ -517,6 +543,8 @@ class SecureAIGateway:
         if purpose == PURPOSE_FIELD_SEMANTIC_COMPARISON:
             field = payload.get("field")
             return [str(field)] if field else []
+        if purpose in {PURPOSE_REPLY_SUMMARY, PURPOSE_REPLY_DRAFT, PURPOSE_REPLY_REFINE}:
+            return []
         case = payload.get("case")
         if not isinstance(case, dict):
             return []
@@ -532,6 +560,12 @@ class SecureAIGateway:
             return ["field_name", "document_role", "field_evidence"]
         if purpose == PURPOSE_FIELD_SEMANTIC_COMPARISON:
             return ["field_name", "si_value", "bl_value", "field_evidence"]
+        if purpose == PURPOSE_REPLY_SUMMARY:
+            return ["relevant_email_excerpt", "comparison_status"]
+        if purpose == PURPOSE_REPLY_DRAFT:
+            return ["human_approved_reply_points"]
+        if purpose == PURPOSE_REPLY_REFINE:
+            return ["human_approved_reply_points", "draft", "refinement_instruction"]
 
         categories = ["review_reason", "document_metadata", "user_question"]
         case = payload.get("case")

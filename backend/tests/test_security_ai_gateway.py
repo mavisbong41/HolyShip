@@ -21,6 +21,9 @@ from backend.app.security.ai_gateway import (
     PURPOSE_FIELD_EXTRACTION,
     PURPOSE_FIELD_SEMANTIC_COMPARISON,
     PURPOSE_HUMAN_REVIEW,
+    PURPOSE_REPLY_DRAFT,
+    PURPOSE_REPLY_REFINE,
+    PURPOSE_REPLY_SUMMARY,
     SecureAIGateway,
 )
 from backend.app.storage.models import HumanReviewCaseRecord, HumanReviewEventRecord
@@ -746,3 +749,39 @@ def test_settings_fail_closed_if_enterprise_allowlists_are_empty():
             enterprise_privacy_mode=True,
             ai_gateway_allowed_endpoint_hosts="",
         )
+
+
+def test_smart_reply_payloads_enforce_minimum_necessary_disclosure():
+    gateway = SecureAIGateway()
+    common = dict(feature="smart_reply", model="gemini-2.5-flash")
+    summary, _ = gateway.prepare_payload(
+        purpose=PURPOSE_REPLY_SUMMARY,
+        data={
+            "subject": "Review customer@example.com", "body": "Relevant body " * 500,
+            "comparison_state": "BLOCKED", "mismatched_fields": ["shipper"],
+            "unresolved_fields": ["gross_weight_kg"], "attachments": ["secret.pdf"],
+            "recent_events": ["private audit"], "reviewer_name": "Reviewer",
+        },
+        **common,
+    )
+    assert set(summary) == {"subject", "relevant_message_excerpt", "comparison_state", "mismatched_fields", "unresolved_fields"}
+    assert len(summary["relevant_message_excerpt"]) <= 4000
+    assert "[REDACTED_EMAIL]" in summary["subject"]
+
+    draft, _ = gateway.prepare_payload(
+        purpose=PURPOSE_REPLY_DRAFT,
+        data={"key_points": ["Approved point"], "body": "must not leave", "attachments": ["secret.pdf"]},
+        **common,
+    )
+    assert draft == {"approved_key_points": ["Approved point"]}
+
+    refine, _ = gateway.prepare_payload(
+        purpose=PURPOSE_REPLY_REFINE,
+        data={"key_points": ["Approved point"], "draft": "Current draft", "instruction": "Make concise", "body": "must not leave"},
+        **common,
+    )
+    assert refine == {
+        "approved_key_points": ["Approved point"],
+        "draft": "Current draft",
+        "instruction": "Make concise",
+    }

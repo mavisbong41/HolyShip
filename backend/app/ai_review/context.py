@@ -38,10 +38,10 @@ def build_case_context(session: Session, case_id: UUID) -> dict[str, Any]:
     email = case.email
     latest_classification = None
     if email.classification_results:
+        human = [row for row in email.classification_results if row.resolved_at_stage == "human_override"]
         latest_classification = sorted(
-            email.classification_results,
-            key=lambda r: (r.created_at, str(r.id)),
-            reverse=True,
+            human or email.classification_results,
+            key=lambda r: (r.created_at, str(r.id)), reverse=True,
         )[0]
 
     # Find relevant comparison record

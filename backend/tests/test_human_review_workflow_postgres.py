@@ -25,6 +25,7 @@ from backend.app.extraction.models import (
 from backend.app.main import app
 from backend.app.comparison.persistence import PersistedComparisonService
 from backend.app.review.service import HumanReviewService, ReviewConflictError
+from backend.app.review.plan_service import PlanItemInput, ReviewPlanService
 from backend.app.storage.database import Base
 from backend.app.storage.models import (
     ComparisonResultRecord,
@@ -35,6 +36,8 @@ from backend.app.storage.models import (
     HumanReviewCaseRecord,
     HumanReviewEventRecord,
     HumanReviewFieldOverrideRecord,
+    ReviewPlanRecord,
+    AuditEventRecord,
 )
 from backend.app.storage.repositories import (
     ComparisonResultRepository,
@@ -233,6 +236,66 @@ def test_actionable_blocked_is_idempotent_but_waiting_and_failed_are_not_review(
         assert service.ensure_actionable_case(waiting, reason_code="MISSING_REQUIRED_ATTACHMENT") is None
         assert service.ensure_actionable_case(failed, reason_code="UNREADABLE_ATTACHMENT") is None
         assert session.scalar(select(func.count(HumanReviewCaseRecord.id))) == 1
+
+
+def test_multi_action_review_plan_applies_two_actions_and_recompares_once(db_factory):
+    with db_factory() as session:
+        email, original, case = _blocked_comparison(session, "review-plan-multi")
+        service = ReviewPlanService(session)
+        plan = service.create(case.id, created_by="Reviewer", items=[
+            PlanItemInput(
+                document_side="BL", field_name="notify_party", current_value=None,
+                proposed_value="Gamma Notify Co", reason="AI evidence", status="APPROVED",
+            ),
+            PlanItemInput(
+                document_side="BL", field_name="consignee", current_value="Beta Imports Ltd",
+                proposed_value="Wrong proposal", reason="Reviewer corrected", status="APPROVED",
+            ),
+            PlanItemInput(
+                document_side="SI", field_name="shipper", current_value="Alpha Trading Sdn Bhd",
+                proposed_value="Rejected value", reason="Not supported", status="PROPOSED",
+            ),
+        ])
+        service.update_item(plan.id, plan.items[1].id, status="EDITED", edited_value="Beta Imports Ltd")
+        service.update_item(plan.id, plan.items[2].id, status="REJECTED")
+        session.commit()
+
+        applied = ReviewPlanService(session).confirm(plan.id, confirmed_by="Reviewer")
+        overrides = session.scalars(
+            select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == case.id)
+        ).all()
+        comparisons = session.scalars(
+            select(ComparisonResultRecord).where(ComparisonResultRecord.email_id == email.id)
+        ).all()
+        assert applied.status == "APPLIED"
+        assert len(overrides) == 2
+        assert len(comparisons) == 2
+        assert original.id in {row.id for row in comparisons}
+        assert [item.status for item in applied.items].count("APPLIED") == 2
+        assert [item.status for item in applied.items].count("REJECTED") == 1
+
+
+def test_manual_review_plan_item_is_audited_and_applied_on_confirmation(db_factory):
+    with db_factory() as session:
+        _email, _original, case = _blocked_comparison(session, "review-plan-manual")
+        service = ReviewPlanService(session)
+        plan = service.create(case.id, created_by="Reviewer", items=[
+            PlanItemInput(
+                document_side="BL", field_name="notify_party", current_value=None,
+                proposed_value="Gamma Notify Co", reason="Manual document verification", status="APPROVED",
+            ),
+        ])
+        assert plan.items[0].ai_suggestion_id is None
+        service.confirm(plan.id, confirmed_by="Reviewer")
+        override = session.scalar(
+            select(HumanReviewFieldOverrideRecord).where(HumanReviewFieldOverrideRecord.review_case_id == case.id)
+        )
+        events = session.scalars(
+            select(AuditEventRecord).where(AuditEventRecord.entity_id == plan.id)
+        ).all()
+        assert override.corrected_value == "Gamma Notify Co"
+        assert any(event.event_type == "REVIEW_PLAN_APPLIED" for event in events)
+        assert any(event.event_type == "REVIEW_PLAN_CREATED" and event.metadata_json["manual_item_count"] == 1 for event in events)
 
 
 @pytest.mark.req("HR-03")

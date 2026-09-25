@@ -59,6 +59,19 @@ class Settings(BaseSettings):
     polling_backoff_initial_seconds: float = Field(default=1.0, gt=0.0, le=3600.0)
     polling_backoff_max_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
     polling_source_type: str = "STATIC_BUNDLE"
+    microsoft_graph_enabled: bool = False
+    microsoft_graph_tenant_id: str | None = None
+    microsoft_graph_client_id: str | None = None
+    microsoft_graph_client_secret: SecretStr | None = None
+    microsoft_graph_mailbox: str | None = None
+    microsoft_graph_base_url: str = "https://graph.microsoft.com/v1.0"
+    microsoft_graph_timeout_seconds: float = Field(default=15.0, gt=0.0, le=120.0)
+    microsoft_graph_sync_enabled: bool = False
+    microsoft_graph_sync_interval_seconds: float = Field(default=60.0, gt=0.0, le=86400.0)
+    microsoft_graph_webhook_url: str | None = None
+    microsoft_graph_webhook_client_state: SecretStr | None = None
+    microsoft_graph_subscription_lifetime_minutes: int = Field(default=4200, ge=60, le=4230)
+    microsoft_graph_subscription_renew_before_minutes: int = Field(default=30, ge=5, le=1440)
     data_lifecycle_enabled: bool = True
     data_lifecycle_dry_run: bool = True
     data_lifecycle_run_on_startup: bool = False
@@ -85,6 +98,13 @@ class Settings(BaseSettings):
             raise ValueError(
                 "AI_GATEWAY_ALLOWED_ENDPOINT_HOSTS must not be empty while Enterprise Privacy Mode is active"
             )
+        if self.microsoft_graph_enabled and not all((
+            self.microsoft_graph_tenant_id,
+            self.microsoft_graph_client_id,
+            self.microsoft_graph_client_secret,
+            self.microsoft_graph_mailbox,
+        )):
+            raise ValueError("Microsoft Graph requires tenant, client, client secret, and mailbox")
         return self
 
     @property

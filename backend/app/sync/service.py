@@ -15,7 +15,7 @@ State transitions per email:
 import logging
 import time
 from concurrent.futures import FIRST_COMPLETED, Future, ThreadPoolExecutor, wait
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Callable
 
 from sqlalchemy.exc import OperationalError
@@ -504,8 +504,25 @@ class SyncService:
             resolved_at_stage=result.resolved_at_stage,
             comparison_readiness=result.comparison_readiness,
             classifier_version=result.classifier_version,
-            source_content_hash=record.content_hash,
+            # A forced run is an explicit new classification event even when
+            # the message bytes are unchanged.  The content/version identity
+            # is reserved for ordinary idempotent ingestion, so forced runs
+            # intentionally keep a separate history row.
+            source_content_hash=None if force else record.content_hash,
         )
+        # Automatic classification remains in history, but an explicit human
+        # category is the effective routing truth until another human changes it.
+        human_override = self._cls_repo.get_human_override(record.id)
+        if human_override is not None:
+            result = replace(
+                result,
+                category=human_override.category,
+                confidence=human_override.confidence,
+                comparison_readiness=human_override.comparison_readiness,
+                reason=human_override.reason,
+                reason_code=human_override.reason_code,
+                resolved_at_stage=human_override.resolved_at_stage,
+            )
         transition(self.session, record, "CLASSIFIED", "CLASSIFICATION_COMPLETE")
 
         cache_hits = 0
