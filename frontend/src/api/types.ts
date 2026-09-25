@@ -58,6 +58,8 @@ export interface ProductValue {
   raw: unknown | null;
   canonical: unknown | null;
   normalized: unknown | null;
+  human_override_value?: unknown | null;
+  effective_value?: unknown | null;
 }
 
 export interface ProductFieldComparison {
@@ -111,6 +113,8 @@ export interface ProductDocument {
 }
 
 export interface ProductComparison {
+  id?: string;
+  email_id?: string;
   state: ComparisonState;
   mismatch_found: boolean;
   mismatched_fields: string[];
@@ -118,6 +122,12 @@ export interface ProductComparison {
   reason_code: string;
   message: string;
   fields: ProductFieldComparison[];
+  resolution_status?: string | null;
+  acknowledged_at?: string | null;
+  acknowledged_by?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_notes?: string | null;
 }
 
 export interface ProductClassification {

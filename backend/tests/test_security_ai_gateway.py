@@ -785,3 +785,154 @@ def test_smart_reply_payloads_enforce_minimum_necessary_disclosure():
         "draft": "Current draft",
         "instruction": "Make concise",
     }
+
+
+def test_parse_api_keys_formats():
+    assert SecureAIGateway.parse_api_keys("key1,key2,key3") == ["key1", "key2", "key3"]
+    assert SecureAIGateway.parse_api_keys('"key1"; key2\nkey3') == ["key1", "key2", "key3"]
+    assert SecureAIGateway.parse_api_keys(["key1", "key2, key3"]) == ["key1", "key2", "key3"]
+    assert SecureAIGateway.parse_api_keys("key1, key2, key1") == ["key1", "key2"]
+    assert SecureAIGateway.parse_api_keys(None) == []
+    assert SecureAIGateway.parse_api_keys("   ") == []
+
+
+def test_collect_fallback_keys_from_env(monkeypatch):
+    monkeypatch.setenv("GEMINI_API_KEY_2", "env-key-2")
+    monkeypatch.setenv("GEMINI_API_KEY_3", "env-key-3")
+    keys = SecureAIGateway.collect_fallback_keys("primary-key", provider="gemini")
+    assert keys == ["primary-key", "env-key-2", "env-key-3"]
+
+
+def test_invoke_gemini_json_multi_key_fallback_on_429():
+    gateway = SecureAIGateway()
+    keys = ["exhausted-key-1", "success-key-2", "backup-key-3"]
+
+    call_keys = []
+
+    def fake_urlopen(request, timeout):
+        used_key = request.get_header("X-goog-api-key")
+        call_keys.append(used_key)
+        if used_key == "exhausted-key-1":
+            import urllib.error
+            raise urllib.error.HTTPError(
+                url=request.full_url,
+                code=429,
+                msg="Resource Exhausted (Rate Limit)",
+                hdrs={},
+                fp=None,
+            )
+        # Success response on key 2
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "candidates": [
+                {"content": {"parts": [{"text": json.dumps({"equivalent": True, "reason": "Match"})}]}}
+            ]
+        }).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+    with patch("backend.app.security.ai_gateway.urllib.request.urlopen", side_effect=fake_urlopen):
+        result = gateway.invoke_gemini_json(
+            api_key=keys,
+            model="gemini-2.5-flash",
+            purpose=PURPOSE_FIELD_SEMANTIC_COMPARISON,
+            feature="l2_semantic_comparison",
+            data={
+                "field": "port_of_loading",
+                "si_value": "Port Klang",
+                "bl_value": "Port Klang",
+                "si_evidence": "Port Klang",
+                "bl_evidence": "Port Klang",
+            },
+            system_instruction="Return JSON.",
+            timeout_seconds=5.0,
+        )
+
+    assert call_keys == ["exhausted-key-1", "success-key-2"]
+    assert result.structured_response["equivalent"] is True
+    assert result.audit_metadata["key_attempt_index"] == 1
+    assert result.audit_metadata["total_keys_available"] == 3
+    assert result.audit_metadata["fallback_used"] is True
+
+
+def test_invoke_gemini_json_exhausts_all_keys_raises():
+    gateway = SecureAIGateway()
+    keys = ["failed-1", "failed-2", "failed-3"]
+    call_keys = []
+
+    def fake_urlopen(request, timeout):
+        used_key = request.get_header("X-goog-api-key")
+        call_keys.append(used_key)
+        import urllib.error
+        raise urllib.error.HTTPError(
+            url=request.full_url,
+            code=429,
+            msg="Quota Exceeded",
+            hdrs={},
+            fp=None,
+        )
+
+    with patch("backend.app.security.ai_gateway.urllib.request.urlopen", side_effect=fake_urlopen):
+        with pytest.raises(Exception) as exc_info:
+            gateway.invoke_gemini_json(
+                api_key="failed-1,failed-2,failed-3",
+                model="gemini-2.5-flash",
+                purpose=PURPOSE_FIELD_SEMANTIC_COMPARISON,
+                feature="l2_semantic_comparison",
+                data={
+                    "field": "port_of_loading",
+                    "si_value": "Port Klang",
+                    "bl_value": "Port Klang",
+                    "si_evidence": "Port Klang",
+                    "bl_evidence": "Port Klang",
+                },
+                system_instruction="Return JSON.",
+                timeout_seconds=5.0,
+            )
+        assert exc_info.value.status_code == 429
+
+    assert call_keys == ["failed-1", "failed-2", "failed-3"]
+
+
+def test_openai_provider_multi_key_fallback():
+    provider = OpenAIProvider(
+        api_key="openai-key-1,openai-key-2",
+        model="gpt-4o-mini",
+        gateway=SecureAIGateway(
+            allowed_providers={"openai", "gemini"},
+            allowed_models={"gpt-4o-mini"},
+            allowed_endpoint_hosts={"api.openai.com"},
+        ),
+    )
+    call_keys = []
+
+    def fake_urlopen(request, timeout):
+        auth_hdr = request.get_header("Authorization")
+        call_keys.append(auth_hdr)
+        if auth_hdr == "Bearer openai-key-1":
+            import urllib.error
+            raise urllib.error.HTTPError(
+                url=request.full_url,
+                code=429,
+                msg="Rate limit",
+                hdrs={},
+                fp=None,
+            )
+        mock_resp = MagicMock()
+        mock_resp.read.return_value = json.dumps({
+            "choices": [{"message": {"content": json.dumps({"message": "Grounded explanation."})}}]
+        }).encode("utf-8")
+        mock_resp.__enter__.return_value = mock_resp
+        return mock_resp
+
+    with patch("backend.app.ai_review.providers.urllib.request.urlopen", side_effect=fake_urlopen):
+        raw_res, prov, model = provider.generate_review_response(
+            context={"case_id": "c1"},
+            question="What is wrong?",
+        )
+
+    assert call_keys == ["Bearer openai-key-1", "Bearer openai-key-2"]
+    parsed = json.loads(raw_res)
+    assert parsed["message"] == "Grounded explanation."
+    assert provider.last_audit_metadata["fallback_used"] is True
+

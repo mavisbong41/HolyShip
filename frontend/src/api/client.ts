@@ -261,8 +261,8 @@ export async function saveDiscrepancyOverride(
     reviewer_name?: string;
     note?: string;
   },
-): Promise<{ discrepancy: ProductDiscrepancySummary; overrides: unknown[] }> {
-  return request<{ discrepancy: ProductDiscrepancySummary; overrides: unknown[] }>(
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(
     `/discrepancies/${discrepancyId}/override`,
     {
       method: "POST",
@@ -275,8 +275,8 @@ export async function saveDiscrepancyOverride(
 export async function recompareDiscrepancy(
   discrepancyId: string,
   reviewerName?: string,
-): Promise<{ discrepancy: ProductDiscrepancySummary; comparison: unknown }> {
-  return request<{ discrepancy: ProductDiscrepancySummary; comparison: unknown }>(
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(
     `/discrepancies/${discrepancyId}/recompare`,
     {
       method: "POST",

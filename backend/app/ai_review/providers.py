@@ -270,47 +270,62 @@ class OpenAIProvider:
         }
 
         body_bytes = json.dumps(payload).encode("utf-8")
-        headers = {"Content-Type": "application/json"}
-        if self.api_key:
-            headers["Authorization"] = f"Bearer {self.api_key}"
+        candidate_keys = SecureAIGateway.collect_fallback_keys(self.api_key, provider=self.provider_name)
+        if not candidate_keys and self.api_key:
+            candidate_keys = [self.api_key]
+        if not candidate_keys:
+            candidate_keys = [""]
 
-        req = urllib.request.Request(self.endpoint, data=body_bytes, headers=headers, method="POST")
+        total_keys = len(candidate_keys)
+        for key_idx, current_key in enumerate(candidate_keys):
+            headers = {"Content-Type": "application/json"}
+            if current_key:
+                headers["Authorization"] = f"Bearer {current_key}"
+            req = urllib.request.Request(self.endpoint, data=body_bytes, headers=headers, method="POST")
+            has_next = (key_idx + 1) < total_keys
 
-        try:
-            with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
-                resp_data = json.loads(resp.read().decode("utf-8"))
-                choices = resp_data.get("choices", [])
+            try:
+                with urllib.request.urlopen(req, timeout=self.timeout_seconds) as resp:
+                    resp_data = json.loads(resp.read().decode("utf-8"))
+                    choices = resp_data.get("choices", [])
+                    self.last_audit_metadata = {
+                        **self.last_audit_metadata,
+                        "response_status": "RECEIVED",
+                        "key_attempt_index": key_idx,
+                        "total_keys_available": total_keys,
+                        "fallback_used": key_idx > 0,
+                    }
+                    if choices and "message" in choices[0]:
+                        content = choices[0]["message"].get("content", "")
+                        return content, self.provider_name, self.model
+                    return json.dumps(resp_data), self.provider_name, self.model
+            except urllib.error.HTTPError as exc:
+                if has_next and (exc.code in {401, 403, 408, 429} or exc.code >= 500):
+                    continue
                 self.last_audit_metadata = {
                     **self.last_audit_metadata,
-                    "response_status": "RECEIVED",
+                    "response_status": f"HTTP_{exc.code}",
                 }
-                if choices and "message" in choices[0]:
-                    content = choices[0]["message"].get("content", "")
-                    return content, self.provider_name, self.model
-                return json.dumps(resp_data), self.provider_name, self.model
-        except urllib.error.HTTPError as exc:
-            self.last_audit_metadata = {
-                **self.last_audit_metadata,
-                "response_status": f"HTTP_{exc.code}",
-            }
-            err_msg = f"OpenAI API error (HTTP {exc.code})."
-            error_payload = {
-                "message": err_msg,
-                "mode": "INSUFFICIENT_EVIDENCE",
-                "suggestion": None,
-            }
-            return json.dumps(error_payload), self.provider_name, self.model
-        except Exception as exc:
-            self.last_audit_metadata = {
-                **self.last_audit_metadata,
-                "response_status": type(exc).__name__,
-            }
-            error_payload = {
-                "message": "OpenAI API request failed.",
-                "mode": "INSUFFICIENT_EVIDENCE",
-                "suggestion": None,
-            }
-            return json.dumps(error_payload), self.provider_name, self.model
+                err_msg = f"OpenAI API error (HTTP {exc.code})."
+                error_payload = {
+                    "message": err_msg,
+                    "mode": "INSUFFICIENT_EVIDENCE",
+                    "suggestion": None,
+                }
+                return json.dumps(error_payload), self.provider_name, self.model
+            except Exception as exc:
+                if has_next:
+                    continue
+                self.last_audit_metadata = {
+                    **self.last_audit_metadata,
+                    "response_status": type(exc).__name__,
+                }
+                error_payload = {
+                    "message": "OpenAI API request failed.",
+                    "mode": "INSUFFICIENT_EVIDENCE",
+                    "suggestion": None,
+                }
+                return json.dumps(error_payload), self.provider_name, self.model
 
 
 class HTTPProvider(OpenAIProvider):
@@ -385,6 +400,9 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
             return DisabledProvider()
 
     if provider_name == "gemini":
+        gemini_keys = SecureAIGateway.collect_fallback_keys(api_key_str, provider="gemini")
+        if gemini_keys:
+            api_key_str = ",".join(gemini_keys)
         model = model_name or "gemini-2.5-flash"
         return GeminiProvider(
             api_key=api_key_str or "",
@@ -397,6 +415,9 @@ def get_ai_review_provider(settings: Settings) -> AIReviewProvider:
         )
 
     if provider_name in ("openai", "azure_openai"):
+        openai_keys = SecureAIGateway.collect_fallback_keys(api_key_str, provider="openai")
+        if openai_keys:
+            api_key_str = ",".join(openai_keys)
         model = model_name or "gpt-4o-mini"
         return OpenAIProvider(
             api_key=api_key_str,

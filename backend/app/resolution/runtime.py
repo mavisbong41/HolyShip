@@ -74,6 +74,10 @@ def _build_gemini_provider(settings: Settings) -> ResolverProvider:
         or (settings.ai_review_api_key.get_secret_value() if settings.ai_review_api_key else None)
     )
     if not api_key:
+        fallback_keys = SecureAIGateway.collect_fallback_keys(None, provider="gemini")
+        if fallback_keys:
+            api_key = ",".join(fallback_keys)
+    if not api_key:
         return DisabledResolverProvider()
     return GeminiResolverProvider(
         api_key=api_key,

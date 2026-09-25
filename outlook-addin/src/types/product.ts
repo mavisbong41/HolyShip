@@ -47,6 +47,8 @@ export interface ProductValue {
   raw: unknown | null;
   canonical: unknown | null;
   normalized: unknown | null;
+  human_override_value?: unknown | null;
+  effective_value?: unknown | null;
 }
 
 export interface ProductEvidence {
@@ -72,6 +74,8 @@ export interface ProductFieldComparison {
 }
 
 export interface ProductComparison {
+  id?: string;
+  email_id?: string;
   state: ComparisonState;
   mismatch_found: boolean;
   mismatched_fields: string[];
@@ -79,6 +83,12 @@ export interface ProductComparison {
   reason_code: string;
   message: string;
   fields: ProductFieldComparison[];
+  resolution_status?: string | null;
+  acknowledged_at?: string | null;
+  acknowledged_by?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_notes?: string | null;
 }
 
 export interface ProductClassification {
@@ -367,4 +377,51 @@ export interface EmailQueuePage {
   total: number;
   skip: number;
   limit: number;
+}
+
+export type DiscrepancyStatus = "OPEN" | "ACKNOWLEDGED" | "RESOLVED";
+
+export interface ProductDiscrepancySummary {
+  id: string;
+  email_id: string;
+  external_message_id: string;
+  subject: string;
+  sender: string | null;
+  received_at: string | null;
+  created_at: string;
+  mismatch_count: number;
+  mismatched_fields: string[];
+  resolution_status: DiscrepancyStatus;
+  acknowledged_at?: string | null;
+  acknowledged_by?: string | null;
+  resolved_at?: string | null;
+  resolved_by?: string | null;
+  resolution_notes?: string | null;
+  comparison_state: string;
+}
+
+export interface DiscrepancyOverrideOut {
+  id: string;
+  comparison_result_id: string;
+  document_side: "SI" | "BL" | string;
+  field_name: string;
+  original_field_id: string;
+  corrected_value: unknown;
+  corrected_canonical_value: unknown;
+  reviewer_name: string | null;
+  note: string | null;
+  active: boolean;
+  created_at: string;
+}
+
+export interface ProductDiscrepancyDetail {
+  discrepancy: ProductDiscrepancySummary;
+  email: ProductEmailSummary;
+  email_body: string;
+  comparison: ProductComparison;
+  mismatched_fields_detail: ProductFieldComparison[];
+  attachments: ProductAttachment[];
+  documents: ProductDocument[];
+  overrides: DiscrepancyOverrideOut[];
+  timeline: unknown[];
 }

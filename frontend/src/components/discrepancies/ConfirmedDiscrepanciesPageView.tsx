@@ -548,10 +548,72 @@ export function ConfirmedDiscrepanciesPageView({
                     >
                       {displayLabel(selected.discrepancy.resolution_status)}
                     </span>
-                    <span className="badge badge-attention" style={{ fontWeight: 700 }}>
-                      {selected.discrepancy.mismatch_count} Mismatched Field{selected.discrepancy.mismatch_count > 1 ? "s" : ""}
-                    </span>
+                    {selected.comparison && !selected.comparison.mismatch_found ? (
+                      <span className="badge badge-good" style={{ fontWeight: 700 }}>
+                        MATCH
+                      </span>
+                    ) : (
+                      <span className="badge badge-attention" style={{ fontWeight: 700 }}>
+                        {selected.discrepancy.mismatch_count} Mismatched Field{selected.discrepancy.mismatch_count > 1 ? "s" : ""}
+                      </span>
+                    )}
                   </div>
+
+                  {/* Resolution and Acknowledgment Status Banners */}
+                  {selected.discrepancy.resolution_status === "RESOLVED" && (
+                    <div
+                      className="status-banner banner-resolved"
+                      style={{
+                        marginTop: "10px",
+                        padding: "10px 14px",
+                        background: "rgba(34, 197, 94, 0.1)",
+                        border: "1px solid rgba(34, 197, 94, 0.3)",
+                        borderRadius: "var(--radius-md)",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "8px",
+                      }}
+                    >
+                      <CheckCircle2 size={16} color="var(--color-success)" style={{ marginTop: "2px", flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: "12.5px", color: "var(--color-success)" }}>Discrepancy Resolved</strong>
+                        <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                          Marked resolved by <strong>{selected.discrepancy.resolved_by || "System / Reviewer"}</strong>
+                          {selected.discrepancy.resolved_at && ` on ${formatDate(selected.discrepancy.resolved_at)}`}.
+                          {selected.discrepancy.resolution_notes && (
+                            <span style={{ display: "block", marginTop: "4px", fontStyle: "italic" }}>
+                              Note: "{selected.discrepancy.resolution_notes}"
+                            </span>
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  )}
+
+                  {selected.discrepancy.resolution_status === "ACKNOWLEDGED" && (
+                    <div
+                      className="status-banner banner-acknowledged"
+                      style={{
+                        marginTop: "10px",
+                        padding: "10px 14px",
+                        background: "rgba(227, 148, 57, 0.1)",
+                        border: "1px solid rgba(227, 148, 57, 0.3)",
+                        borderRadius: "var(--radius-md)",
+                        display: "flex",
+                        alignItems: "flex-start",
+                        gap: "8px",
+                      }}
+                    >
+                      <Clock size={16} color="var(--color-review)" style={{ marginTop: "2px", flexShrink: 0 }} />
+                      <div>
+                        <strong style={{ fontSize: "12.5px", color: "var(--color-review)" }}>Discrepancy Acknowledged</strong>
+                        <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "var(--color-grey-700)" }}>
+                          Under operational review by <strong>{selected.discrepancy.acknowledged_by || "Operator"}</strong>
+                          {selected.discrepancy.acknowledged_at && ` on ${formatDate(selected.discrepancy.acknowledged_at)}`}.
+                        </p>
+                      </div>
+                    </div>
+                  )}
 
                   {/* Primary Action Buttons */}
                   <div className="detail-actions" style={{ marginTop: "12px" }}>
@@ -636,93 +698,126 @@ export function ConfirmedDiscrepanciesPageView({
                 {/* TAB 1: DIFFERENCES & COMPARISON */}
                 {activeTab === "differences" && (
                   <div className="discrepancy-tab-pane" style={{ marginTop: "14px" }}>
-                    {/* Confirmed Differences */}
-                    <div className="detail-section">
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                        <div>
-                          <h3 style={{ fontSize: "14.5px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                            <AlertTriangle size={16} color="var(--color-review)" />
-                            Confirmed Differences ({selected.mismatched_fields_detail.length})
-                          </h3>
-                          <p style={{ fontSize: "11.5px", color: "var(--color-grey-500)", margin: "2px 0 0" }}>
-                            SI is authoritative reference document; BL values differ.
-                          </p>
+                    {/* Clean Match Banner when all fields match */}
+                    {(!selected.comparison.mismatch_found || selected.mismatched_fields_detail.length === 0) ? (
+                      <div
+                        className="clean-match-banner"
+                        style={{
+                          padding: "24px 20px",
+                          background: "rgba(34, 197, 94, 0.08)",
+                          border: "1px solid rgba(34, 197, 94, 0.3)",
+                          borderRadius: "var(--radius-md)",
+                          textAlign: "center",
+                          marginBottom: "16px",
+                        }}
+                      >
+                        <CheckCircle2 size={36} color="var(--color-success)" style={{ margin: "0 auto 8px" }} />
+                        <h3 style={{ margin: "0 0 6px", fontSize: "16px", color: "var(--color-success)", fontWeight: 700 }}>
+                          No mismatch detected.
+                        </h3>
+                        <p style={{ margin: 0, fontSize: "13px", color: "var(--color-grey-700)" }}>
+                          All 7 canonical shipping fields match between SI (reference) and Draft BL.
+                        </p>
+                      </div>
+                    ) : (
+                      /* Confirmed Differences */
+                      <div className="detail-section">
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                          <div>
+                            <h3 style={{ fontSize: "14.5px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                              <AlertTriangle size={16} color="var(--color-review)" />
+                              Confirmed Differences ({selected.mismatched_fields_detail.length})
+                            </h3>
+                            <p style={{ fontSize: "11.5px", color: "var(--color-grey-500)", margin: "2px 0 0" }}>
+                              SI is authoritative reference document; BL values differ.
+                            </p>
+                          </div>
+                        </div>
+
+                        <div className="discrepancy-diff-grid">
+                          {selected.mismatched_fields_detail.map((diff) => (
+                            <div
+                              key={diff.field}
+                              className="discrepancy-diff-card is-mismatch"
+                            >
+                              <div className="diff-card-header-row">
+                                <div className="diff-card-field-info">
+                                  <strong className="diff-field-name">
+                                    {labelForField(diff.field)}
+                                  </strong>
+                                  <span className="badge badge-attention diff-reason-badge">
+                                    {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
+                                  </span>
+                                </div>
+                                <div className="diff-card-actions-row">
+                                  <button
+                                    type="button"
+                                    className="button-secondary"
+                                    onClick={() =>
+                                      openCorrectionModal("BL", String(diff.field), String(diff.bl.human_override_value ?? diff.bl.canonical ?? diff.bl.raw ?? ""))
+                                    }
+                                  >
+                                    Correct BL
+                                  </button>
+                                  <button
+                                    type="button"
+                                    className="button-secondary"
+                                    onClick={() =>
+                                      openCorrectionModal("SI", String(diff.field), String(diff.si.human_override_value ?? diff.si.canonical ?? diff.si.raw ?? ""))
+                                    }
+                                  >
+                                    Correct SI
+                                  </button>
+                                </div>
+                              </div>
+
+                              {/* Side by side comparison cards */}
+                              <div className="diff-side-by-side">
+                                {/* SI Box */}
+                                <div className="diff-box si-side">
+                                  <div className="diff-box-label">
+                                    SI (Reference Document)
+                                  </div>
+                                  <div className="diff-box-value">
+                                    {displayValue(diff.si.effective_value ?? diff.si.canonical ?? diff.si.normalized ?? diff.si.raw)}
+                                  </div>
+                                  {diff.si.human_override_value !== undefined && diff.si.human_override_value !== null && (
+                                    <div className="diff-box-override" style={{ fontSize: "11px", color: "var(--color-success)", marginTop: "4px" }}>
+                                      Human override: <strong>{displayValue(diff.si.human_override_value)}</strong>
+                                    </div>
+                                  )}
+                                  {diff.si.raw !== undefined && diff.si.raw !== null && (
+                                    <div className="diff-box-raw" style={{ fontSize: "11px", color: "var(--color-grey-600)", marginTop: "2px" }}>
+                                      Raw extracted: <code>{displayValue(diff.si.raw)}</code>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* BL Box */}
+                                <div className="diff-box bl-side">
+                                  <div className="diff-box-label">
+                                    Draft BL (Document Checked)
+                                  </div>
+                                  <div className="diff-box-value">
+                                    {displayValue(diff.bl.effective_value ?? diff.bl.canonical ?? diff.bl.normalized ?? diff.bl.raw)}
+                                  </div>
+                                  {diff.bl.human_override_value !== undefined && diff.bl.human_override_value !== null && (
+                                    <div className="diff-box-override" style={{ fontSize: "11px", color: "var(--color-success)", marginTop: "4px" }}>
+                                      Human override: <strong>{displayValue(diff.bl.human_override_value)}</strong>
+                                    </div>
+                                  )}
+                                  {diff.bl.raw !== undefined && diff.bl.raw !== null && (
+                                    <div className="diff-box-raw" style={{ fontSize: "11px", color: "var(--color-grey-600)", marginTop: "2px" }}>
+                                      Raw extracted: <code>{displayValue(diff.bl.raw)}</code>
+                                    </div>
+                                  )}
+                                </div>
+                              </div>
+                            </div>
+                          ))}
                         </div>
                       </div>
-
-                      <div className="discrepancy-diff-grid">
-                        {selected.mismatched_fields_detail.map((diff) => (
-                          <div
-                            key={diff.field}
-                            className="discrepancy-diff-card is-mismatch"
-                          >
-                            <div className="diff-card-header-row">
-                              <div className="diff-card-field-info">
-                                <strong className="diff-field-name">
-                                  {labelForField(diff.field)}
-                                </strong>
-                                <span className="badge badge-attention diff-reason-badge">
-                                  {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
-                                </span>
-                              </div>
-                              <div className="diff-card-actions-row">
-                                <button
-                                  type="button"
-                                  className="button-secondary"
-                                  onClick={() =>
-                                    openCorrectionModal("BL", String(diff.field), String(diff.bl.canonical ?? diff.bl.raw ?? ""))
-                                  }
-                                >
-                                  Correct BL
-                                </button>
-                                <button
-                                  type="button"
-                                  className="button-secondary"
-                                  onClick={() =>
-                                    openCorrectionModal("SI", String(diff.field), String(diff.si.canonical ?? diff.si.raw ?? ""))
-                                  }
-                                >
-                                  Correct SI
-                                </button>
-                              </div>
-                            </div>
-
-                            {/* Side by side comparison cards */}
-                            <div className="diff-side-by-side">
-                              {/* SI Box */}
-                              <div className="diff-box si-side">
-                                <div className="diff-box-label">
-                                  SI (Reference Document)
-                                </div>
-                                <div className="diff-box-value">
-                                  {displayValue(diff.si.canonical ?? diff.si.normalized ?? diff.si.raw)}
-                                </div>
-                                {diff.si.raw !== undefined && diff.si.raw !== diff.si.canonical && (
-                                  <div className="diff-box-raw">
-                                    Raw: <code>{displayValue(diff.si.raw)}</code>
-                                  </div>
-                                )}
-                              </div>
-
-                              {/* BL Box */}
-                              <div className="diff-box bl-side">
-                                <div className="diff-box-label">
-                                  Draft BL (Document Checked)
-                                </div>
-                                <div className="diff-box-value">
-                                  {displayValue(diff.bl.canonical ?? diff.bl.normalized ?? diff.bl.raw)}
-                                </div>
-                                {diff.bl.raw !== undefined && diff.bl.raw !== diff.bl.canonical && (
-                                  <div className="diff-box-raw">
-                                    Raw: <code>{displayValue(diff.bl.raw)}</code>
-                                  </div>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
+                    )}
 
                     {/* Complete 7 Canonical Fields Table Toggle */}
                     <div className="detail-section" style={{ marginTop: "16px" }}>
@@ -794,8 +889,22 @@ export function ConfirmedDiscrepanciesPageView({
                                       {fieldStatusLabels[f.status] || f.status}
                                     </span>
                                   </td>
-                                  <td style={{ padding: "8px 10px" }}>{displayValue(f.si.canonical ?? f.si.raw)}</td>
-                                  <td style={{ padding: "8px 10px" }}>{displayValue(f.bl.canonical ?? f.bl.raw)}</td>
+                                  <td style={{ padding: "8px 10px" }}>
+                                    <div>{displayValue(f.si.effective_value ?? f.si.canonical ?? f.si.raw)}</div>
+                                    {f.si.human_override_value !== undefined && f.si.human_override_value !== null && (
+                                      <div style={{ fontSize: "10.5px", color: "var(--color-success)" }}>
+                                        Override: {displayValue(f.si.human_override_value)} (Raw: {displayValue(f.si.raw)})
+                                      </div>
+                                    )}
+                                  </td>
+                                  <td style={{ padding: "8px 10px" }}>
+                                    <div>{displayValue(f.bl.effective_value ?? f.bl.canonical ?? f.bl.raw)}</div>
+                                    {f.bl.human_override_value !== undefined && f.bl.human_override_value !== null && (
+                                      <div style={{ fontSize: "10.5px", color: "var(--color-success)" }}>
+                                        Override: {displayValue(f.bl.human_override_value)} (Raw: {displayValue(f.bl.raw)})
+                                      </div>
+                                    )}
+                                  </td>
                                   <td style={{ padding: "8px 10px", color: "var(--color-grey-600)" }}>
                                     {reasonLabels[f.reason_code] || displayLabel(f.reason_code)}
                                   </td>

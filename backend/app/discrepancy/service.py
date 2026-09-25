@@ -362,7 +362,13 @@ class DiscrepancyService:
     def _locked_comparison(self, comparison_id: UUID) -> ComparisonResultRecord:
         record = self.session.scalar(
             select(ComparisonResultRecord)
-            .where(ComparisonResultRecord.id == comparison_id)
+            .where(
+                or_(
+                    ComparisonResultRecord.id == comparison_id,
+                    ComparisonResultRecord.email_id == comparison_id,
+                )
+            )
+            .order_by(ComparisonResultRecord.created_at.desc(), ComparisonResultRecord.id.desc())
             .options(
                 selectinload(ComparisonResultRecord.fields),
                 selectinload(ComparisonResultRecord.overrides),
@@ -388,7 +394,7 @@ class DiscrepancyService:
             original = fields[name]
             fields[name] = replace(
                 original,
-                raw_value=override.corrected_value,
+                raw_value=original.raw_value,
                 canonical_value=override.corrected_canonical_value,
                 status=FieldStatus.RESOLVED,
                 confidence=1.0,
@@ -396,6 +402,7 @@ class DiscrepancyService:
                     **original.evidence,
                     "discrepancy_override_id": str(override.id),
                     "discrepancy_override": True,
+                    "human_override_value": override.corrected_value,
                 },
             )
         return DocumentExtractionResult(

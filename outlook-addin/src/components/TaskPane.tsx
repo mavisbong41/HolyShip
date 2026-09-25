@@ -5,7 +5,6 @@ import {
   Bot,
   CheckCircle2,
   Check,
-  ChevronRight,
   Clock,
   Edit3,
   ExternalLink,
@@ -47,6 +46,10 @@ import {
   removeManualReviewPlanItem,
   confirmReviewPlan,
   cancelReviewPlan,
+  acknowledgeDiscrepancy,
+  recompareDiscrepancy,
+  resolveDiscrepancy,
+  saveDiscrepancyOverride,
 } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, displayValue, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
@@ -1504,10 +1507,18 @@ function RequiresAttentionSection({
   comparison,
   onOpenReview,
   onOpenFullComparison,
+  onCorrectField,
+  onAcknowledge,
+  onResolve,
+  isActionLoading,
 }: {
   comparison: ProductComparison | null;
   onOpenReview: (field?: string) => void;
   onOpenFullComparison: () => void;
+  onCorrectField?: (side: "SI" | "BL", field: string, initialVal?: string) => void;
+  onAcknowledge?: () => void;
+  onResolve?: () => void;
+  isActionLoading?: boolean;
 }): React.ReactElement | null {
   if (!comparison) return null;
 
@@ -1522,30 +1533,110 @@ function RequiresAttentionSection({
     <section className="attention-section">
       <div className="section-title-row">
         <p className="pane-section-label" style={{ margin: 0 }}>— REQUIRES ATTENTION</p>
-        <span className="badge badge-attention-count">
-          {problematicFields.length} {problematicFields.length > 1 ? "issues" : "issue"}
-        </span>
+        <div style={{ display: "flex", gap: "6px", alignItems: "center" }}>
+          {comparison.resolution_status && (
+            <span
+              className={`badge ${
+                comparison.resolution_status === "RESOLVED"
+                  ? "badge-good"
+                  : comparison.resolution_status === "ACKNOWLEDGED"
+                  ? "badge-warn"
+                  : "badge-attention"
+              }`}
+            >
+              {displayLabel(comparison.resolution_status)}
+            </span>
+          )}
+          <span className="badge badge-attention-count">
+            {problematicFields.length} {problematicFields.length > 1 ? "issues" : "issue"}
+          </span>
+        </div>
+      </div>
+
+      {comparison.resolution_status === "RESOLVED" && (
+        <div
+          style={{
+            padding: "8px 10px",
+            background: "rgba(34, 197, 94, 0.1)",
+            border: "1px solid rgba(34, 197, 94, 0.3)",
+            borderRadius: "6px",
+            marginBottom: "8px",
+            fontSize: "11.5px",
+          }}
+        >
+          <strong style={{ color: "#16a34a" }}>Discrepancy Resolved</strong>
+          <p style={{ margin: "2px 0 0", color: "#374151" }}>
+            Marked resolved by <strong>{comparison.resolved_by || "Reviewer"}</strong>
+            {comparison.resolved_at && ` on ${formatDate(comparison.resolved_at)}`}.
+            {comparison.resolution_notes && (
+              <span style={{ display: "block", marginTop: "2px", fontStyle: "italic" }}>
+                Note: "{comparison.resolution_notes}"
+              </span>
+            )}
+          </p>
+        </div>
+      )}
+
+      {comparison.resolution_status === "ACKNOWLEDGED" && (
+        <div
+          style={{
+            padding: "8px 10px",
+            background: "rgba(227, 148, 57, 0.1)",
+            border: "1px solid rgba(227, 148, 57, 0.3)",
+            borderRadius: "6px",
+            marginBottom: "8px",
+            fontSize: "11.5px",
+          }}
+        >
+          <strong style={{ color: "#d97706" }}>Discrepancy Acknowledged</strong>
+          <p style={{ margin: "2px 0 0", color: "#374151" }}>
+            Under operational review by <strong>{comparison.acknowledged_by || "Operator"}</strong>
+            {comparison.acknowledged_at && ` on ${formatDate(comparison.acknowledged_at)}`}.
+          </p>
+        </div>
+      )}
+
+      {/* Operational Actions */}
+      <div style={{ display: "flex", gap: "6px", marginBottom: "8px" }}>
+        {onAcknowledge && comparison.resolution_status === "OPEN" && (
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={isActionLoading}
+            onClick={onAcknowledge}
+            style={{ fontSize: "11px", padding: "3px 8px" }}
+          >
+            <Check size={11} style={{ marginRight: "3px" }} />
+            Acknowledge
+          </button>
+        )}
+        {onResolve && comparison.resolution_status !== "RESOLVED" && (
+          <button
+            type="button"
+            className="btn-secondary btn-sm"
+            disabled={isActionLoading}
+            onClick={onResolve}
+            style={{ fontSize: "11px", padding: "3px 8px", color: "#16a34a", borderColor: "#16a34a" }}
+          >
+            <CheckCircle2 size={11} style={{ marginRight: "3px" }} />
+            Resolve
+          </button>
+        )}
       </div>
 
       <div className="attention-rows-group">
         {problematicFields.map((fieldRow) => {
-          const siVal = displayValue(fieldRow.si.raw ?? fieldRow.si.canonical);
-          const blVal = displayValue(fieldRow.bl.raw ?? fieldRow.bl.canonical);
+          const siVal = displayValue(fieldRow.si.effective_value ?? fieldRow.si.human_override_value ?? fieldRow.si.raw ?? fieldRow.si.canonical);
+          const blVal = displayValue(fieldRow.bl.effective_value ?? fieldRow.bl.human_override_value ?? fieldRow.bl.raw ?? fieldRow.bl.canonical);
           const isMismatch = fieldRow.status === "MISMATCH";
+          const hasSiOverride = fieldRow.si.human_override_value !== undefined && fieldRow.si.human_override_value !== null;
+          const hasBlOverride = fieldRow.bl.human_override_value !== undefined && fieldRow.bl.human_override_value !== null;
 
           return (
             <div
               key={fieldRow.field}
               className="attention-item-row"
-              onClick={() => onOpenReview(fieldRow.field)}
-              role="button"
-              tabIndex={0}
-              onKeyDown={(e) => {
-                if (e.key === "Enter" || e.key === " ") {
-                  e.preventDefault();
-                  onOpenReview(fieldRow.field);
-                }
-              }}
+              style={{ cursor: "default" }}
             >
               <div className="attention-item-header">
                 <div className="attention-item-title-wrap">
@@ -1554,7 +1645,6 @@ function RequiresAttentionSection({
                     {isMismatch ? "Mismatch" : "Unresolved"}
                   </span>
                 </div>
-                <ChevronRight size={14} className="attention-item-chevron" aria-hidden="true" />
               </div>
 
               <div className="attention-columns-grid">
@@ -1562,14 +1652,55 @@ function RequiresAttentionSection({
                   <span className="attention-col-label">SI REFERENCE</span>
                   <div className="attention-val-box box-si">
                     {siVal}
+                    {hasSiOverride && (
+                      <span style={{ display: "block", fontSize: "10px", color: "#16a34a", marginTop: "2px" }}>
+                        Override (Raw: {displayValue(fieldRow.si.raw)})
+                      </span>
+                    )}
                   </div>
                 </div>
                 <div className="attention-col">
                   <span className="attention-col-label">DRAFT BL</span>
                   <div className={`attention-val-box ${isMismatch ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
                     {blVal}
+                    {hasBlOverride && (
+                      <span style={{ display: "block", fontSize: "10px", color: "#16a34a", marginTop: "2px" }}>
+                        Override (Raw: {displayValue(fieldRow.bl.raw)})
+                      </span>
+                    )}
                   </div>
                 </div>
+              </div>
+
+              <div style={{ display: "flex", gap: "6px", marginTop: "8px" }}>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  style={{ fontSize: "11px", padding: "3px 8px" }}
+                  onClick={() => {
+                    if (onCorrectField) {
+                      onCorrectField("BL", String(fieldRow.field), String(fieldRow.bl.human_override_value ?? fieldRow.bl.canonical ?? fieldRow.bl.raw ?? ""));
+                    } else {
+                      onOpenReview(fieldRow.field);
+                    }
+                  }}
+                >
+                  Correct BL
+                </button>
+                <button
+                  type="button"
+                  className="btn-secondary btn-sm"
+                  style={{ fontSize: "11px", padding: "3px 8px" }}
+                  onClick={() => {
+                    if (onCorrectField) {
+                      onCorrectField("SI", String(fieldRow.field), String(fieldRow.si.human_override_value ?? fieldRow.si.canonical ?? fieldRow.si.raw ?? ""));
+                    } else {
+                      onOpenReview(fieldRow.field);
+                    }
+                  }}
+                >
+                  Correct SI
+                </button>
               </div>
             </div>
           );
@@ -2563,6 +2694,15 @@ export function TaskPane({
   const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
   const [selectedReviewField, setSelectedReviewField] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [discrepancyModalOpen, setDiscrepancyModalOpen] = useState(false);
+  const [discrepancySide, setDiscrepancySide] = useState<"SI" | "BL">("BL");
+  const [discrepancyField, setDiscrepancyField] = useState<string>("container_count");
+  const [discrepancyValue, setDiscrepancyValue] = useState<string>("");
+  const [discrepancyNote, setDiscrepancyNote] = useState<string>("");
+  const [discrepancyBusy, setDiscrepancyBusy] = useState(false);
+  const [discrepancyError, setDiscrepancyError] = useState<string | null>(null);
+  const [discrepancyResolveOpen, setDiscrepancyResolveOpen] = useState(false);
+  const [discrepancyResolveNotes, setDiscrepancyResolveNotes] = useState("");
   const resolveGeneration = useRef(0);
   const lastItemIdRef = useRef<string | null>(null);
 
@@ -2757,6 +2897,67 @@ export function TaskPane({
     ? effectiveDetail.resolutions.find((resolution) => resolution.attempted)
     : null;
   const reviewUrl = effectiveReview ? dashboardReviewUrl(effectiveReview.id) : null;
+
+  const handleOpenDiscrepancyCorrection = (side: "SI" | "BL", field: string, initialVal?: unknown) => {
+    setDiscrepancySide(side);
+    setDiscrepancyField(field);
+    setDiscrepancyValue(initialVal !== null && initialVal !== undefined ? String(initialVal) : "");
+    setDiscrepancyNote("");
+    setDiscrepancyError(null);
+    setDiscrepancyModalOpen(true);
+  };
+
+  const handleApplyDiscrepancyCorrection = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!effectiveDetail) return;
+    setDiscrepancyBusy(true);
+    setDiscrepancyError(null);
+    try {
+      await saveDiscrepancyOverride(effectiveDetail.email.id, {
+        document_side: discrepancySide,
+        field_name: discrepancyField,
+        corrected_value: discrepancyValue,
+        reviewer_name: "Outlook Reviewer",
+        note: discrepancyNote,
+      });
+      await recompareDiscrepancy(effectiveDetail.email.id, "Outlook Reviewer");
+      await refreshCurrentEmail(true);
+      setDiscrepancyModalOpen(false);
+    } catch (err) {
+      setDiscrepancyError(err instanceof Error ? err.message : "Failed to apply correction and recompare");
+    } finally {
+      setDiscrepancyBusy(false);
+    }
+  };
+
+  const handleAcknowledgeDiscrepancyAction = async () => {
+    if (!effectiveDetail) return;
+    setDiscrepancyBusy(true);
+    try {
+      await acknowledgeDiscrepancy(effectiveDetail.email.id, "Outlook Reviewer");
+      await refreshCurrentEmail(true);
+    } catch (err) {
+      setDiscrepancyError(err instanceof Error ? err.message : "Failed to acknowledge discrepancy");
+    } finally {
+      setDiscrepancyBusy(false);
+    }
+  };
+
+  const handleResolveDiscrepancyAction = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!effectiveDetail) return;
+    setDiscrepancyBusy(true);
+    try {
+      await resolveDiscrepancy(effectiveDetail.email.id, "Outlook Reviewer", discrepancyResolveNotes);
+      await refreshCurrentEmail(true);
+      setDiscrepancyResolveOpen(false);
+      setDiscrepancyResolveNotes("");
+    } catch (err) {
+      setDiscrepancyError(err instanceof Error ? err.message : "Failed to resolve discrepancy");
+    } finally {
+      setDiscrepancyBusy(false);
+    }
+  };
 
   const retryProcessing = async () => {
     if (!emailId) return;
@@ -2976,14 +3177,42 @@ export function TaskPane({
 
               {/* Attention Area: Mismatched / Unresolved fields spotlight */}
               {isDocumentComparison && effectiveDetail.comparison && (
-                <RequiresAttentionSection
-                  comparison={effectiveDetail.comparison}
-                  onOpenReview={(field) => {
-                    setSelectedReviewField(field || null);
-                    setActiveWorkflowView("review");
-                  }}
-                  onOpenFullComparison={() => setActiveWorkflowView("comparison")}
-                />
+                <>
+                  {!effectiveDetail.comparison.mismatch_found && (
+                    <div
+                      className="clean-match-card"
+                      style={{
+                        padding: "14px",
+                        background: "rgba(34, 197, 94, 0.08)",
+                        border: "1px solid rgba(34, 197, 94, 0.3)",
+                        borderRadius: "6px",
+                        textAlign: "center",
+                        marginBottom: "12px",
+                      }}
+                    >
+                      <CheckCircle2 size={24} color="#16a34a" style={{ margin: "0 auto 4px" }} />
+                      <strong style={{ display: "block", fontSize: "13.5px", color: "#16a34a" }}>
+                        No mismatch detected.
+                      </strong>
+                      <p style={{ margin: "2px 0 0", fontSize: "11.5px", color: "#4b5563" }}>
+                        All 7 canonical fields match between SI and Draft BL.
+                      </p>
+                    </div>
+                  )}
+
+                  <RequiresAttentionSection
+                    comparison={effectiveDetail.comparison}
+                    onOpenReview={(field) => {
+                      setSelectedReviewField(field || null);
+                      setActiveWorkflowView("review");
+                    }}
+                    onOpenFullComparison={() => setActiveWorkflowView("comparison")}
+                    onCorrectField={handleOpenDiscrepancyCorrection}
+                    onAcknowledge={handleAcknowledgeDiscrepancyAction}
+                    onResolve={() => setDiscrepancyResolveOpen(true)}
+                    isActionLoading={discrepancyBusy}
+                  />
+                </>
               )}
 
               {/* Dominant Primary Next Action CTA */}
@@ -3181,7 +3410,10 @@ export function TaskPane({
                     <span className="badge badge-muted">7 Canonical Fields</span>
                   </div>
                   <div id="comparison-section">
-                    <ComparisonTable comparison={effectiveDetail.comparison} />
+                    <ComparisonTable
+                      comparison={effectiveDetail.comparison}
+                      onCorrectField={handleOpenDiscrepancyCorrection}
+                    />
                   </div>
                   <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
                     {effectiveDetail.email.needs_review || activeComparisonIssues.length > 0 ? (
@@ -3232,6 +3464,190 @@ export function TaskPane({
                   View full case in Dashboard ↗
                   <span className="visually-hidden"> (Open in Dashboard)</span>
                 </a>
+              </div>
+            )}
+
+            {/* Discrepancy Correction Modal */}
+            {discrepancyModalOpen && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.5)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 9999,
+                  padding: 16,
+                }}
+                onClick={() => setDiscrepancyModalOpen(false)}
+              >
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: 8,
+                    padding: 16,
+                    width: "100%",
+                    maxWidth: 320,
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <strong style={{ fontSize: 13 }}>
+                      Correct {discrepancySide}: {labelForField(discrepancyField)}
+                    </strong>
+                    <button
+                      type="button"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}
+                      onClick={() => setDiscrepancyModalOpen(false)}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                  <form onSubmit={handleApplyDiscrepancyCorrection}>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      {discrepancyError && (
+                        <div style={{ color: "#ef4444", fontSize: 11, background: "#fee2e2", padding: 6, borderRadius: 4 }}>
+                          {discrepancyError}
+                        </div>
+                      )}
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>Corrected Value</label>
+                      <input
+                        type="text"
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          fontSize: 12,
+                          border: "1px solid #d1d5db",
+                          borderRadius: 4,
+                          boxSizing: "border-box",
+                        }}
+                        value={discrepancyValue}
+                        onChange={(e) => setDiscrepancyValue(e.target.value)}
+                        required
+                        autoFocus
+                      />
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>Audit Note (Optional)</label>
+                      <input
+                        type="text"
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          fontSize: 12,
+                          border: "1px solid #d1d5db",
+                          borderRadius: 4,
+                          boxSizing: "border-box",
+                        }}
+                        value={discrepancyNote}
+                        onChange={(e) => setDiscrepancyNote(e.target.value)}
+                        placeholder="e.g. Corrected against SI reference"
+                      />
+                    </div>
+                    <div style={{ marginTop: 12, display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => setDiscrepancyModalOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn-primary btn-sm"
+                        disabled={discrepancyBusy || !discrepancyValue.trim()}
+                      >
+                        {discrepancyBusy ? "Recomparing…" : "Apply & Recompare"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
+              </div>
+            )}
+
+            {/* Discrepancy Resolve Modal */}
+            {discrepancyResolveOpen && (
+              <div
+                style={{
+                  position: "fixed",
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  background: "rgba(0,0,0,0.5)",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  zIndex: 9999,
+                  padding: 16,
+                }}
+                onClick={() => setDiscrepancyResolveOpen(false)}
+              >
+                <div
+                  style={{
+                    background: "#ffffff",
+                    borderRadius: 8,
+                    padding: 16,
+                    width: "100%",
+                    maxWidth: 320,
+                    boxShadow: "0 10px 25px rgba(0,0,0,0.2)",
+                  }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                    <strong style={{ fontSize: 13 }}>Resolve Discrepancy</strong>
+                    <button
+                      type="button"
+                      style={{ background: "none", border: "none", cursor: "pointer", padding: 2 }}
+                      onClick={() => setDiscrepancyResolveOpen(false)}
+                    >
+                      <X size={15} />
+                    </button>
+                  </div>
+                  <form onSubmit={handleResolveDiscrepancyAction}>
+                    <div style={{ display: "grid", gap: 8 }}>
+                      <p style={{ margin: 0, fontSize: 11.5, color: "#4b5563" }}>
+                        Confirm resolution of operational differences.
+                      </p>
+                      <label style={{ fontSize: 11, fontWeight: 600, color: "#374151" }}>Resolution Notes (Optional)</label>
+                      <textarea
+                        rows={2}
+                        style={{
+                          width: "100%",
+                          padding: "6px 8px",
+                          fontSize: 12,
+                          border: "1px solid #d1d5db",
+                          borderRadius: 4,
+                          boxSizing: "border-box",
+                          fontFamily: "inherit",
+                        }}
+                        value={discrepancyResolveNotes}
+                        onChange={(e) => setDiscrepancyResolveNotes(e.target.value)}
+                        placeholder="e.g. Carrier accepted SI reference values"
+                      />
+                    </div>
+                    <div style={{ marginTop: 12, display: "flex", gap: 6, justifyContent: "flex-end" }}>
+                      <button
+                        type="button"
+                        className="btn-secondary btn-sm"
+                        onClick={() => setDiscrepancyResolveOpen(false)}
+                      >
+                        Cancel
+                      </button>
+                      <button
+                        type="submit"
+                        className="btn-primary btn-sm"
+                        disabled={discrepancyBusy}
+                        style={{ background: "#16a34a", borderColor: "#16a34a" }}
+                      >
+                        {discrepancyBusy ? "Resolving…" : "Confirm Resolution"}
+                      </button>
+                    </div>
+                  </form>
+                </div>
               </div>
             )}
           </>

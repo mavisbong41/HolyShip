@@ -4573,13 +4573,8 @@ export default function App() {
       await saveDiscrepancyOverride(discrepancyId, payload);
       const recompared = await recompareDiscrepancy(discrepancyId, payload.reviewer_name);
       await Promise.all([loadDiscrepancies(), loadDashboard()]);
-      if (recompared.comparison && (recompared.comparison as { mismatch_found?: boolean }).mismatch_found) {
-        const updated = await getDiscrepancyDetail(recompared.discrepancy.id);
-        setSelectedDiscrepancy(updated);
-      } else {
-        setSelectedDiscrepancy(null);
-        await loadDiscrepancies();
-      }
+      const updated = await getDiscrepancyDetail(recompared.discrepancy.id).catch(() => recompared);
+      setSelectedDiscrepancy(updated || recompared);
       setDiscrepancyActionState("ready");
     } catch (caught) {
       setError(caught instanceof Error ? caught.message : "Failed to save correction and recompare");
