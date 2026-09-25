@@ -104,31 +104,48 @@ export async function createReviewPlan(review: ProductReview, reviewer: string):
   });
 }
 
-export type ManualPlanItemInput = {
+export interface ReviewPlanItemInput {
   document_side: "SI" | "BL";
   field: string;
   current_value: unknown;
   proposed_value: unknown;
   reason: string;
-};
+  confidence?: number | null;
+  ai_suggestion_id?: string | null;
+  status?: "PROPOSED" | "APPROVED" | "REJECTED";
+}
+
+export type ManualPlanItemInput = ReviewPlanItemInput;
+
+export async function createReviewPlanWithItem(
+  reviewId: string, reviewer: string, item: ReviewPlanItemInput,
+): Promise<ProductReviewPlan> {
+  return request<ProductReviewPlan>(`/human-review/${reviewId}/plans`, {
+    method: "POST",
+    body: JSON.stringify({ created_by: reviewer, items: [{ ...item, status: item.status ?? "APPROVED" }] }),
+  });
+}
+
+export async function addReviewPlanItem(
+  reviewId: string, planId: string, reviewer: string, item: ReviewPlanItemInput,
+): Promise<ProductReviewPlan> {
+  const params = new URLSearchParams({ actor_name: reviewer });
+  return request<ProductReviewPlan>(`/human-review/${reviewId}/plans/${planId}/items?${params}`, {
+    method: "POST",
+    body: JSON.stringify({ ...item, status: item.status ?? "APPROVED" }),
+  });
+}
 
 export async function createManualReviewPlan(
   reviewId: string, reviewer: string, item: ManualPlanItemInput,
 ): Promise<ProductReviewPlan> {
-  return request<ProductReviewPlan>(`/human-review/${reviewId}/plans`, {
-    method: "POST",
-    body: JSON.stringify({ created_by: reviewer, items: [{ ...item, status: "APPROVED" }] }),
-  });
+  return createReviewPlanWithItem(reviewId, reviewer, item);
 }
 
 export async function addManualReviewPlanItem(
   reviewId: string, planId: string, reviewer: string, item: ManualPlanItemInput,
 ): Promise<ProductReviewPlan> {
-  const params = new URLSearchParams({ actor_name: reviewer });
-  return request<ProductReviewPlan>(`/human-review/${reviewId}/plans/${planId}/items?${params}`, {
-    method: "POST",
-    body: JSON.stringify({ ...item, status: "APPROVED" }),
-  });
+  return addReviewPlanItem(reviewId, planId, reviewer, item);
 }
 
 export async function removeManualReviewPlanItem(

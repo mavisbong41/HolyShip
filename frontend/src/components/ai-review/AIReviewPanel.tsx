@@ -12,9 +12,12 @@ import {
   confirmReviewPlan,
   createManualReviewPlan,
   addManualReviewPlanItem,
+  createReviewPlanWithItem,
+  addReviewPlanItem,
   removeManualReviewPlanItem,
   cancelReviewPlan,
 } from "../../api/aiReview";
+import type { ReviewPlanItemInput } from "../../api/aiReview";
 import { getHumanReviewDetail } from "../../api/client";
 import { SuggestedQuestions } from "./SuggestedQuestions";
 import { AIChatThread, ChatMessage } from "./AIChatThread";
@@ -24,19 +27,28 @@ interface AIReviewPanelProps {
   review: ProductReview;
   reviewerName: string;
   onCaseUpdated: (updated: ProductReview) => void;
+  plan?: ProductReviewPlan | null;
+  onPlanChanged?: (plan: ProductReviewPlan | null) => void;
 }
 
 export function AIReviewPanel({
   review,
   reviewerName,
   onCaseUpdated,
+  plan: externalPlan,
+  onPlanChanged,
 }: AIReviewPanelProps): React.ReactElement {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputQuestion, setInputQuestion] = useState("");
   const [isAsking, setIsAsking] = useState(false);
   const [isActionLoading, setIsActionLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
-  const [plan, setPlan] = useState<ProductReviewPlan | null>(null);
+  const [internalPlan, setInternalPlan] = useState<ProductReviewPlan | null>(null);
+  const plan = externalPlan !== undefined ? externalPlan : internalPlan;
+  const setPlan = (newPlan: ProductReviewPlan | null) => {
+    setInternalPlan(newPlan);
+    onPlanChanged?.(newPlan);
+  };
   const [showManualForm, setShowManualForm] = useState(false);
   const [manualSide, setManualSide] = useState<"SI" | "BL">("BL");
   const [manualField, setManualField] = useState("shipper");
@@ -68,8 +80,10 @@ export function AIReviewPanel({
       setMessages([]);
     }
     setErrorMessage(null);
-    void listReviewPlans(review.id).then((plans) => setPlan(plans.find((item) => item.status !== "CANCELLED") ?? null)).catch(() => setPlan(null));
-  }, [review.id]);
+    if (externalPlan === undefined) {
+      void listReviewPlans(review.id).then((plans) => setPlan(plans.find((item) => item.status !== "CANCELLED") ?? null)).catch(() => setPlan(null));
+    }
+  }, [review.id, externalPlan]);
 
   const canonicalFields = [
     "shipper", "consignee", "notify_party", "port_of_loading",
@@ -150,15 +164,25 @@ export function AIReviewPanel({
     setIsActionLoading(true);
     setErrorMessage(null);
     try {
-      const updatedReview = await acceptAISuggestion(review.id, suggestionId, reviewerName || "Reviewer");
-      setMessages((current) => current.map((message) => {
-        if (message.suggestionId !== suggestionId) return message;
-        const updatedSuggestion = updatedReview.ai_suggestions?.find((item) => item.id === suggestionId);
-        return updatedSuggestion ? { ...message, suggestion: updatedSuggestion } : message;
-      }));
-      onCaseUpdated(updatedReview);
+      const sugg = review.ai_suggestions?.find((item) => item.id === suggestionId);
+      if (sugg) {
+        const item: ReviewPlanItemInput = {
+          document_side: (sugg.document_side as "SI" | "BL") || "BL",
+          field: sugg.field || "consignee",
+          current_value: sugg.current_value,
+          proposed_value: sugg.suggested_value,
+          reason: sugg.reason || "AI proposed correction",
+          confidence: sugg.confidence,
+          ai_suggestion_id: sugg.id,
+          status: "APPROVED",
+        };
+        const updatedPlan = plan
+          ? await addReviewPlanItem(review.id, plan.id, reviewerName || "Reviewer", item)
+          : await createReviewPlanWithItem(review.id, reviewerName || "Reviewer", item);
+        setPlan(updatedPlan);
+      }
     } catch (caught) {
-      setErrorMessage(caught instanceof Error ? caught.message : "Failed to accept AI suggestion");
+      setErrorMessage(caught instanceof Error ? caught.message : "Failed to add AI suggestion to review plan");
     } finally {
       setIsActionLoading(false);
     }
@@ -182,21 +206,24 @@ export function AIReviewPanel({
     setIsActionLoading(true);
     setErrorMessage(null);
     try {
-      const updatedReview = await applyEditedAISuggestion(
-        review.id,
-        suggestionId,
-        value,
-        reviewerLabel,
-        note,
-      );
-      setMessages((current) => current.map((message) => {
-        if (message.suggestionId !== suggestionId) return message;
-        const updatedSuggestion = updatedReview.ai_suggestions?.find((item) => item.id === suggestionId);
-        return updatedSuggestion ? { ...message, suggestion: updatedSuggestion } : message;
-      }));
-      onCaseUpdated(updatedReview);
+      const sugg = review.ai_suggestions?.find((item) => item.id === suggestionId);
+      const item: ReviewPlanItemInput = {
+        document_side: (sugg?.document_side as "SI" | "BL") || "BL",
+        field: sugg?.field || "consignee",
+        current_value: sugg?.current_value,
+        proposed_value: value,
+        reason: note || sugg?.reason || "Reviewer edited AI suggestion",
+        confidence: sugg?.confidence,
+        ai_suggestion_id: sugg?.id,
+        status: "APPROVED",
+      };
+      const updatedPlan = plan
+        ? await addReviewPlanItem(review.id, plan.id, reviewerLabel || reviewerName || "Reviewer", item)
+        : await createReviewPlanWithItem(review.id, reviewerLabel || reviewerName || "Reviewer", item);
+      setPlan(updatedPlan);
+      setEditingSuggestion(null);
     } catch (caught) {
-      setErrorMessage(caught instanceof Error ? caught.message : "Failed to apply edited suggestion");
+      setErrorMessage(caught instanceof Error ? caught.message : "Failed to add edited suggestion to review plan");
     } finally {
       setIsActionLoading(false);
     }

@@ -134,7 +134,7 @@ class ReviewPlanService:
     def add_item(self, plan_id: UUID, *, item: PlanItemInput, actor: str | None) -> ReviewPlanRecord:
         plan = self.get(plan_id, lock=True)
         if plan.status != "DRAFT":
-            raise ReviewConflictError("Manual corrections can only be added to a draft review plan")
+            raise ReviewConflictError("Corrections can only be added to a draft review plan")
         side = item.document_side.strip().upper()
         if side not in {"SI", "BL"}:
             raise ValueError("document_side must be SI or BL")
@@ -145,22 +145,33 @@ class ReviewPlanService:
         if any(row.document_side == side and row.field_name == field for row in plan.items):
             raise ValueError(f"Duplicate review plan target: {side}.{field}")
         if item.ai_suggestion_id is not None:
-            raise ValueError("This endpoint only accepts reviewer-authored manual corrections")
+            suggestion = self.session.get(AISuggestionRecord, item.ai_suggestion_id)
+            if suggestion is None or suggestion.human_review_case_id != plan.review_case_id:
+                raise ValueError("AI suggestion does not belong to this review case")
+        confidence = item.confidence
+        if confidence is None and item.ai_suggestion_id is not None and suggestion is not None:
+            confidence = suggestion.confidence
         row = ReviewPlanItemRecord(
-            ai_suggestion_id=None,
+            ai_suggestion_id=item.ai_suggestion_id,
             document_side=side,
             field_name=field,
             current_value=item.current_value,
             proposed_value=item.proposed_value,
             reason=item.reason.strip(),
-            confidence=None,
+            confidence=confidence,
             status=item.status if item.status in {"PROPOSED", "APPROVED", "REJECTED"} else "PROPOSED",
         )
         plan.items.append(row)
         self.session.flush()
+        event_name = "REVIEW_PLAN_AI_ITEM_ADDED" if item.ai_suggestion_id is not None else "REVIEW_PLAN_MANUAL_ITEM_ADDED"
         self._audit(
-            "REVIEW_PLAN_MANUAL_ITEM_ADDED", plan, actor,
-            {"item_id": str(row.id), "document_side": side, "field": field, "source": "MANUAL"},
+            event_name, plan, actor,
+            {
+                "item_id": str(row.id),
+                "document_side": side,
+                "field": field,
+                "source": "AI" if item.ai_suggestion_id is not None else "MANUAL",
+            },
         )
         return plan
 

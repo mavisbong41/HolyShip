@@ -29,6 +29,7 @@ import {
   Search,
   ShieldAlert,
   ShipWheel,
+  Trash2,
   X,
 } from "lucide-react";
 import React from "react";
@@ -56,6 +57,18 @@ import {
   reconcileOutlookLifecycle,
 } from "./api/client";
 import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
+import {
+  askAIAssistant,
+  listReviewPlans,
+  confirmReviewPlan,
+  addReviewPlanItem,
+  createReviewPlanWithItem,
+  updateReviewPlanItem,
+  removeManualReviewPlanItem,
+  cancelReviewPlan,
+} from "./api/aiReview";
+import type { ReviewPlanItemInput } from "./api/aiReview";
+import type { ProductReviewPlan } from "./api/types";
 import { ReplyEmailSection } from "./components/ReplyEmailSection";
 import { MetricCard } from "./components/common/MetricCard";
 import { ConfirmedDiscrepanciesPageView } from "./components/discrepancies/ConfirmedDiscrepanciesPageView";
@@ -1970,12 +1983,26 @@ function HumanReviewPageView({
     return null;
   }, [problematicFields, selected]);
 
+  const initialSide = useMemo<"SI" | "BL">(() => {
+    if (!firstProblematicField) return "BL";
+    const comp = selected?.comparison?.fields?.find((f) => f.field === firstProblematicField);
+    return (comp?.si.raw == null && comp?.bl.raw != null) ? "SI" : "BL";
+  }, [firstProblematicField, selected?.comparison?.fields]);
+
   const [reviewer, setReviewer] = useState(defaultReviewerName);
-  const [side, setSide] = useState<"SI" | "BL">("BL");
+  const [side, setSide] = useState<"SI" | "BL">(() => initialSide);
   const [field, setField] = useState<string>(() => firstProblematicField || "gross_weight_kg");
   const [editingField, setEditingField] = useState<string | null>(() => firstProblematicField);
-  const [prevReviewId, setPrevReviewId] = useState<string | undefined>(selected?.id);
-  const [correctedValue, setCorrectedValue] = useState("");
+  const [prevReviewId, setPrevReviewId] = useState<string | undefined>(undefined);
+  const [correctedValue, setCorrectedValue] = useState(() => {
+    if (!firstProblematicField) return "";
+    const initialSugg = (selected?.ai_suggestions ?? []).find(
+      (s) => s.field === firstProblematicField && s.document_side === initialSide && (s.status === "PENDING" || !s.status)
+    ) ?? (selected?.ai_suggestions ?? []).find(
+      (s) => s.field === firstProblematicField && (s.status === "PENDING" || !s.status)
+    );
+    return initialSugg && initialSugg.suggested_value != null ? String(initialSugg.suggested_value) : "";
+  });
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
   const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
@@ -1984,27 +2011,203 @@ function HumanReviewPageView({
   const [showAllFields, setShowAllFields] = useState(false);
 
   const [showActionGuidance, setShowActionGuidance] = useState(false);
+  const [plan, setPlan] = useState<ProductReviewPlan | null>(null);
+  const [rejectedFieldKeys, setRejectedFieldKeys] = useState<Set<string>>(new Set());
+  const [isPlanActionLoading, setIsPlanActionLoading] = useState(false);
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiUnavailable, setAiUnavailable] = useState(false);
+  const [stagedSuccess, setStagedSuccess] = useState(false);
+  const [planErrorMessage, setPlanErrorMessage] = useState<string | null>(null);
+  const requestedAiRef = useRef<Set<string>>(new Set());
+
+  // Load active review plan when selected review changes
+  useEffect(() => {
+    if (!selected?.id) {
+      setPlan(null);
+      return;
+    }
+    let active = true;
+    void listReviewPlans(selected.id)
+      .then((plans) => {
+        if (active) {
+          setPlan(plans.find((item) => item.status !== "CANCELLED") ?? null);
+        }
+      })
+      .catch(() => {
+        if (active) setPlan(null);
+      });
+    return () => {
+      active = false;
+    };
+  }, [selected?.id]);
+
+  // Request AI proposal on-demand if no proposal exists yet for active case
+  useEffect(() => {
+    if (!selected?.id || selected.case_origin !== "ACTIVE") return;
+    if (selected.ai_suggestions && selected.ai_suggestions.length > 0) return;
+    if (requestedAiRef.current.has(selected.id)) return;
+    requestedAiRef.current.add(selected.id);
+    setAiLoading(true);
+    setAiUnavailable(false);
+    void askAIAssistant(selected.id, "Why does this need Human Review?")
+      .then(async (resp) => {
+        if (resp.suggestion) {
+          const fresh = await getHumanReviewDetail(selected.id);
+          onCaseUpdated?.(fresh);
+        } else {
+          setAiUnavailable(true);
+        }
+      })
+      .catch(() => {
+        setAiUnavailable(true);
+      })
+      .finally(() => {
+        setAiLoading(false);
+      });
+  }, [selected?.id, selected?.case_origin, selected?.ai_suggestions, onCaseUpdated]);
+
+  const activeAiSuggestion = useMemo(() => {
+    if (!selected?.ai_suggestions || rejectedFieldKeys.has(`${side}-${field}`)) return null;
+    return (
+      selected.ai_suggestions.find(
+        (s) => s.field === field && s.document_side === side && (s.status === "PENDING" || !s.status)
+      ) ??
+      selected.ai_suggestions.find(
+        (s) => s.field === field && s.document_side === side
+      ) ??
+      selected.ai_suggestions.find(
+        (s) => s.field === field && (s.status === "PENDING" || !s.status)
+      ) ??
+      null
+    );
+  }, [selected?.ai_suggestions, field, side, rejectedFieldKeys]);
+
+  const currentDiff = useMemo(() => {
+    return selected?.comparison?.fields?.find((f) => f.field === field);
+  }, [selected?.comparison?.fields, field]);
+
+  const currentTargetValue = useMemo(() => {
+    if (!currentDiff) return "";
+    const sideObj = side === "SI" ? currentDiff.si : currentDiff.bl;
+    return String(sideObj.canonical ?? sideObj.normalized ?? sideObj.raw ?? "");
+  }, [currentDiff, side]);
+
+  const isAiSuggested = Boolean(activeAiSuggestion && activeAiSuggestion.suggested_value != null);
+  const isAiEdited = isAiSuggested && correctedValue !== String(activeAiSuggestion?.suggested_value ?? "");
+
+  const handleApproveSuggestion = async () => {
+    if (!selected || !correctedValue.trim()) return;
+    setIsPlanActionLoading(true);
+    setPlanErrorMessage(null);
+    try {
+      const item: ReviewPlanItemInput = {
+        document_side: side,
+        field: field,
+        current_value: currentTargetValue,
+        proposed_value: correctedValue,
+        reason: note.trim() || activeAiSuggestion?.reason || "AI proposed correction",
+        confidence: activeAiSuggestion?.confidence,
+        ai_suggestion_id: isAiEdited ? null : (activeAiSuggestion?.id || null),
+        status: "APPROVED",
+      };
+      const updatedPlan = plan
+        ? await addReviewPlanItem(selected.id, plan.id, reviewer, item)
+        : await createReviewPlanWithItem(selected.id, reviewer, item);
+      setPlan(updatedPlan);
+      setStagedSuccess(true);
+      setTimeout(() => setStagedSuccess(false), 3000);
+    } catch (caught) {
+      setPlanErrorMessage(caught instanceof Error ? caught.message : "Failed to add suggestion to review plan");
+    } finally {
+      setIsPlanActionLoading(false);
+    }
+  };
+
+  const handleRejectSuggestion = () => {
+    setRejectedFieldKeys((prev) => new Set(prev).add(`${side}-${field}`));
+    setCorrectedValue("");
+  };
+
+  const handleAddManualToPlan = async () => {
+    if (!selected || !correctedValue.trim()) return;
+    setIsPlanActionLoading(true);
+    setPlanErrorMessage(null);
+    try {
+      const item: ReviewPlanItemInput = {
+        document_side: side,
+        field: field,
+        current_value: currentTargetValue,
+        proposed_value: correctedValue,
+        reason: note.trim() || "Manual reviewer correction",
+        status: "APPROVED",
+      };
+      const updatedPlan = plan
+        ? await addReviewPlanItem(selected.id, plan.id, reviewer, item)
+        : await createReviewPlanWithItem(selected.id, reviewer, item);
+      setPlan(updatedPlan);
+      setStagedSuccess(true);
+      setTimeout(() => setStagedSuccess(false), 3000);
+    } catch (caught) {
+      setPlanErrorMessage(caught instanceof Error ? caught.message : "Failed to add manual correction to review plan");
+    } finally {
+      setIsPlanActionLoading(false);
+    }
+  };
+
+  const handleConfirmImplementation = async () => {
+    if (!plan || !selected) return;
+    setIsPlanActionLoading(true);
+    setPlanErrorMessage(null);
+    try {
+      const updatedPlan = await confirmReviewPlan(selected.id, plan.id, reviewer);
+      setPlan(updatedPlan);
+      const fresh = await getHumanReviewDetail(selected.id);
+      onCaseUpdated?.(fresh);
+    } catch (caught) {
+      try {
+        const plans = await listReviewPlans(selected.id);
+        setPlan(plans.find((p) => p.id === plan.id) ?? null);
+        const fresh = await getHumanReviewDetail(selected.id);
+        onCaseUpdated?.(fresh);
+      } catch {
+        // ignore secondary lookup
+      }
+      setPlanErrorMessage(caught instanceof Error ? caught.message : "Plan confirmation failed");
+    } finally {
+      setIsPlanActionLoading(false);
+    }
+  };
 
   // Sync state cleanly when selected review changes
   if (selected?.id !== prevReviewId) {
     setPrevReviewId(selected?.id);
     setEditingField(firstProblematicField);
+    setRejectedFieldKeys(new Set());
     if (firstProblematicField) {
       setField(firstProblematicField);
       const comp = selected?.comparison?.fields?.find((f) => f.field === firstProblematicField);
-      if (comp?.bl.raw == null && comp?.si.raw != null) {
-        setSide("BL");
-      } else if (comp?.si.raw == null && comp?.bl.raw != null) {
-        setSide("SI");
+      const initialSide = (comp?.si.raw == null && comp?.bl.raw != null) ? "SI" : "BL";
+      setSide(initialSide);
+      const initialSugg = (selected?.ai_suggestions ?? []).find(
+        (s) => s.field === firstProblematicField && s.document_side === initialSide && (s.status === "PENDING" || !s.status)
+      ) ?? (selected?.ai_suggestions ?? []).find(
+        (s) => s.field === firstProblematicField && (s.status === "PENDING" || !s.status)
+      );
+      if (initialSugg && initialSugg.suggested_value != null) {
+        setCorrectedValue(String(initialSugg.suggested_value));
       } else {
-        setSide("BL");
+        setCorrectedValue("");
       }
     }
   }
 
+  const currentCaseIdRef = useRef(selected?.id);
   useEffect(() => {
-    setReviewSubTab("issue");
-    setShowAllFields(false);
+    if (currentCaseIdRef.current && selected?.id && currentCaseIdRef.current !== selected.id) {
+      setReviewSubTab("issue");
+      setShowAllFields(false);
+    }
+    currentCaseIdRef.current = selected?.id;
   }, [selected?.id]);
 
   useEffect(() => {
@@ -2163,8 +2366,8 @@ function HumanReviewPageView({
 
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
   const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
-  const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
-  const inputStep = field === "container_count" ? "1" : field === "gross_weight_kg" ? "any" : undefined;
+  const inputType = "text";
+  const inputStep = undefined;
   const rawExplanation = selected?.human_explanation || selected?.reason_text || "";
   const cleanExplanation = rawExplanation.replace(/\s*Affected fields:.*$/i, "").trim() || rawExplanation;
 
@@ -3391,7 +3594,14 @@ function HumanReviewPageView({
                                               setSide("BL");
                                               setField(diff.field);
                                               setEditingField(diff.field);
-                                              setCorrectedValue(String(diff.bl.canonical ?? diff.bl.raw ?? ""));
+                                              const blSugg = (selected.ai_suggestions ?? []).find(
+                                                (s) => s.field === diff.field && s.document_side === "BL" && (s.status === "PENDING" || !s.status)
+                                              );
+                                              if (blSugg && blSugg.suggested_value != null && !rejectedFieldKeys.has(`BL-${diff.field}`)) {
+                                                setCorrectedValue(String(blSugg.suggested_value));
+                                              } else {
+                                                setCorrectedValue(String(diff.bl.canonical ?? diff.bl.raw ?? ""));
+                                              }
                                               const el = document.getElementById("review-editor-box");
                                               if (el) el.scrollIntoView({ behavior: "smooth" });
                                             }}
@@ -3405,7 +3615,14 @@ function HumanReviewPageView({
                                               setSide("SI");
                                               setField(diff.field);
                                               setEditingField(diff.field);
-                                              setCorrectedValue(String(diff.si.canonical ?? diff.si.raw ?? ""));
+                                              const siSugg = (selected.ai_suggestions ?? []).find(
+                                                (s) => s.field === diff.field && s.document_side === "SI" && (s.status === "PENDING" || !s.status)
+                                              );
+                                              if (siSugg && siSugg.suggested_value != null && !rejectedFieldKeys.has(`SI-${diff.field}`)) {
+                                                setCorrectedValue(String(siSugg.suggested_value));
+                                              } else {
+                                                setCorrectedValue(String(diff.si.canonical ?? diff.si.raw ?? ""));
+                                              }
                                               const el = document.getElementById("review-editor-box");
                                               if (el) el.scrollIntoView({ behavior: "smooth" });
                                             }}
@@ -3480,18 +3697,27 @@ function HumanReviewPageView({
                               </button>
                             </div>
                             <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--color-grey-600)" }}>
-                              Corrections are stored separately from original extraction evidence.
+                              Proposed corrections stage into the Review Plan and preserve original extraction evidence.
                             </p>
                             <div className="form-grid">
                               <label>
-                                Document side
+                                Target
                                 <select
                                   aria-label="Override side"
                                   value={side}
-                                  onChange={(event) => setSide(event.target.value as "SI" | "BL")}
+                                  onChange={(event) => {
+                                    const newSide = event.target.value as "SI" | "BL";
+                                    setSide(newSide);
+                                    const sugg = (selected.ai_suggestions ?? []).find(
+                                      (s) => s.field === field && s.document_side === newSide && (s.status === "PENDING" || !s.status)
+                                    );
+                                    if (sugg && sugg.suggested_value != null && !rejectedFieldKeys.has(`${newSide}-${field}`)) {
+                                      setCorrectedValue(String(sugg.suggested_value));
+                                    }
+                                  }}
                                 >
-                                  <option>SI</option>
-                                  <option>BL</option>
+                                  <option value="SI">SI</option>
+                                  <option value="BL">Draft BL</option>
                                 </select>
                               </label>
                               <label>
@@ -3500,8 +3726,15 @@ function HumanReviewPageView({
                                   aria-label="Override field"
                                   value={field}
                                   onChange={(event) => {
-                                    setField(event.target.value);
-                                    setEditingField(event.target.value);
+                                    const newField = event.target.value;
+                                    setField(newField);
+                                    setEditingField(newField);
+                                    const sugg = (selected.ai_suggestions ?? []).find(
+                                      (s) => s.field === newField && s.document_side === side && (s.status === "PENDING" || !s.status)
+                                    );
+                                    if (sugg && sugg.suggested_value != null && !rejectedFieldKeys.has(`${side}-${newField}`)) {
+                                      setCorrectedValue(String(sugg.suggested_value));
+                                    }
                                   }}
                                 >
                                   {sortedFields.map((fName) => (
@@ -3509,41 +3742,125 @@ function HumanReviewPageView({
                                   ))}
                                 </select>
                               </label>
-                              <label className="form-span">
-                                Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
+                              <div className="form-span" style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                                <span style={{ fontSize: "12px", fontWeight: 600, color: "var(--color-grey-700)" }}>Current Value</span>
+                                <div style={{ padding: "8px 12px", background: "var(--color-grey-100)", border: "1px solid var(--color-grey-300)", borderRadius: "var(--radius-sm)", fontSize: "13px", color: "var(--color-grey-900)", fontFamily: "monospace" }}>
+                                  {currentTargetValue || "—"}
+                                </div>
+                              </div>
+                              <div className="form-span">
+                                <label htmlFor="correction-input-val" style={{ display: "block", marginBottom: "4px" }}>
+                                  Proposed Corrected Value{field === "gross_weight_kg" ? " (kg)" : ""}
+                                </label>
                                 <input
+                                  id="correction-input-val"
                                   type={inputType}
                                   step={inputStep}
-                                  min={inputType === "number" ? "0" : undefined}
                                   aria-label="Corrected value"
                                   aria-describedby="correction-help"
+                                  className={cx("manual-field-input", isAiSuggested && !isAiEdited && "input-ai-suggested")}
                                   value={correctedValue}
                                   onChange={(event) => setCorrectedValue(event.target.value)}
-                                  placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
+                                  placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter proposed corrected value"}
                                 />
-                              </label>
+                                {isAiSuggested && activeAiSuggestion ? (
+                                  <div className={cx("ai-suggestion-meta", isAiEdited && "is-edited")}>
+                                    {isAiEdited ? (
+                                      <span>✎ Edited by reviewer <small className="subtle">(Original AI suggestion: {displayValue(activeAiSuggestion.suggested_value)})</small></span>
+                                    ) : (
+                                      <span>✦ AI suggested · {Math.round((activeAiSuggestion.confidence ?? 0.9) * 100)}% confidence</span>
+                                    )}
+                                  </div>
+                                ) : aiLoading ? (
+                                  <div className="ai-suggestion-meta subtle">
+                                    <RefreshCw size={12} className="spin-icon" />
+                                    <span>✦ Analyzing evidence for AI suggestion…</span>
+                                  </div>
+                                ) : aiUnavailable ? (
+                                  <div className="ai-suggestion-meta subtle" style={{ color: "var(--color-grey-600)" }}>
+                                    <span>✦ AI suggestion unavailable · Manual correction</span>
+                                  </div>
+                                ) : null}
+                              </div>
+
+                              {(activeAiSuggestion?.reason || note) && (
+                                <div className="form-span" style={{ fontSize: "12px", color: "var(--color-grey-700)" }}>
+                                  <strong>Reason:</strong> {activeAiSuggestion?.reason || note}
+                                </div>
+                              )}
+
                               <label className="form-span">
                                 Reviewer note
                                 <textarea
                                   aria-label="Reviewer note"
                                   value={note}
                                   onChange={(event) => setNote(event.target.value)}
-                                  placeholder="Explain the evidence for this correction"
+                                  placeholder="Explain the rationale for this correction..."
                                 />
                               </label>
                             </div>
                             <p id="correction-help" className="form-help">
                               The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
                             </p>
-                            <div className="editor-button-row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                              <button
-                                className="button-primary btn-dark-charcoal"
-                                type="button"
-                                disabled={!correctedValue || actionState === "loading"}
-                                onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
-                              >
-                                {actionState === "loading" ? "Saving…" : "Save Correction"}
-                              </button>
+                            <div className="editor-button-row" style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                              {isAiSuggested && !isAiEdited ? (
+                                <>
+                                  <button
+                                    className="button-primary btn-dark-charcoal"
+                                    type="button"
+                                    disabled={!correctedValue || isPlanActionLoading}
+                                    onClick={() => void handleApproveSuggestion()}
+                                  >
+                                    Approve Suggestion
+                                  </button>
+                                  <button
+                                    className="button-danger-secondary"
+                                    type="button"
+                                    disabled={isPlanActionLoading}
+                                    onClick={handleRejectSuggestion}
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : isAiSuggested && isAiEdited ? (
+                                <>
+                                  <button
+                                    className="button-primary btn-dark-charcoal"
+                                    type="button"
+                                    disabled={!correctedValue || isPlanActionLoading}
+                                    onClick={() => void handleApproveSuggestion()}
+                                  >
+                                    Approve Edited Suggestion
+                                  </button>
+                                  <button
+                                    className="button-danger-secondary"
+                                    type="button"
+                                    disabled={isPlanActionLoading}
+                                    onClick={handleRejectSuggestion}
+                                  >
+                                    Reject
+                                  </button>
+                                </>
+                              ) : (
+                                <>
+                                  <button
+                                    className="button-primary btn-dark-charcoal"
+                                    type="button"
+                                    disabled={!correctedValue || isPlanActionLoading}
+                                    onClick={() => void handleAddManualToPlan()}
+                                  >
+                                    Add to Plan
+                                  </button>
+                                  <button
+                                    className="button-secondary"
+                                    type="button"
+                                    disabled={!correctedValue || actionState === "loading"}
+                                    onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
+                                  >
+                                    Save Correction
+                                  </button>
+                                </>
+                              )}
                               <button
                                 type="button"
                                 className="button-secondary"
@@ -3551,10 +3868,89 @@ function HumanReviewPageView({
                               >
                                 Cancel
                               </button>
-                              {actionState === "ready" && activeOverrides.length ? (
-                                <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
-                              ) : null}
+                              {stagedSuccess && (
+                                <span className="inline-success" role="status"><CheckCircle2 size={14} /> Staged in Review Plan</span>
+                              )}
+                              {planErrorMessage && (
+                                <span className="text-danger" role="alert" style={{ fontSize: "12px" }}>{planErrorMessage}</span>
+                              )}
                             </div>
+                          </div>
+                        )}
+
+                        {/* 2b. STRUCTURED REVIEW PLAN */}
+                        {reviewSubTab === "compare" && plan && plan.items && plan.items.length > 0 && selected.case_origin === "ACTIVE" && (
+                          <div className="review-plan-card" role="region" aria-label="Review Plan" style={{ marginBottom: "16px" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
+                              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                                <FileCheck2 size={16} className="text-orange" />
+                                <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700, textTransform: "uppercase", letterSpacing: "0.05em" }}>Review Plan</h3>
+                              </div>
+                              <span className="badge badge-info">{plan.status}</span>
+                            </div>
+
+                            <div style={{ display: "grid", gap: 10 }}>
+                              {plan.items.map((item) => (
+                                <article key={item.id} className="suggestion-val-box" style={{ padding: "10px 14px", background: "var(--color-grey-50)" }}>
+                                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                    <strong style={{ fontSize: "13px" }}>{labelForField(item.field)}</strong>
+                                    <span className={cx("badge", item.status === "APPROVED" ? "badge-good" : item.status === "REJECTED" ? "badge-danger" : "badge-info")}>
+                                      {item.status === "APPROVED" ? "Approved" : item.status === "REJECTED" ? "Rejected" : "Proposed"}
+                                    </span>
+                                  </div>
+                                  <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(130px, 1fr))", gap: 8, fontSize: "12px" }}>
+                                    <div><span className="val-caption">Target</span> <strong>{item.document_side === "BL" ? "Draft BL" : "SI"}</strong></div>
+                                    <div><span className="val-caption">Current</span> <span>{displayValue(item.current_value)}</span></div>
+                                    <div><span className="val-caption">Proposed</span> <strong>{displayValue(item.human_edited_value ?? item.proposed_value)}</strong></div>
+                                    <div><span className="val-caption">Source</span> <span className="badge badge-muted" style={{ fontSize: "10.5px" }}>{item.human_edited_value ? "Edited by reviewer" : item.ai_suggestion_id ? "AI Suggested" : "Manual"}</span></div>
+                                  </div>
+                                  {item.reason && <p style={{ margin: "6px 0 0", fontSize: "11.5px", color: "var(--color-grey-600)" }}>{item.reason}</p>}
+                                  {plan.status === "DRAFT" && (
+                                    <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                                      {item.status !== "APPROVED" && (
+                                        <button type="button" className="button-primary btn-sm" onClick={() => void updateReviewPlanItem(selected.id, plan.id, item.id, "APPROVED").then(setPlan)}>Approve</button>
+                                      )}
+                                      {item.status !== "REJECTED" && (
+                                        <button type="button" className="button-danger-secondary btn-sm" onClick={() => void updateReviewPlanItem(selected.id, plan.id, item.id, "REJECTED").then(setPlan)}>Reject</button>
+                                      )}
+                                      {!item.ai_suggestion_id && (
+                                        <button type="button" className="button-danger-secondary btn-sm" onClick={() => void removeManualReviewPlanItem(selected.id, plan.id, item.id, reviewer).then(setPlan)}><Trash2 size={12} /> Remove</button>
+                                      )}
+                                    </div>
+                                  )}
+                                </article>
+                              ))}
+                            </div>
+
+                            {(plan.status === "DRAFT" || plan.status === "APPLY_FAILED") && (
+                              <div style={{ marginTop: 14, paddingTop: 10, borderTop: "1px solid var(--color-grey-200)", display: "flex", justifyContent: "space-between", alignItems: "center", flexWrap: "wrap", gap: 8 }}>
+                                <span style={{ fontSize: "12.5px", fontWeight: 600, color: "var(--color-grey-700)" }}>
+                                  {plan.items.filter((i) => i.status === "APPROVED" || i.status === "EDITED").length} approved {plan.items.filter((i) => i.status === "APPROVED" || i.status === "EDITED").length === 1 ? "change" : "changes"} ready
+                                </span>
+                                <div style={{ display: "flex", gap: 8 }}>
+                                  <button
+                                    type="button"
+                                    className="button-primary btn-dark-charcoal"
+                                    disabled={isPlanActionLoading || (plan.status === "DRAFT" && !plan.items.some((i) => i.status === "APPROVED" || i.status === "EDITED"))}
+                                    onClick={() => void handleConfirmImplementation()}
+                                  >
+                                    {plan.status === "APPLY_FAILED" ? "Retry Re-comparison" : "Confirm Implementation"}
+                                  </button>
+                                  {plan.status === "DRAFT" && (
+                                    <button
+                                      type="button"
+                                      className="button-secondary btn-sm"
+                                      onClick={() => void cancelReviewPlan(selected.id, plan.id, reviewer).then(() => setPlan(null))}
+                                    >
+                                      Cancel Plan
+                                    </button>
+                                  )}
+                                </div>
+                              </div>
+                            )}
+                            {plan.error_message && (
+                              <p className="state-note warn" style={{ marginTop: 8 }}>Overrides were preserved. Re-comparison can be retried: {plan.error_message}</p>
+                            )}
                           </div>
                         )}
 
@@ -3768,6 +4164,8 @@ function HumanReviewPageView({
                           <AIReviewPanel
                             review={selected}
                             reviewerName={selected.reviewer_name || reviewer}
+                            plan={plan}
+                            onPlanChanged={setPlan}
                             onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
                           />
                         </div>
