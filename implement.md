@@ -1544,3 +1544,22 @@ Current document-level limitations:
 - **Files:** `AGENTS.md`, `implement.md`
 - **Validation:** Documentation only; no source-code tests run.
 - **Next:** Inspect the repository and update all `NOT CONFIRMED` implementation statuses before making architecture assumptions.
+# 2026-09-25 — Enhancement gap completion
+
+- Added durable multi-action Review Plans with per-item approve/edit/reject, explicit confirmation, override persistence, mandatory re-comparison, and failure-safe `APPLY_FAILED` state.
+- Made manual category classifications authoritative across processing and product reads while retaining later automatic predictions as history.
+- Added server-side Microsoft Graph OAuth/client boundary, verified reply send semantics, idempotency protection, failed-draft preservation, and optional background delta lifecycle reconciliation.
+- Routed Smart Reply summary/draft/refine through purpose-specific Secure AI Gateway minimization with deterministic fallback.
+- Added server-side queue sorting, official-ground-truth metric tooling, deterministic-vs-AI path performance reporting, and production setup documentation in `docs/enhancement_completion.md`.
+- Verification: Python compileall, both TypeScript checks, both production builds, and diff check passed. Dashboard tests passed 34/34; Outlook tests passed 74/74; official-metrics/performance unit tests passed 5/5. Review Plan/Graph/API backend tests were added but could not run in the available MSYS Python because the declared Pydantic native dependency has no compatible wheel and the Rust build toolchain is unavailable. Live Graph/Gemini and official ground-truth metrics remain externally blocked and are not claimed.
+
+> Historical status: the environment and Graph/UI gaps in this entry are superseded by the final verification entry below.
+
+### 2026-09-25 — Final enhancement verification (current)
+
+- **Closed UI gaps:** Dashboard and Outlook now share the multi-action Review Plan APIs, including canonical seven-field manual corrections, AI/Manual source labels, per-item approve/edit/reject/remove, cancel, one final confirmation, refresh from backend truth, and task-pane component coverage.
+- **Closed Graph gaps:** unknown delta messages enter `SyncService`; immutable provider identity prevents duplicates; lifecycle updates remain on the same record; `nextLink`/`deltaLink` and subscription metadata persist in checkpoints; failed pages retain the prior cursor; subscriptions create/renew/recreate; validated webhooks wake delta only. Added migration `20260925_0019` and deployment guide. Live tenant verification remains external.
+- **Regression/security:** human categories survive later classifier runs while all history remains; Graph category failures do not roll back business decisions; reply-send confirmation/failure/retry/idempotency, Review Plan failure/retry, sorting, and Smart Reply disclosure are tested. Production Gemini integrations call `SecureAIGateway`; privacy and lifecycle safe defaults remain in force.
+- **Environment:** native Windows CPython 3.13.14 at `.venv_native\Scripts\python.exe`, Pydantic 2.13.5, SQLAlchemy 2.0.54, pytest, psycopg, and separate `holyship_dev`, `holyship_test`, `holyship_eval` databases. A clean `holyship_test` migration ran from base through `20260925_0019 (head)`.
+- **Validation:** backend full suite initially found one force-reclassification history defect; after fixing it and adding cursor-failure/subscription-expiry coverage, the final suite passed 410/410 with one Starlette deprecation warning, zero skips, and zero xfails. Dashboard `check`: 35/35, typecheck and production build passed. Outlook `check`: 74/74, typecheck and production build passed (one pre-existing React `act` warning).
+- **Evaluation:** repeated clean 520-email runs produced identical submission SHA-256 `D59FA8DA8651265D6FA08F2076DCA4ECEBEA6CA66CCC038F2161D85B8B28D4C1`. Latest: 520 success, 0 failed, 0 unhandled exceptions, 20.291 s, 25.627 emails/s, P50 0.043128 s, P95 0.160608 s, 5 unresolved comparisons, and 20 Human Review cases. Gemini calls were zero because no credential was present; live AI performance is not verified. Official labels remain unavailable, so no quality metric was fabricated.
