@@ -37,7 +37,7 @@
 - **End-to-end** — Outlook email in, verified SI–BL result out.
 - **Human-controlled AI** — zero silent auto-apply; every action is approved, edited, or rejected by a person.
 - **Enterprise privacy** — minimum-necessary AI disclosure, routed through a server-side gateway only.
-- **Evidence-backed** — 520 / 520 public-dataset emails processed, 0 technical failures, 410 / 410 backend tests passed, P95 160.6 ms.
+- **Evidence-backed** — 520 / 520 public emails processed with zero technical failures, plus a frozen 40-case labeled stress test measuring classification, discrepancy detection, and escalation.
 
 ---
 
@@ -374,6 +374,35 @@ Public output:
 
 There were 5 unresolved comparisons. This is not the same metric as the 20 Human Review cases: Human Review also includes document and workflow exceptions that are actionable without being unresolved comparisons.
 
+### Independent labeled stress test
+
+Because the public participant dataset does not expose official ground-truth labels, HolyShip also uses a separate team-authored labeled stress test to evaluate decision correctness. The 40 cases were defined and labeled before execution, frozen as version `v1`, and evaluated without changing labels based on system output. The cases deliberately cover classification ambiguity, formatting-only differences, true and multi-field discrepancies, missing or contradictory evidence, wrong or missing documents, document-routing/OCR scenarios, and Human Review escalation decisions.
+
+| Measure | Result |
+| --- | ---: |
+| Dataset version | `v1` |
+| Cases | 40 |
+| Classification accuracy | 97.5% |
+| Classification macro F1 | 0.9683 |
+| Discrepancy detection TP / FP / TN / FN | 17 / 0 / 121 / 2 |
+| Discrepancy detection precision / recall / F1 | 1.0000 / 0.8947 / 0.9444 |
+| Human Review escalation TP / FP / TN / FN | 7 / 2 / 30 / 1 |
+| Human Review escalation precision / recall / F1 | 0.7778 / 0.8750 / 0.8235 |
+| Unsafe confident errors | 0 |
+| Correct safe abstentions | 3 |
+
+No unsafe confident errors were observed in this frozen stress test: when HolyShip lacked sufficient evidence, it preferred an unresolved or review path rather than forcing an unsupported definite decision. This is a result for this benchmark only, not a universal safety claim.
+
+The benchmark also exposed remaining edge cases in bilingual extraction, conservative entity handling, and contradictory readiness interpretation. These failures remain visible in the evaluation report rather than being removed from the benchmark. Stress-test v1 was frozen before execution and fingerprinted with SHA-256 `afd7b7ac9e81cf3bab1ab1bfc179ae4e45a554d7d326d1b7effce9ca3eced1d1`.
+
+Run the independent benchmark with:
+
+```powershell
+make stress-eval
+```
+
+Detailed outputs are available in [`reports/latest/stress_test_metrics.md`](reports/latest/stress_test_metrics.md) and [`reports/latest/stress_test_metrics.json`](reports/latest/stress_test_metrics.json).
+
 Repeated clean evaluation produced the same output fingerprint:
 
 ```text
@@ -402,7 +431,7 @@ P95: 160.608 ms
 
 These values describe the deterministic benchmark, not live Gemini-assisted performance. AI-assisted performance is **not measured** because the benchmark environment did not use live Gemini credentials.
 
-The public participant bundle does not expose the organizer's official ground-truth labels. HolyShip therefore reports operational reliability and performance without fabricating accuracy, precision, recall, F1, or confusion-matrix metrics. The repository includes an isolated evaluation tool that can calculate those metrics when authorized ground truth is supplied.
+The public participant bundle does not expose the organizer's official ground-truth labels. HolyShip therefore does not report official challenge accuracy. The independent stress-test metrics above are team-authored benchmark results, not organizer scores. The repository also includes an isolated evaluation tool that can calculate official-style metrics when authorized ground truth is supplied.
 
 ---
 

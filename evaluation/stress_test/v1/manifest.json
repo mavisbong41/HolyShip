@@ -1,0 +1,13 @@
+{
+  "dataset_name": "HolyShip Independent Labeled Stress Test",
+  "dataset_version": "v1",
+  "case_file": "cases/cases.json",
+  "ground_truth_file": "ground_truth.json",
+  "case_count": 40,
+  "frozen_before_execution": true,
+  "primary_metrics": {
+    "classification": "macro_f1",
+    "discrepancy": "field_level_f1",
+    "escalation": "f1"
+  }
+}

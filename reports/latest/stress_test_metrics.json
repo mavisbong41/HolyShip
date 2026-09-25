@@ -1,0 +1,245 @@
+{
+  "dataset": {
+    "name": "HolyShip Independent Labeled Stress Test",
+    "version": "v1",
+    "case_count": 40,
+    "sha256": "afd7b7ac9e81cf3bab1ab1bfc179ae4e45a554d7d326d1b7effce9ca3eced1d1",
+    "frozen_before_execution": true,
+    "execution_timestamp": "2026-09-25T11:07:31.542589+00:00",
+    "git_commit": "2834cd595323523f1ec79eb368fbb541eaa4481b",
+    "composition": {
+      "classification/readiness": 10,
+      "formatting-equivalent comparisons": 3,
+      "single-field discrepancies": 7,
+      "multi-field discrepancies": 3,
+      "ambiguous/missing evidence": 3,
+      "wrong/missing/unreadable documents": 5,
+      "structured/readable document cases": 3
+    }
+  },
+  "integrity": {
+    "leakage_scan": "PASS",
+    "prediction_case_count": 40
+  },
+  "classification": {
+    "evaluated": 40,
+    "accuracy": 0.975,
+    "macro": {
+      "precision": 0.95,
+      "recall": 0.99375,
+      "f1": 0.9682539682539681
+    },
+    "weighted": {
+      "precision": 0.98125,
+      "recall": 0.975,
+      "f1": 0.9765873015873016
+    },
+    "per_category": {
+      "document_comparison": {
+        "precision": 1.0,
+        "recall": 0.96875,
+        "f1": 0.9841269841269841,
+        "support": 32
+      },
+      "new_si_request": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 2
+      },
+      "invoice_query": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 2
+      },
+      "general_message": {
+        "precision": 0.75,
+        "recall": 1.0,
+        "f1": 0.8571428571428571,
+        "support": 3
+      },
+      "spam": {
+        "precision": 1.0,
+        "recall": 1.0,
+        "f1": 1.0,
+        "support": 1
+      }
+    },
+    "confusion_matrix": {
+      "document_comparison": {
+        "document_comparison": 31,
+        "new_si_request": 0,
+        "invoice_query": 0,
+        "general_message": 1,
+        "spam": 0
+      },
+      "new_si_request": {
+        "document_comparison": 0,
+        "new_si_request": 2,
+        "invoice_query": 0,
+        "general_message": 0,
+        "spam": 0
+      },
+      "invoice_query": {
+        "document_comparison": 0,
+        "new_si_request": 0,
+        "invoice_query": 2,
+        "general_message": 0,
+        "spam": 0
+      },
+      "general_message": {
+        "document_comparison": 0,
+        "new_si_request": 0,
+        "invoice_query": 0,
+        "general_message": 3,
+        "spam": 0
+      },
+      "spam": {
+        "document_comparison": 0,
+        "new_si_request": 0,
+        "invoice_query": 0,
+        "general_message": 0,
+        "spam": 1
+      }
+    }
+  },
+  "discrepancy": {
+    "field_level": {
+      "overall": {
+        "evaluated": 140,
+        "true_positive": 17,
+        "false_positive": 0,
+        "true_negative": 121,
+        "false_negative": 2,
+        "precision": 1.0,
+        "recall": 0.8947368421052632,
+        "f1": 0.9444444444444444
+      },
+      "by_field": {
+        "shipper": {
+          "evaluated": 20,
+          "true_positive": 2,
+          "false_positive": 0,
+          "true_negative": 17,
+          "false_negative": 1,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "consignee": {
+          "evaluated": 20,
+          "true_positive": 2,
+          "false_positive": 0,
+          "true_negative": 17,
+          "false_negative": 1,
+          "precision": 1.0,
+          "recall": 0.6666666666666666,
+          "f1": 0.8
+        },
+        "notify_party": {
+          "evaluated": 20,
+          "true_positive": 2,
+          "false_positive": 0,
+          "true_negative": 18,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "port_of_loading": {
+          "evaluated": 20,
+          "true_positive": 2,
+          "false_positive": 0,
+          "true_negative": 18,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "port_of_discharge": {
+          "evaluated": 20,
+          "true_positive": 2,
+          "false_positive": 0,
+          "true_negative": 18,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "container_count": {
+          "evaluated": 20,
+          "true_positive": 3,
+          "false_positive": 0,
+          "true_negative": 17,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        },
+        "gross_weight_kg": {
+          "evaluated": 20,
+          "true_positive": 4,
+          "false_positive": 0,
+          "true_negative": 16,
+          "false_negative": 0,
+          "precision": 1.0,
+          "recall": 1.0,
+          "f1": 1.0
+        }
+      }
+    },
+    "case_unresolved_ground_truth": 3,
+    "unresolved_predictions": 3
+  },
+  "escalation": {
+    "evaluated": 40,
+    "true_positive": 7,
+    "false_positive": 2,
+    "true_negative": 30,
+    "false_negative": 1,
+    "precision": 0.7777777777777778,
+    "recall": 0.875,
+    "f1": 0.823529411764706
+  },
+  "errors": [
+    {
+      "case_id": "STRESS-CMP-016",
+      "error_types": [
+        "extraction or normalization",
+        "unnecessary escalation"
+      ],
+      "reason": "Bilingual/descriptive labels map to the same seven fields and values match."
+    },
+    {
+      "case_id": "STRESS-CMP-020",
+      "error_types": [
+        "extraction or normalization",
+        "unnecessary escalation"
+      ],
+      "reason": "Meaningful entity differences must not be normalized away."
+    },
+    {
+      "case_id": "STRESS-ESC-002",
+      "error_types": [
+        "classification signal ambiguity",
+        "readiness interpretation",
+        "missed escalation"
+      ],
+      "reason": "Comparison intent is clear but the readiness evidence is contradictory."
+    }
+  ],
+  "error_counts": {
+    "extraction or normalization": 2,
+    "unnecessary escalation": 2,
+    "classification signal ambiguity": 1,
+    "readiness interpretation": 1,
+    "missed escalation": 1
+  },
+  "safety": {
+    "unresolved_predictions": 5,
+    "correct_safe_abstentions": 3,
+    "unnecessary_abstentions": 2,
+    "unsafe_confident_errors": 0
+  }
+}

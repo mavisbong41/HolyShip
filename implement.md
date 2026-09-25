@@ -45,7 +45,22 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Dashboard Reply Email visibility fix
+**Updated by:** Independent labeled stress-test benchmark
+
+### README stress-test evidence update
+- **Changed:** Added the frozen 40-case Independent Labeled Stress Test to the README without mixing it with the public 520-email operational benchmark.
+- **Included:** Exact v1 metrics, scoped zero-unsafe-confident-errors finding, visible error categories, SHA-256 fingerprint, report links, and `make stress-eval`.
+- **Preserved:** Public benchmark figures, existing backend/frontend test-count claims, product positioning, and the official organizer-labels-unavailable caveat.
+- **Validation:** `git diff --check` passed; challenge summary was left unchanged.
+
+### Independent labeled stress-test benchmark (current)
+- **Implemented:** Frozen `evaluation/stress_test/v1` with 40 independently designed cases, separate input fixtures and ground truth, SHA-256 fingerprint, leakage scan, metric calculations, error analysis, safety/abstention reporting, and presentation-ready output.
+- **Execution:** The harness runs the existing classifier/readiness, document router, deterministic extractor, and comparison service in-process. It does not read private organizer answers or mutate production databases.
+- **Latest frozen hash:** `afd7b7ac9e81cf3bab1ab1bfc179ae4e45a554d7d326d1b7effce9ca3eced1d1`.
+- **Latest result:** 40 cases; classification accuracy 97.5%, macro F1 0.9683; field-level discrepancy precision 1.0000, recall 0.8947, F1 0.9444; escalation precision 0.7778, recall 0.8750, F1 0.8235; 0 unsafe confident errors and 3 correct safe abstentions.
+- **Reports:** `reports/latest/stress_test_metrics.json` and `reports/latest/stress_test_metrics.md`.
+- **Command:** `.venv_native\\Scripts\\python.exe scripts/run_stress_evaluation.py` or `make stress-eval` after the frozen fingerprint exists.
+- **Limitations:** This is a team-authored benchmark, not official organizer accuracy; it exercises deterministic in-process boundaries and does not verify live Gemini/OCR behavior.
 
 ### Section 8: Delete and Restore Behaviour Completed:
 - **8.1 Delete Detection & Evidence Preservation**:
