@@ -1731,3 +1731,10 @@ Current document-level limitations:
 - **Why:** The previous single-column composition made the page feel crowded and reduced supporting text below projector-readable size.
 - **Files:** `presentation/holyship-presentation.html` only.
 - **Validation:** Local Chrome preview checked Slide 10 at the target short-height viewport; title, cards, labels, benchmark footers, and bottom controls remain visibly separated. `git diff --check` passed.
+
+### 2026-09-25 — Add HTML presentation link to README
+
+- **Changed:** Added the live HTML presentation preview link to the README header resource links and the Live prototype / demo section.
+- **Why:** Make the browser-based presentation easy to find alongside the existing Canva deck and demo video.
+- **Files:** `README.md` only.
+- **Validation:** Verified both README links point to the same GitHub-backed HTML preview URL.

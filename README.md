@@ -6,7 +6,7 @@
 
 <p><strong>Team:</strong> NJHL — Wong Jia Hui · Bong Zi Shan · Lee Mei Shuet · Christ Ting Shin Ling · Gan Rui En</p>
 
-<p><a href="https://holyship.onrender.com/">🌐 Dashboard</a> · <a href="https://holyship-backend.onrender.com">⚙️ Backend API</a> · <a href="https://holyship-backend.onrender.com/docs">📘 API Docs</a> · <a href="https://canva.link/kflchdm6qu1pslv">📑 Presentation Slides</a> · <a href="https://youtu.be/mnfbrDJyGaQ">🎥 Demo Video</a></p>
+<p><a href="https://holyship.onrender.com/">🌐 Dashboard</a> · <a href="https://holyship-backend.onrender.com">⚙️ Backend API</a> · <a href="https://holyship-backend.onrender.com/docs">📘 API Docs</a> · <a href="https://canva.link/kflchdm6qu1pslv">📑 Presentation Slides</a> · <a href="https://htmlpreview.github.io/?https://github.com/mavisbong41/HolyShip/blob/main/presentation/holyship-presentation.html">🖥️ HTML Presentation</a> · <a href="https://youtu.be/mnfbrDJyGaQ">🎥 Demo Video</a></p>
 
 <p><strong>Outlook Add-in Demo Account:</strong> <code>captain.holyship@outlook.com</code> · Password: <code>captain12</code></p>
 
@@ -450,7 +450,7 @@ DATA_LIFECYCLE_RUN_ON_STARTUP=false
 
 The current public Dashboard deployment is available at [holyship.onrender.com](https://holyship.onrender.com/). The backend API and interactive documentation are available at [holyship-backend.onrender.com](https://holyship-backend.onrender.com) and its [OpenAPI docs](https://holyship-backend.onrender.com/docs).
 
-See the [presentation slides](https://canva.link/kflchdm6qu1pslv) and [demo video](https://youtu.be/mnfbrDJyGaQ) for the end-to-end product walkthrough.
+See the [presentation slides](https://canva.link/kflchdm6qu1pslv), [HTML presentation](https://htmlpreview.github.io/?https://github.com/mavisbong41/HolyShip/blob/main/presentation/holyship-presentation.html), and [demo video](https://youtu.be/mnfbrDJyGaQ) for the end-to-end product walkthrough.
 
 ---
 
