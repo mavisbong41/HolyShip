@@ -75,6 +75,7 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
   appendParam(params, "is_processing", filters.is_processing);
   appendParam(params, "lifecycle_status", filters.lifecycle_status);
   appendParam(params, "search", filters.search?.trim());
+  appendParam(params, "sort", filters.sort);
   appendParam(params, "skip", filters.skip ?? 0);
   appendParam(params, "limit", filters.limit ?? 20);
   return request<EmailQueuePage>(`/emails?${params.toString()}`);

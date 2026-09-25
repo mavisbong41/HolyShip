@@ -389,6 +389,37 @@ export interface QueueFilters {
   search?: string;
   skip?: number;
   limit?: number;
+  sort?: "newest" | "oldest" | "priority" | "status" | "category" | "last_updated";
+}
+
+export interface ProductReviewPlanItem {
+  id: string;
+  ai_suggestion_id: string | null;
+  document_side: "SI" | "BL";
+  field: CanonicalField | string;
+  current_value: unknown;
+  proposed_value: unknown;
+  human_edited_value: unknown;
+  reason: string;
+  confidence: number | null;
+  action: string;
+  status: "PROPOSED" | "APPROVED" | "EDITED" | "REJECTED" | "APPLIED";
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ProductReviewPlan {
+  id: string;
+  review_case_id: string;
+  status: "DRAFT" | "CONFIRMED" | "APPLIED" | "APPLY_FAILED" | "CANCELLED";
+  created_by: string | null;
+  confirmed_at: string | null;
+  confirmed_by: string | null;
+  applied_comparison_id: string | null;
+  error_message: string | null;
+  items: ProductReviewPlanItem[];
+  created_at: string;
+  updated_at: string;
 }
 
 export interface ReviewQueueFilters {

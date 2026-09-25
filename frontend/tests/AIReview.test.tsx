@@ -54,6 +54,23 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.endsWith("/ai/ask") && method === "POST") {
       return jsonResponse(overrides?.aiAskResponse ?? mockSuggestionResponse);
     }
+    if (url.endsWith("/plans") && method === "GET") {
+      return jsonResponse(overrides?.reviewPlans ?? []);
+    }
+    if (url.endsWith("/plans") && method === "POST") {
+      const body = init?.body ? JSON.parse(String(init.body)) : {};
+      return jsonResponse({
+        id: "plan-1", review_case_id: reviewDetail.id, status: "DRAFT",
+        created_by: body.created_by, confirmed_at: null, confirmed_by: null,
+        applied_comparison_id: null, error_message: null,
+        items: body.items.map((item: Record<string, unknown>, index: number) => ({
+          id: `manual-${index}`, ai_suggestion_id: null, human_edited_value: null,
+          action: "REPLACE", created_at: "2026-09-25T00:00:00Z", updated_at: "2026-09-25T00:00:00Z",
+          ...item,
+        })),
+        created_at: "2026-09-25T00:00:00Z", updated_at: "2026-09-25T00:00:00Z",
+      });
+    }
     if (url.includes("/ai/suggestions/") && url.endsWith("/accept") && method === "POST") {
       const acceptedReview: ProductReview = {
         ...reviewDetail,
@@ -191,6 +208,28 @@ afterEach(() => {
 });
 
 describe("AI Review Assistant Dashboard UI", () => {
+  it("adds a reviewer-authored manual correction to the same confirmable plan", async () => {
+    const fetchMock = setupFetch();
+    const user = userEvent.setup({ advanceTimers: vi.advanceTimersByTime });
+    window.history.replaceState({}, "", "/?review=99999999-9999-4999-8999-999999999999");
+    render(<App />);
+
+    await screen.findByRole("region", { name: "Structured Review Plan" });
+    await user.click(screen.getByRole("button", { name: /add manual correction/i }));
+    const form = screen.getByLabelText("Add Manual Correction");
+    expect(within(form).getAllByRole("option")).toHaveLength(9); // 2 sides + exactly 7 canonical fields
+    await user.type(within(form).getByLabelText("Proposed Corrected Value"), "Corrected Shipper Ltd");
+    await user.type(within(form).getByLabelText("Reason / Note"), "Verified against signed SI");
+    await user.click(within(form).getByRole("button", { name: "Add to Plan" }));
+
+    await waitFor(() => expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringMatching(/\/human-review\/99999999-9999-4999-8999-999999999999\/plans$/),
+      expect.objectContaining({ method: "POST" }),
+    ));
+    expect(await screen.findByText("Manual correction")).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /confirm implementation/i })).toBeInTheDocument();
+  });
+
   it("renders AI Review Assistant panel with suggested prompt chips", async () => {
     setupFetch();
     window.history.replaceState({}, "", "/?review=99999999-9999-4999-8999-999999999999");
