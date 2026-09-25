@@ -45,7 +45,7 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Dashboard AI Review Assistant concise responses and implementation action
+**Updated by:** Dashboard AI Review Assistant formatting refinement
 
 ### Section 8: Delete and Restore Behaviour Completed:
 - **8.1 Delete Detection & Evidence Preservation**:
@@ -1241,6 +1241,13 @@ Current document-level limitations:
 - Files: `frontend/src/components/ai-review/AIChatThread.tsx`, `AISuggestionCard.tsx`, `AIReviewPanel.tsx`, `AIChatThread.test.tsx`, `frontend/src/styles/app.css`, `backend/app/ai_review/providers.py`.
 - Validation: Dashboard typecheck passed; full frontend suite passed (37 tests); production build and `git diff --check` passed.
 - Next: None for this focused UI change.
+
+### 2026-09-25 — Normalize inline AI explanation labels
+- Changed: Dashboard AI chat now splits inline `Status`, `Issue`, `BL evidence`, and `Next action` labels into separate JSX blocks with wrapping evidence text.
+- Why: Provider formatting is no longer required for readable AI explanations.
+- Files: `frontend/src/components/ai-review/AIChatThread.tsx`, `frontend/src/components/ai-review/AIChatThread.test.tsx`, `frontend/src/styles/app.css`.
+- Validation: Frontend typecheck and focused AI Review tests passed (10 tests); diff check passed.
+- Next: None.
 
 ### 2026-09-25 — Outlook ↔ Dashboard & Email Lifecycle Synchronisation (Sections 6 & 7)
 

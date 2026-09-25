@@ -28,6 +28,28 @@ describe("AIChatThread", () => {
     expect(screen.queryByRole("button", { name: /Accept & Implement/i })).not.toBeInTheDocument();
   });
 
+  it("splits inline labelled responses into separate blocks", () => {
+    render(
+      <AIChatThread
+        {...baseProps}
+        messages={[{
+          id: "inline-explanation",
+          sender: "ai",
+          mode: "EXPLANATION_ONLY",
+          text: 'Status: BLOCKED - Issue: Consignee missing in SI - BL evidence: "CLIFFORD PAPER INC" - Next action: Review or input Consignee',
+          timestamp: "05:34 PM",
+        }]}
+      />,
+    );
+
+    expect(screen.getByText("Consignee missing in SI")).toBeInTheDocument();
+    expect(screen.getByText('"CLIFFORD PAPER INC"')).toBeInTheDocument();
+    expect(screen.getByText("Review or input Consignee")).toBeInTheDocument();
+    expect(screen.queryByText(/- Issue:/)).not.toBeInTheDocument();
+    expect(screen.getByText("Status:")).toBeInTheDocument();
+    expect(screen.getAllByText(/^(Issue|BL evidence|Next action)$/)).toHaveLength(3);
+  });
+
   it("shows implementation controls only for concrete structured suggestions", () => {
     render(
       <AIChatThread

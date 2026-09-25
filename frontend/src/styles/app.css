@@ -4153,12 +4153,26 @@ button:disabled {
 }
 
 .assistant-message-list {
-  padding-left: 18px;
   margin-bottom: 0;
 }
 
-.assistant-message-list li {
-  margin: 2px 0;
+.assistant-message-section {
+  margin: 5px 0;
+}
+
+.assistant-message-heading {
+  display: flex;
+  gap: 7px;
+  align-items: baseline;
+}
+
+.assistant-message-heading span {
+  color: var(--color-orange-700);
+}
+
+.assistant-message-value {
+  margin: 2px 0 0 15px;
+  overflow-wrap: anywhere;
 }
 
 .chat-bubble-footer {

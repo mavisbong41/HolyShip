@@ -22,25 +22,29 @@ interface AIChatThreadProps {
   isActionLoading?: boolean;
 }
 
-function assistantLines(text: string): string[] {
-  const normalized = text
-    .replace(/\r\n/g, "\n")
-    .replace(/\s+(?=(Status|Issue|BL evidence|Next action):)/gi, "\n")
-    .trim();
-  return normalized
-    .split("\n")
-    .map((line) => line.trim().replace(/^[-•*]\s*/, ""))
-    .filter(Boolean)
-    .slice(0, 5);
+type AssistantSection = { label: string; value: string };
+
+function assistantSections(text: string): AssistantSection[] {
+  const labels = /\b(Status|Issue|BL evidence|Next action):/gi;
+  const matches = [...text.matchAll(labels)];
+  if (matches.length === 0) return [{ label: "", value: text.trim() }];
+
+  return matches.slice(0, 5).map((match, index) => ({
+    label: match[1],
+    value: text.slice(
+      (match.index ?? 0) + match[0].length,
+      matches[index + 1]?.index,
+    ).replace(/^[\s•*-]+|[\s•*-]+$/g, "").trim(),
+  }));
 }
 
-function renderAssistantLine(line: string, index: number): React.ReactNode {
-  const match = line.match(/^(Status|Issue|BL evidence|Next action):\s*(.*)$/i);
-  if (!match) return <li key={`${line}-${index}`}>{line}</li>;
+function renderAssistantSection(section: AssistantSection, index: number): React.ReactNode {
+  if (!section.label) return <div key={`section-${index}`}>{section.value}</div>;
   return (
-    <li key={`${line}-${index}`}>
-      <strong>{match[1]}:</strong>{match[2] ? ` ${match[2]}` : null}
-    </li>
+    <div className="assistant-message-section" key={`${section.label}-${index}`}>
+      <div className="assistant-message-heading"><span aria-hidden="true">•</span><strong>{section.label === "Status" ? "Status:" : section.label}</strong></div>
+      {section.value && <div className="assistant-message-value">{section.value}</div>}
+    </div>
   );
 }
 
@@ -88,9 +92,9 @@ export function AIChatThread({
 
           <div className="chat-bubble-content">
             {msg.sender === "ai" ? (
-              <ul className="message-text assistant-message-list">
-                {assistantLines(msg.text).map(renderAssistantLine)}
-              </ul>
+              <div className="message-text assistant-message-list">
+                {assistantSections(msg.text).map(renderAssistantSection)}
+              </div>
             ) : <p className="message-text">{msg.text}</p>}
             {msg.suggestion && msg.suggestion.field && msg.suggestion.suggested_value != null && msg.suggestionId && (
               <AISuggestionCard
