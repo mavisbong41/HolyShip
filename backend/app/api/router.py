@@ -60,6 +60,7 @@ from backend.app.api.product_queries import (
     list_processing_events,
     list_product_discrepancies,
 )
+from backend.app.reply.policy import evaluate_reply_policy
 from backend.app.ai_review.service import AIReviewService
 from backend.app.api.product_schemas import (
     AIAssistantAskIn,
@@ -614,6 +615,28 @@ def _email_or_404(session: Session, email_id: uuid.UUID) -> EmailMessageRecord:
     return record
 
 
+def _reply_policy_for_record(record: EmailMessageRecord):
+    comparisons = list(getattr(record, "comparison_results", None) or [])
+    comparison = max(comparisons, key=lambda item: (item.created_at, str(item.id)), default=None)
+    reviews = [item for item in list(getattr(record, "human_review_cases", None) or []) if item.case_origin == "ACTIVE"]
+    review = max(reviews, key=lambda item: (item.created_at, str(item.id)), default=None)
+    return evaluate_reply_policy(
+        email_id=record.id,
+        processing_status=record.processing_status,
+        comparison_state=comparison.comparison_state if comparison else None,
+        mismatched_fields=list(comparison.mismatched_fields or []) if comparison else [],
+        unresolved_fields=list(comparison.unresolved_fields or []) if comparison else [],
+        reason_code=review.reason_code if review else (comparison.reason_code if comparison else None),
+    )
+
+
+def _require_reply_policy(record: EmailMessageRecord):
+    policy = _reply_policy_for_record(record)
+    if not policy.allowed:
+        raise HTTPException(status_code=409, detail=f"Reply is not allowed: {policy.reason}")
+    return policy
+
+
 def _append_outlook_event(
     session: Session,
     record: EmailMessageRecord,
@@ -972,12 +995,15 @@ def product_reply_generate(
     settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
+    reply_policy = _require_reply_policy(record)
+    detail = get_email_detail(session, email_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Email not found")
     points = [point.strip() for point in payload.key_points if point.strip()]
     if not points:
-        detail = get_email_detail(session, email_id)
-        if detail is None:
-            raise HTTPException(status_code=404, detail="Email not found")
         points = _reply_seed_points(detail)
+    if reply_policy.mode == "REQUEST_INFORMATION":
+        points = [f"Request: {item}." for item in reply_policy.missing_or_required_items] or points
     generated, audit = _reply_ai(settings, purpose=PURPOSE_REPLY_DRAFT, data={"key_points": points}, instruction="Return JSON with draft. Use only approved key points; invent no dates, promises, or shipping facts.")
     draft = str(generated.get("draft"))[:8000] if generated and generated.get("draft") else _draft_from_points(points)
     workflow = _workflow_payload(
@@ -1005,6 +1031,10 @@ def product_reply_refine(
     settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
+    _require_reply_policy(record)
+    detail = get_email_detail(session, email_id)
+    if detail is None:
+        raise HTTPException(status_code=404, detail="Email not found")
     instruction = payload.instruction.strip()
     refined = payload.draft.strip()
     existing = dict((record.source_metadata or {}).get("outlook_workflow") or {})
@@ -1041,6 +1071,7 @@ def product_reply_send(
     settings: Settings = Depends(get_settings_dep),
 ):
     record = _email_or_404(session, email_id)
+    _require_reply_policy(record)
     if not payload.confirmed:
         raise HTTPException(status_code=422, detail="Explicit human send confirmation is required")
     existing = dict((record.source_metadata or {}).get("outlook_workflow") or {})

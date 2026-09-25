@@ -45,7 +45,7 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Dashboard AI Review Assistant formatting refinement
+**Updated by:** Dashboard Reply Email UI/UX
 
 ### Section 8: Delete and Restore Behaviour Completed:
 - **8.1 Delete Detection & Evidence Preservation**:
@@ -1233,6 +1233,21 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-25 — Dashboard Reply Email UI/UX
+- Changed: Reply Email under Email & Documents now presents compact Information Required, Ready to Reply, and Reply Unavailable states from the shared backend policy.
+- Changed: Added scannable request evidence, editable subject/body, optional refine, loading states, explicit two-step send confirmation, inline errors, and Reply sent success state. No auto-generation or auto-send was added.
+- Files: `frontend/src/components/ReplyEmailSection.tsx`, `frontend/src/api/client.ts`, `frontend/src/styles/app.css`, `implement.md`.
+- Validation: Dashboard typecheck, 38 tests, and production build passed.
+- Next: None for this focused UI change.
+
+### 2026-09-25 — Shared Reply Email eligibility policy
+- Changed: Added one backend reply policy with `REQUEST_INFORMATION` and `RESOLUTION_REPLY` modes; requestable blocked/unresolved cases can generate an information request, while only a clean completed comparison can generate a resolution reply.
+- Changed: Guarded reply generate/refine/send server-side with clear 409 responses; Dashboard and Outlook Add-in now consume the same policy and never use `plan.status === APPLIED` alone.
+- Changed: Added Dashboard Reply Email section with explicit draft editing and send confirmation, plus Add-in gating after plan recompare.
+- Files: `backend/app/reply/policy.py`, `backend/app/api/product_queries.py`, `backend/app/api/product_schemas.py`, `backend/app/api/router.py`, `backend/tests/test_reply_policy.py`, `backend/tests/test_api.py`, `frontend/src/components/ReplyEmailSection.tsx`, `frontend/src/api/client.ts`, `frontend/src/api/types.ts`, `frontend/src/App.tsx`, `frontend/src/styles/app.css`, `outlook-addin/src/components/TaskPane.tsx`, `outlook-addin/src/types/product.ts`.
+- Validation: Backend focused suite passed (28 tests); Dashboard typecheck, tests (38), and build passed; Outlook Add-in typecheck, tests (74), and build passed.
+- Next: None for this focused policy change.
 
 ### 2026-09-25 — Dashboard AI Review Assistant refinements
 - Changed: AI explanation messages now render as short labelled bullets (capped at five displayed lines), and the provider prompt requests concise bullet-style output.

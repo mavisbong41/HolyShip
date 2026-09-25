@@ -55,6 +55,7 @@ import {
   reconcileOutlookLifecycle,
 } from "./api/client";
 import { AIReviewPanel } from "./components/ai-review/AIReviewPanel";
+import { ReplyEmailSection } from "./components/ReplyEmailSection";
 import { MetricCard } from "./components/common/MetricCard";
 import { ConfirmedDiscrepanciesPageView } from "./components/discrepancies/ConfirmedDiscrepanciesPageView";
 import type {
@@ -1770,6 +1771,8 @@ function EmailDetailContent({
           <EmptyState title="No documents materialized" body="This email has no validated SI or Draft BL document to display." />
         )}
       </div>
+
+      <ReplyEmailSection detail={detail} />
 
       <div className="detail-section">
         <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>

@@ -764,6 +764,15 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
         comparison=comparison_record,
         review=latest_review,
     )
+    from backend.app.reply.policy import evaluate_reply_policy
+    reply_policy = evaluate_reply_policy(
+        email_id=record.id,
+        processing_status=record.processing_status,
+        comparison_state=comparison_record.comparison_state if comparison_record else None,
+        mismatched_fields=list(comparison_record.mismatched_fields or []) if comparison_record else [],
+        unresolved_fields=list(comparison_record.unresolved_fields or []) if comparison_record else [],
+        reason_code=latest_review.reason_code if latest_review else (comparison_record.reason_code if comparison_record else None),
+    )
     comparison = _comparison(comparison_record)
     from backend.app.storage.models import (
         AISuggestionRecord,
@@ -846,6 +855,7 @@ def get_email_detail(session: Session, email_id: UUID) -> ProductEmailDetail | N
         review=review,
         resolutions=[_resolution(item) for item in resolutions],
         outlook_workflow=dict((record.source_metadata or {}).get("outlook_workflow") or {}),
+        reply_policy=reply_policy.as_dict(),
     )
 
 

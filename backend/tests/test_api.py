@@ -25,6 +25,7 @@ from backend.app.api.product_schemas import ProductEmailDetail, ProductEmailSumm
 from backend.app.core.config import Settings
 from backend.app.storage.models import EmailMessageRecord
 from backend.app.sync.service import EmailSyncOutcome, SyncReport
+from backend.app.reply.policy import ReplyPolicy
 
 
 # ---------------------------------------------------------------------------
@@ -409,7 +410,8 @@ def test_v1_reply_workflow_records_human_confirmed_send_only_after_graph_success
     )
     mock_session.get.return_value = record
 
-    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+    eligible = ReplyPolicy(True, "RESOLUTION_REPLY", "clean", [])
+    with patch("backend.app.api.router._reply_policy_for_record", return_value=eligible), patch("backend.app.api.router.MicrosoftGraphClient") as graph:
         resp = tc.post(
             f"/api/v1/emails/{email_id}/reply/send",
             json={"final_message": "Dear Customer, confirmed.", "reviewer_name": "Outlook reviewer", "confirmed": True, "idempotency_key": "reply-test-001"},
@@ -433,28 +435,44 @@ def test_v1_reply_send_requires_confirmation_and_preserves_failed_draft(client):
         processing_status="COMPLETED", source_metadata={},
     )
     mock_session.get.return_value = record
-    unconfirmed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": False, "idempotency_key": "reply-test-002"})
-    assert unconfirmed.status_code == 422
-    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
-        from backend.app.ingestion.graph_client import GraphClientError
-        graph.return_value.reply.side_effect = GraphClientError("timeout")
-        failed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
-    assert failed.status_code == 502
-    assert record.source_metadata["outlook_workflow"]["status"] == "SEND_FAILED"
-    assert record.source_metadata["outlook_workflow"]["draft"] == "Draft"
+    eligible = ReplyPolicy(True, "RESOLUTION_REPLY", "clean", [])
+    with patch("backend.app.api.router._reply_policy_for_record", return_value=eligible):
+        unconfirmed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": False, "idempotency_key": "reply-test-002"})
+        assert unconfirmed.status_code == 422
+        with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+            from backend.app.ingestion.graph_client import GraphClientError
+            graph.return_value.reply.side_effect = GraphClientError("timeout")
+            failed = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+        assert failed.status_code == 502
+        assert record.source_metadata["outlook_workflow"]["status"] == "SEND_FAILED"
+        assert record.source_metadata["outlook_workflow"]["draft"] == "Draft"
 
-    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
-        retried = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
-        assert retried.status_code == 200
-        graph.return_value.reply.assert_called_once_with("graph-1", "Draft")
+        with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+            retried = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+            assert retried.status_code == 200
+            graph.return_value.reply.assert_called_once_with("graph-1", "Draft")
 
-    with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
-        duplicate = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
-        assert duplicate.status_code == 200
-        graph.return_value.reply.assert_not_called()
+        with patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+            duplicate = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-003"})
+            assert duplicate.status_code == 200
+            graph.return_value.reply.assert_not_called()
 
-    conflicting = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-004"})
+        conflicting = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "reply-test-004"})
     assert conflicting.status_code == 409
+
+
+def test_v1_reply_endpoints_reject_ineligible_case_before_provider_call(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(id=email_id, external_message_id="graph-blocked", source_type="MICROSOFT_GRAPH", recipients=[], subject="Draft BL", body="", content_hash="blocked", processing_status="BLOCKED", source_metadata={})
+    mock_session.get.return_value = record
+    blocked = ReplyPolicy(False, None, "latest comparison is unresolved", ["consignee"])
+    with patch("backend.app.api.router._reply_policy_for_record", return_value=blocked), patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        generated = tc.post(f"/api/v1/emails/{email_id}/reply/generate", json={"key_points": []})
+        sent = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Draft", "confirmed": True, "idempotency_key": "blocked-send"})
+    assert generated.status_code == 409
+    assert sent.status_code == 409
+    graph.return_value.reply.assert_not_called()
 
 
 @pytest.mark.req("SYNC-06")

@@ -8,6 +8,7 @@ import type {
   ProductDiscrepancyDetail,
   ProductDiscrepancySummary,
   ProductEmailDetail,
+  ProductReplyWorkflow,
   ProductEvent,
   ProductReview,
   ProductSummary,
@@ -83,6 +84,28 @@ export async function getEmailQueue(filters: QueueFilters): Promise<EmailQueuePa
 
 export async function getEmailDetail(emailId: string): Promise<ProductEmailDetail> {
   return request<ProductEmailDetail>(`/emails/${emailId}`);
+}
+
+export async function generateReplyDraft(emailId: string, keyPoints: string[] = []): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/generate`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ key_points: keyPoints, reviewer_name: "Dashboard reviewer" }),
+  });
+}
+
+export async function sendReplyDraft(emailId: string, finalMessage: string): Promise<ProductReplyWorkflow> {
+  const idempotencyKey = globalThis.crypto?.randomUUID?.() || `dashboard-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/send`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ final_message: finalMessage, reviewer_name: "Dashboard reviewer", confirmed: true, idempotency_key: idempotencyKey }),
+  });
+}
+
+export async function refineReplyDraft(emailId: string, draft: string, instruction: string): Promise<ProductReplyWorkflow> {
+  return request<ProductReplyWorkflow>(`/emails/${emailId}/reply/refine`, {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ draft, instruction, reviewer_name: "Dashboard reviewer" }),
+  });
 }
 
 export async function getHumanReviewQueue(filters: ReviewQueueFilters = {}): Promise<HumanReviewPage> {

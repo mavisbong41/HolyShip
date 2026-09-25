@@ -236,6 +236,7 @@ class ProductEmailDetail(BaseModel):
     review: list["ProductReview"] = Field(default_factory=list)
     resolutions: list[ProductResolution] = Field(default_factory=list)
     outlook_workflow: dict[str, Any] = Field(default_factory=dict)
+    reply_policy: dict[str, Any] = Field(default_factory=dict)
 
 
 class ProductReview(BaseModel):

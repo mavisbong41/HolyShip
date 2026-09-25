@@ -143,6 +143,14 @@ export interface ProductEmailDetail {
   review: ProductReview[];
   resolutions: ProductResolution[];
   outlook_workflow?: ProductReplyWorkflow;
+  reply_policy?: ReplyPolicy;
+}
+
+export interface ReplyPolicy {
+  allowed: boolean;
+  mode: "REQUEST_INFORMATION" | "RESOLUTION_REPLY" | null;
+  reason: string;
+  missing_or_required_items: string[];
 }
 
 export interface ProductReplyWorkflow {

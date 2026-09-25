@@ -363,6 +363,25 @@ export interface ProductEmailDetail {
   timeline: ProductTimelineEvent[];
   review: ProductReview[];
   resolutions: ProductResolution[];
+  reply_policy?: ReplyPolicy;
+}
+
+export interface ReplyPolicy {
+  allowed: boolean;
+  mode: "REQUEST_INFORMATION" | "RESOLUTION_REPLY" | null;
+  reason: string;
+  missing_or_required_items: string[];
+}
+
+export interface ProductReplyWorkflow {
+  email_id: string;
+  status: string;
+  summary: string | null;
+  key_points: string[];
+  draft: string | null;
+  last_instruction: string | null;
+  sent_at: string | null;
+  updated_at: string;
 }
 
 export interface ProductEvent {

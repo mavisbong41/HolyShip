@@ -1788,6 +1788,7 @@ const REVIEW_PLAN_FIELDS = [
 function OutlookReviewPlanWorkflow({
   review,
   comparison,
+  detail,
   onActionComplete,
   onProceedToReply,
 }: {
@@ -1801,6 +1802,7 @@ function OutlookReviewPlanWorkflow({
   actionLoading: boolean;
 }): React.ReactElement {
   const reviewer = review.reviewer_name || "Outlook reviewer";
+  const replyPolicy = detail.reply_policy;
   const [plan, setPlan] = useState<ProductReviewPlan | null>(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -1886,7 +1888,8 @@ function OutlookReviewPlanWorkflow({
         <button type="button" className="btn-primary" disabled={busy || (plan.status === "DRAFT" && !plan.items.some((item) => item.status === "APPROVED" || item.status === "EDITED"))} onClick={() => void (async () => { if (await run(() => confirmReviewPlan(review.id, plan.id, reviewer))) await onActionComplete(); })()}>{plan.status === "APPLY_FAILED" ? "Retry Re-comparison" : "Confirm Implementation"}</button>
         {plan.status === "DRAFT" && <button type="button" className="btn-secondary" disabled={busy} onClick={() => void run(() => cancelReviewPlan(review.id, plan.id, reviewer)).then((succeeded) => { if (succeeded) setPlan(null); })}>Cancel / Back</button>}
       </div>}
-      {plan?.status === "APPLIED" && <button type="button" className="btn-primary" onClick={onProceedToReply}>Continue to Smart Reply</button>}
+      {plan?.status === "APPLIED" && replyPolicy?.allowed && <button type="button" className="btn-primary" onClick={onProceedToReply}>{replyPolicy.mode === "REQUEST_INFORMATION" ? "Continue to Request Email" : "Continue to Smart Reply"}</button>}
+      {plan?.status === "APPLIED" && !replyPolicy?.allowed && <div className="mini-note" role="status">Reply remains unavailable: {replyPolicy?.reason || "latest comparison is not eligible"}</div>}
     </section>
   );
 }
@@ -1971,7 +1974,7 @@ export function HumanReviewWorkflow({
       ? `SI explicitly specifies ${suggestedValue}. Draft BL should be aligned.`
       : (curField as any).reason || review.reason_text || "Field requires human verification against reference document.");
 
-  const isMatchNow = detail.email.mismatch_count === 0 && detail.email.unresolved_count === 0 && detail.email.processing_status === "COMPLETED";
+  const isMatchNow = detail.reply_policy?.allowed === true;
 
   const handleStep1Approve = async () => {
     setApprovedFields((prev) => new Set(prev).add(curField.field));
@@ -2937,14 +2940,14 @@ export function TaskPane({
                     <Edit3 size={14} aria-hidden="true" />
                     Review {effectiveDetail.comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED").length || 1} Field(s) →
                   </button>
-                ) : isDocumentComparison && effectiveDetail.email.mismatch_count === 0 && effectiveDetail.email.unresolved_count === 0 && effectiveDetail.email.processing_status === "COMPLETED" ? (
+          ) : isDocumentComparison && effectiveDetail.reply_policy?.allowed ? (
                   <button
                     type="button"
                     className="btn-secondary btn-cta-main"
                     onClick={() => setActiveWorkflowView("reply")}
                   >
                     <Bot size={14} aria-hidden="true" />
-                    Generate Reply →
+                    {effectiveDetail.reply_policy.mode === "REQUEST_INFORMATION" ? "Request Information →" : "Generate Reply →"}
                   </button>
                 ) : effectiveDetail.email.processing_status === "AWAITING_DOCUMENTS" ? (
                   <button
