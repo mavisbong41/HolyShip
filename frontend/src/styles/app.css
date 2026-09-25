@@ -13,7 +13,7 @@ html {
 }
 
 .reply-email-section h3 { display: flex; align-items: center; gap: 6px; }
-.reply-email-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--color-grey-200); border-radius: 10px; background: rgba(255,255,255,.72); }
+.reply-email-card { display: grid; gap: 8px; padding: 12px; border: 1px solid var(--color-grey-200); border-radius: 10px; background: rgba(255,255,255,.72); font-size: 12px; }
 .reply-email-card p { margin: 0; color: var(--color-grey-700); font-size: 12px; }
 .reply-required-list { display: grid; gap: 5px; margin: 2px 0 4px; padding-left: 18px; color: var(--color-grey-800); font-size: 12px; }
 .reply-required-list li { overflow-wrap: anywhere; }
@@ -24,6 +24,7 @@ html {
 .reply-draft-box input, .reply-draft-box textarea { width: 100%; min-width: 0; padding: 7px 8px; border: 1px solid var(--color-grey-300); border-radius: 6px; box-sizing: border-box; }
 .reply-draft-box textarea { min-height: 140px; resize: vertical; }
 .reply-refine-row { display: grid; grid-template-columns: 1fr auto; gap: 6px; }
+.reply-action-button { width: 100%; }
 .reply-success { display: flex; align-items: center; gap: 6px; color: var(--color-success); font-size: 12px; font-weight: 700; }
 .reply-error { color: var(--color-danger, #a33); }
 
