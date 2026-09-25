@@ -50,17 +50,9 @@ export function AIChatThread({
   onOpenEditSuggestion,
   onDismissSuggestion,
   isActionLoading = false,
-}: AIChatThreadProps): React.ReactElement {
+}: AIChatThreadProps): React.ReactElement | null {
   if (messages.length === 0) {
-    return (
-      <div className="ai-chat-empty">
-        <Bot size={28} className="text-orange" aria-hidden="true" />
-        <p className="empty-title">HolyShip AI Review Assistant</p>
-        <span className="empty-sub">
-          Ask questions grounded in this case’s persisted SI/BL evidence, readiness, and verified fields.
-        </span>
-      </div>
-    );
+    return null;
   }
 
   return (

@@ -216,160 +216,295 @@ export function AIReviewPanel({
     }
   };
 
+  const unresolvedCount = review.comparison?.fields.filter((f) => f.status === "UNRESOLVED").length ?? 0;
+  const pendingSuggestionsCount = (review.ai_suggestions ?? []).filter((s) => s.status === "PENDING").length;
+  const [reviewActionsOpen, setReviewActionsOpen] = useState(false);
+
   return (
-    <section className="detail-section ai-review-container" role="region" aria-label="AI Review Assistant">
-      <div className="ai-panel-header">
-        <div className="ai-panel-title">
-          <Bot size={18} className="text-orange" aria-hidden="true" />
-          <div>
-            <h3>AI Review Assistant</h3>
-            <p className="subtle">Grounded case reasoning &amp; field override proposals</p>
+    <div className="ai-review-wrapper" id="ai-review-assistant-section">
+      <section className="detail-section ai-review-container" role="region" aria-label="AI Review Assistant">
+        <div className="ai-panel-header">
+          <div className="ai-panel-title">
+            <Bot size={18} className="text-orange" aria-hidden="true" />
+            <div>
+              <h3>AI Review Assistant</h3>
+              <p className="subtle">Grounded case reasoning &amp; field override proposals</p>
+            </div>
           </div>
+          <span className="badge badge-info">Evidence Grounded</span>
         </div>
-        <span className="badge badge-info">Evidence Grounded</span>
-      </div>
 
-      <SuggestedQuestions
-        onSelectQuestion={(q) => void handleAsk(q)}
-        disabled={isAsking}
-      />
+        <SuggestedQuestions
+          onSelectQuestion={(q) => void handleAsk(q)}
+          disabled={isAsking}
+        />
 
-      <AIChatThread
-        messages={messages}
-        onAcceptSuggestion={handleAcceptSuggestion}
-        onOpenEditSuggestion={handleOpenEdit}
-        onDismissSuggestion={handleDismissSuggestion}
-        isActionLoading={isActionLoading}
-      />
+        <AIChatThread
+          messages={messages}
+          onAcceptSuggestion={handleAcceptSuggestion}
+          onOpenEditSuggestion={handleOpenEdit}
+          onDismissSuggestion={handleDismissSuggestion}
+          isActionLoading={isActionLoading}
+        />
 
-      <section className="ai-suggestion-card" aria-label="Structured Review Plan">
-        <div className="suggestion-header">
-          <strong>Structured Review Plan</strong>
-          {plan && <span className="badge badge-info">{plan.status}</span>}
-        </div>
-        {!plan ? (
-          <button
-            type="button" className="button-secondary btn-sm"
-            disabled={isActionLoading || !(review.ai_suggestions ?? []).some((item) => item.status === "PENDING")}
-            onClick={() => {
-              setIsActionLoading(true);
-              void createReviewPlan(review, reviewerName || "Reviewer")
-                .then(setPlan).catch((error) => setErrorMessage(error instanceof Error ? error.message : "Could not create review plan"))
-                .finally(() => setIsActionLoading(false));
-            }}
-          >Create Plan from Pending Suggestions</button>
-        ) : (
-          <>
-            {plan.items.map((item) => (
-              <article key={item.id} className="suggestion-val-box" style={{ marginTop: 8 }}>
-                <div className="suggestion-header">
-                  <strong>{item.document_side} · {item.field}</strong>
-                  <span className="badge badge-info">{item.ai_suggestion_id ? "AI proposal" : "Manual correction"}</span>
-                </div>
-                <small>Current / effective value: {String(item.current_value ?? "—")}</small>
-                <p>{item.reason || "No note supplied"}</p>
-                <input
-                  aria-label={`Proposed value for ${item.field}`}
-                  defaultValue={String(item.human_edited_value ?? item.proposed_value ?? "")}
-                  disabled={plan.status !== "DRAFT"}
-                  onBlur={(event) => {
-                    if (event.target.value !== String(item.proposed_value ?? "")) {
-                      void updateReviewPlanItem(review.id, plan.id, item.id, "EDITED", event.target.value).then(setPlan);
-                    }
-                  }}
-                />
-                {plan.status === "DRAFT" && (
-                  <div className="suggestion-actions">
-                    <button type="button" className="button-primary btn-sm" onClick={() => void updateReviewPlanItem(review.id, plan.id, item.id, "APPROVED").then(setPlan)}>Approve</button>
-                    <button type="button" className="button-danger-secondary btn-sm" onClick={() => void updateReviewPlanItem(review.id, plan.id, item.id, "REJECTED").then(setPlan)}>Reject</button>
-                    {!item.ai_suggestion_id && <button type="button" className="button-danger-secondary btn-sm" aria-label={`Remove manual correction ${item.field}`} onClick={() => void removeManualReviewPlanItem(review.id, plan.id, item.id, reviewerName || "Reviewer").then(setPlan)}><Trash2 size={12} /> Remove</button>}
-                  </div>
-                )}
-              </article>
-            ))}
-            {(plan.status === "DRAFT" || plan.status === "APPLY_FAILED") && (
-              <>
-              {plan.status === "DRAFT" && <button type="button" className="button-secondary btn-sm" style={{ marginTop: 12 }} onClick={beginManualCorrection}><Plus size={12} /> Add Manual Correction</button>}
-              <button
-                type="button" className="button-primary btn-sm" style={{ marginTop: 12 }}
-                disabled={plan.status === "DRAFT" && !plan.items.some((item) => item.status === "APPROVED" || item.status === "EDITED")}
-                onClick={() => void confirmReviewPlan(review.id, plan.id, reviewerName || "Reviewer").then(async (updated) => { setPlan(updated); onCaseUpdated(await getHumanReviewDetail(review.id)); }).catch((error) => setErrorMessage(error instanceof Error ? error.message : "Plan application failed"))}
-              >{plan.status === "APPLY_FAILED" ? "Retry Re-comparison" : "Confirm Implementation & Recompare"}</button>
-              {plan.status === "DRAFT" && <button type="button" className="button-secondary btn-sm" style={{ marginTop: 12 }} onClick={() => void cancelReviewPlan(review.id, plan.id, reviewerName || "Reviewer").then(() => setPlan(null))}><X size={12} /> Cancel / Back</button>}
-              </>
-            )}
-            {plan.error_message && <p className="state-note warn">Overrides were preserved. Re-comparison can be retried: {plan.error_message}</p>}
-          </>
+        {isAsking && (
+          <div className="ai-asking-indicator" role="status">
+            <RefreshCw size={14} className="spin-icon" aria-hidden="true" />
+            <span>Analyzing evidence and formulating response…</span>
+          </div>
         )}
-        {!plan && <button type="button" className="button-secondary btn-sm" style={{ marginLeft: 8 }} onClick={beginManualCorrection}><Plus size={12} /> Add Manual Correction</button>}
-        {showManualForm && (
-          <div className="suggestion-val-box" style={{ marginTop: 12 }} aria-label="Add Manual Correction">
-            <strong>Manual correction</strong>
-            <label>Document side<select value={manualSide} onChange={(event) => setManualSide(event.target.value as "SI" | "BL")}><option value="SI">SI</option><option value="BL">Draft BL</option></select></label>
-            <label>Field<select value={manualField} onChange={(event) => { setManualField(event.target.value); setManualCurrentValue(""); }}>{canonicalFields.map((field) => <option key={field} value={field}>{field}</option>)}</select></label>
-            <label>Current / Effective Value<input value={manualCurrentValue} onChange={(event) => setManualCurrentValue(event.target.value)} /></label>
-            <label>Proposed Corrected Value<input value={manualProposedValue} onChange={(event) => setManualProposedValue(event.target.value)} /></label>
-            <label>Reason / Note<textarea value={manualReason} onChange={(event) => setManualReason(event.target.value)} /></label>
-            <div className="suggestion-actions"><button type="button" className="button-primary btn-sm" disabled={isActionLoading || !manualProposedValue.trim() || !manualReason.trim()} onClick={() => void saveManualCorrection()}>Add to Plan</button><button type="button" className="button-secondary btn-sm" onClick={() => setShowManualForm(false)}>Back</button></div>
+
+        {errorMessage && (
+          <div className="state-note warn" role="alert" style={{ marginTop: 12 }}>
+            <AlertCircle size={14} aria-hidden="true" />
+            <div>
+              <strong>AI Assistant Notice</strong>
+              <span>{errorMessage}</span>
+            </div>
           </div>
+        )}
+
+        <form
+          className="ai-chat-input-row"
+          onSubmit={(e) => {
+            e.preventDefault();
+            void handleAsk(inputQuestion);
+          }}
+        >
+          <input
+            type="text"
+            className="ai-input"
+            placeholder="Ask a question about this case's documents or discrepancy…"
+            value={inputQuestion}
+            onChange={(e) => setInputQuestion(e.target.value)}
+            disabled={isAsking}
+            aria-label="Ask AI Assistant"
+          />
+          <button
+            type="submit"
+            className="button-primary btn-sm btn-dark-charcoal"
+            disabled={isAsking || !inputQuestion.trim()}
+            aria-label="Send question to AI Assistant"
+          >
+            <Send size={14} aria-hidden="true" />
+            Ask AI
+          </button>
+        </form>
+
+        {editingSuggestion && (
+          <AIEditSuggestionDialog
+            suggestion={editingSuggestion.suggestion}
+            suggestionId={editingSuggestion.suggestionId}
+            defaultReviewer={reviewerName}
+            isOpen={true}
+            onClose={() => setEditingSuggestion(null)}
+            onSubmit={handleApplyEdited}
+            isLoading={isActionLoading}
+          />
         )}
       </section>
 
-      {isAsking && (
-        <div className="ai-asking-indicator" role="status">
-          <RefreshCw size={14} className="spin-icon" aria-hidden="true" />
-          <span>Analyzing evidence and formulating response…</span>
-        </div>
-      )}
-
-      {errorMessage && (
-        <div className="state-note warn" role="alert" style={{ marginTop: 12 }}>
-          <AlertCircle size={14} aria-hidden="true" />
-          <div>
-            <strong>AI Assistant Notice</strong>
-            <span>{errorMessage}</span>
-          </div>
-        </div>
-      )}
-
-      <form
-        className="ai-chat-input-row"
-        onSubmit={(e) => {
-          e.preventDefault();
-          void handleAsk(inputQuestion);
-        }}
+      <section
+        className="detail-section review-actions-collapsible"
+        role="region"
+        aria-label="Structured Review Plan"
+        id="review-actions-section"
       >
-        <input
-          type="text"
-          className="ai-input"
-          placeholder="Ask a question about this case's documents or discrepancy…"
-          value={inputQuestion}
-          onChange={(e) => setInputQuestion(e.target.value)}
-          disabled={isAsking}
-          aria-label="Ask AI Assistant"
-        />
-        <button
-          type="submit"
-          className="button-primary btn-sm"
-          disabled={isAsking || !inputQuestion.trim()}
-          aria-label="Send question to AI Assistant"
+        <div
+          className="review-actions-header"
+          role="button"
+          tabIndex={0}
+          onClick={() => setReviewActionsOpen((prev) => !prev)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              setReviewActionsOpen((prev) => !prev);
+            }
+          }}
+          aria-expanded={reviewActionsOpen || Boolean(plan) || showManualForm}
         >
-          <Send size={14} aria-hidden="true" />
-          Ask AI
-        </button>
-      </form>
+          <div className="review-actions-title-row">
+            <span className="section-chevron">{reviewActionsOpen || Boolean(plan) || showManualForm ? "▾" : "▸"}</span>
+            <strong>Review Actions</strong>
+            <span className="review-actions-summary subtle">
+              {unresolvedCount} unresolved {unresolvedCount === 1 ? "field" : "fields"} · {pendingSuggestionsCount} pending {pendingSuggestionsCount === 1 ? "suggestion" : "suggestions"}
+            </span>
+          </div>
+          {plan && <span className="badge badge-info">{plan.status}</span>}
+        </div>
 
-      {editingSuggestion && (
-        <AIEditSuggestionDialog
-          suggestion={editingSuggestion.suggestion}
-          suggestionId={editingSuggestion.suggestionId}
-          defaultReviewer={reviewerName}
-          isOpen={true}
-          onClose={() => setEditingSuggestion(null)}
-          onSubmit={handleApplyEdited}
-          isLoading={isActionLoading}
-        />
-      )}
-    </section>
+        {reviewActionsOpen || Boolean(plan) || showManualForm ? (
+          <div className="review-actions-body" style={{ marginTop: 12 }}>
+            {!plan ? (
+              <div className="review-actions-empty-row">
+                {pendingSuggestionsCount > 0 ? (
+                  <button
+                    type="button"
+                    className="button-secondary btn-sm"
+                    disabled={isActionLoading}
+                    onClick={() => {
+                      setIsActionLoading(true);
+                      void createReviewPlan(review, reviewerName || "Reviewer")
+                        .then(setPlan)
+                        .catch((error) => setErrorMessage(error instanceof Error ? error.message : "Could not create review plan"))
+                        .finally(() => setIsActionLoading(false));
+                    }}
+                  >
+                    Create Plan from Pending Suggestions
+                  </button>
+                ) : (
+                  <span className="subtle">No pending suggestions.</span>
+                )}
+                <button
+                  type="button"
+                  className="button-secondary btn-sm"
+                  style={{ marginLeft: 8 }}
+                  onClick={beginManualCorrection}
+                >
+                  <Plus size={12} /> Add Manual Correction
+                </button>
+              </div>
+            ) : (
+              <>
+                {plan.items.map((item) => (
+                  <article key={item.id} className="suggestion-val-box" style={{ marginTop: 8 }}>
+                    <div className="suggestion-header">
+                      <strong>{item.document_side} · {item.field}</strong>
+                      <span className="badge badge-info">{item.ai_suggestion_id ? "AI proposal" : "Manual correction"}</span>
+                    </div>
+                    <small>Current / effective value: {String(item.current_value ?? "—")}</small>
+                    <p>{item.reason || "No note supplied"}</p>
+                    <input
+                      aria-label={`Proposed value for ${item.field}`}
+                      defaultValue={String(item.human_edited_value ?? item.proposed_value ?? "")}
+                      disabled={plan.status !== "DRAFT"}
+                      onBlur={(event) => {
+                        if (event.target.value !== String(item.proposed_value ?? "")) {
+                          void updateReviewPlanItem(review.id, plan.id, item.id, "EDITED", event.target.value).then(setPlan);
+                        }
+                      }}
+                    />
+                    {plan.status === "DRAFT" && (
+                      <div className="suggestion-actions">
+                        <button type="button" className="button-primary btn-sm" onClick={() => void updateReviewPlanItem(review.id, plan.id, item.id, "APPROVED").then(setPlan)}>Approve</button>
+                        <button type="button" className="button-danger-secondary btn-sm" onClick={() => void updateReviewPlanItem(review.id, plan.id, item.id, "REJECTED").then(setPlan)}>Reject</button>
+                        {!item.ai_suggestion_id && (
+                          <button
+                            type="button"
+                            className="button-danger-secondary btn-sm"
+                            aria-label={`Remove manual correction ${item.field}`}
+                            onClick={() => void removeManualReviewPlanItem(review.id, plan.id, item.id, reviewerName || "Reviewer").then(setPlan)}
+                          >
+                            <Trash2 size={12} /> Remove
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </article>
+                ))}
+                {(plan.status === "DRAFT" || plan.status === "APPLY_FAILED") && (
+                  <div style={{ marginTop: 12, display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
+                    {plan.status === "DRAFT" && (
+                      <button type="button" className="button-secondary btn-sm" onClick={beginManualCorrection}>
+                        <Plus size={12} /> Add Manual Correction
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      className="button-primary btn-sm btn-dark-charcoal"
+                      disabled={plan.status === "DRAFT" && !plan.items.some((item) => item.status === "APPROVED" || item.status === "EDITED")}
+                      onClick={() =>
+                        void confirmReviewPlan(review.id, plan.id, reviewerName || "Reviewer")
+                          .then(async (updated) => {
+                            setPlan(updated);
+                            onCaseUpdated(await getHumanReviewDetail(review.id));
+                          })
+                          .catch((error) => setErrorMessage(error instanceof Error ? error.message : "Plan application failed"))
+                      }
+                    >
+                      {plan.status === "APPLY_FAILED" ? "Retry Re-comparison" : "Confirm Implementation & Recompare"}
+                    </button>
+                    {plan.status === "DRAFT" && (
+                      <button
+                        type="button"
+                        className="button-secondary btn-sm"
+                        onClick={() => void cancelReviewPlan(review.id, plan.id, reviewerName || "Reviewer").then(() => setPlan(null))}
+                      >
+                        <X size={12} /> Cancel / Back
+                      </button>
+                    )}
+                  </div>
+                )}
+                {plan.error_message && (
+                  <p className="state-note warn">Overrides were preserved. Re-comparison can be retried: {plan.error_message}</p>
+                )}
+              </>
+            )}
+
+            {showManualForm && (
+              <div className="suggestion-val-box" style={{ marginTop: 12 }} aria-label="Add Manual Correction">
+                <strong>Manual correction</strong>
+                <label>
+                  Document side
+                  <select value={manualSide} onChange={(event) => setManualSide(event.target.value as "SI" | "BL")}>
+                    <option value="SI">SI</option>
+                    <option value="BL">Draft BL</option>
+                  </select>
+                </label>
+                <label>
+                  Field
+                  <select
+                    value={manualField}
+                    onChange={(event) => {
+                      setManualField(event.target.value);
+                      setManualCurrentValue("");
+                    }}
+                  >
+                    {canonicalFields.map((field) => (
+                      <option key={field} value={field}>{field}</option>
+                    ))}
+                  </select>
+                </label>
+                <label>
+                  Current / Effective Value
+                  <input value={manualCurrentValue} onChange={(event) => setManualCurrentValue(event.target.value)} />
+                </label>
+                <label>
+                  Proposed Corrected Value
+                  <input value={manualProposedValue} onChange={(event) => setManualProposedValue(event.target.value)} />
+                </label>
+                <label>
+                  Reason / Note
+                  <textarea value={manualReason} onChange={(event) => setManualReason(event.target.value)} />
+                </label>
+                <div className="suggestion-actions">
+                  <button
+                    type="button"
+                    className="button-primary btn-sm btn-dark-charcoal"
+                    disabled={isActionLoading || !manualProposedValue.trim() || !manualReason.trim()}
+                    onClick={() => void saveManualCorrection()}
+                  >
+                    Add to Plan
+                  </button>
+                  <button type="button" className="button-secondary btn-sm" onClick={() => setShowManualForm(false)}>
+                    Back
+                  </button>
+                </div>
+              </div>
+            )}
+          </div>
+        ) : (
+          <div className="review-actions-collapsed-strip" style={{ marginTop: 8, display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+            <span className="subtle" style={{ fontSize: "12px" }}>No pending suggestions.</span>
+            <button
+              type="button"
+              className="button-secondary btn-sm"
+              onClick={beginManualCorrection}
+            >
+              <Plus size={12} /> Add Manual Correction
+            </button>
+          </div>
+        )}
+      </section>
+    </div>
   );
 }

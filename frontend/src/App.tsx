@@ -1950,6 +1950,7 @@ function HumanReviewPageView({
   const [reviewer, setReviewer] = useState(defaultReviewerName);
   const [side, setSide] = useState<"SI" | "BL">("BL");
   const [field, setField] = useState("notify_party");
+  const [editingField, setEditingField] = useState<string | null>("notify_party");
   const [correctedValue, setCorrectedValue] = useState("");
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
@@ -2508,115 +2509,80 @@ function HumanReviewPageView({
                 </nav>
               </header>
 
-              <div className="review-callout">
-                <AlertTriangle size={18} aria-hidden="true" />
-                <div className="callout-body">
-                  <strong className="callout-title">
-                    {selected.case_origin === "LEGACY"
-                      ? "Historical review record"
-                      : isMissingRequiredValue
-                      ? "Missing Required Value"
-                      : isWrongDocumentType
-                      ? "Wrong Document Type"
-                      : isUnreadableDocument
-                      ? "Unreadable Document"
-                      : isMissingAttachment
-                      ? "Missing Attachment"
-                      : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
-                  </strong>
-                  <p className="callout-desc">
-                    {isMissingRequiredValue
-                      ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
-                      : isWrongDocumentType
-                      ? "The attached file does not appear to be the required shipping document."
-                      : isUnreadableDocument
-                      ? "The attached document could not be read reliably."
-                      : isMissingAttachment
-                      ? (cleanExplanation || "A required shipping document is not available for comparison.")
-                      : cleanExplanation}
-                  </p>
-
-                  <div className="action-guidance-wrapper">
-                    <button
-                      type="button"
-                      className={cx("action-guidance-toggle-btn", showActionGuidance && "is-open")}
-                      onClick={() => setShowActionGuidance((prev) => !prev)}
-                      aria-expanded={showActionGuidance}
-                      title={showActionGuidance ? "Click vibrating icon to close action instructions" : "Click vibrating icon to view action instructions"}
-                    >
-                      <span className="vibrating-alert-icon" aria-hidden="true">
-                        <AlertTriangle size={16} />
-                      </span>
-                      <span className="action-guidance-badge">ACTION REQUIRED</span>
-                      <span className="action-guidance-chevron">{showActionGuidance ? "▲" : "▼"}</span>
-                    </button>
-
-                    {showActionGuidance && (
-                      <div className="action-guidance-expanded">
-                        <p className="action-guidance-text">
-                          <strong>{guidance.actionTitle}:</strong> {guidance.instruction}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-
-                  {isFieldLevel && actuallyAffectedFields.length ? (
-                    <div className="callout-chips-row">
-                      <span className="chips-title">Affected fields (click to edit):</span>
-                      <div className="chips-container">
-                        {actuallyAffectedFields.map((f) => (
-                          <button
-                            key={f}
-                            type="button"
-                            className="affected-field-chip"
-                            onClick={() => {
-                              setField(f);
-                              setDetailTab("fields");
-                              const el = document.getElementById("review-editor-box");
-                              if (el) {
-                                el.scrollIntoView({ behavior: "smooth" });
-                                const valInput = el.querySelector("input[aria-label='Corrected value']") as HTMLInputElement | null;
-                                if (valInput) valInput.focus();
-                              }
-                            }}
-                            title={`Click to edit ${labelForField(f)}`}
-                          >
-                            {labelForField(f)}
-                          </button>
-                        ))}
-                      </div>
-                    </div>
-                  ) : (
-                    <p className="affected-fields-summary">
-                      Affected area: {isMissingAttachment || isWrongDocumentType || isUnreadableDocument ? "Documents" : (selected.affected_area || (isFieldLevel ? "Document fields" : "Documents"))}
-                    </p>
-                  )}
-
-                  <details className="callout-pipeline-details">
-                    <summary>System diagnostics (Trigger · Stage · Code)</summary>
-                    <div className="callout-pipeline-meta">
-                      <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
-                      <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
-                      {selected.reason_code ? (
-                        <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
-                      ) : null}
-                    </div>
-                  </details>
-                </div>
-              </div>
-
-              {selected.case_origin === "ACTIVE" ? (
-                <AIReviewPanel
-                  review={selected}
-                  reviewerName={selected.reviewer_name || reviewer}
-                  onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
-                />
-              ) : null}
-
               {detailTab === "fields" && (
                 <div className="tab-pane">
                   {!isFieldLevel ? (
-                    <div className="detail-section document-exception-panel">
+                    <>
+                      <div className="review-callout">
+                        <AlertTriangle size={18} aria-hidden="true" />
+                        <div className="callout-body">
+                          <strong className="callout-title">
+                            {selected.case_origin === "LEGACY"
+                              ? "Historical review record"
+                              : isMissingRequiredValue
+                              ? "Missing Required Value"
+                              : isWrongDocumentType
+                              ? "Wrong Document Type"
+                              : isUnreadableDocument
+                              ? "Unreadable Document"
+                              : isMissingAttachment
+                              ? "Missing Attachment"
+                              : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
+                          </strong>
+                          <p className="callout-desc">
+                            {isMissingRequiredValue
+                              ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
+                              : isWrongDocumentType
+                              ? "The attached file does not appear to be the required shipping document."
+                              : isUnreadableDocument
+                              ? "The attached document could not be read reliably."
+                              : isMissingAttachment
+                              ? (cleanExplanation || "A required shipping document is not available for comparison.")
+                              : cleanExplanation}
+                          </p>
+
+                          <div className="action-guidance-wrapper">
+                            <button
+                              type="button"
+                              className={cx("action-guidance-toggle-btn", showActionGuidance && "is-open")}
+                              onClick={() => setShowActionGuidance((prev) => !prev)}
+                              aria-expanded={showActionGuidance}
+                              title={showActionGuidance ? "Click vibrating icon to close action instructions" : "Click vibrating icon to view action instructions"}
+                            >
+                              <span className="vibrating-alert-icon" aria-hidden="true">
+                                <AlertTriangle size={16} />
+                              </span>
+                              <span className="action-guidance-badge">ACTION REQUIRED</span>
+                              <span className="action-guidance-chevron">{showActionGuidance ? "▲" : "▼"}</span>
+                            </button>
+
+                            {showActionGuidance && (
+                              <div className="action-guidance-expanded">
+                                <p className="action-guidance-text">
+                                  <strong>{guidance.actionTitle}:</strong> {guidance.instruction}
+                                </p>
+                              </div>
+                            )}
+                          </div>
+
+                          <p className="affected-fields-summary">
+                            Affected area: {isMissingAttachment || isWrongDocumentType || isUnreadableDocument ? "Documents" : (selected.affected_area || (isFieldLevel ? "Document fields" : "Documents"))}
+                          </p>
+
+                          <details className="callout-pipeline-details">
+                            <summary>System diagnostics (Trigger · Stage · Code)</summary>
+                            <div className="callout-pipeline-meta">
+                              <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
+                              <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
+                              {selected.reason_code ? (
+                                <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
+                              ) : null}
+                            </div>
+                          </details>
+                        </div>
+                      </div>
+
+                      <div className="detail-section document-exception-panel">
                       <div className="section-heading-row">
                         <div>
                           <h3>
@@ -3160,9 +3126,113 @@ function HumanReviewPageView({
                         </div>
                       )}
                     </div>
-                  ) : (
+                  </>
+                ) : (
                     <>
-                      <div className="detail-section">
+                      <nav className="in-page-anchor-bar" aria-label="Review case quick navigation">
+                        <button type="button" onClick={() => document.getElementById("issue-banner-section")?.scrollIntoView({ behavior: "smooth" })}>
+                          Review Issue
+                        </button>
+                        <span className="anchor-sep">·</span>
+                        <button type="button" onClick={() => document.getElementById("fields-table-section")?.scrollIntoView({ behavior: "smooth" })}>
+                          Compare Fields
+                        </button>
+                        <span className="anchor-sep">·</span>
+                        <button type="button" onClick={() => document.getElementById("ai-review-assistant-section")?.scrollIntoView({ behavior: "smooth" })}>
+                          AI Assistant
+                        </button>
+                        <span className="anchor-sep">·</span>
+                        <button type="button" onClick={() => document.getElementById("review-actions-section")?.scrollIntoView({ behavior: "smooth" })}>
+                          Review Actions
+                        </button>
+                        <span className="anchor-sep">·</span>
+                        <button type="button" onClick={() => document.getElementById("resolve-action-section")?.scrollIntoView({ behavior: "smooth" })}>
+                          Resolve
+                        </button>
+                      </nav>
+
+                      <div className="compact-issue-banner" id="issue-banner-section">
+                        <div className="issue-banner-main">
+                          <div className="issue-banner-lead">
+                            <AlertTriangle size={16} className="text-orange" aria-hidden="true" />
+                            <div>
+                              <strong className="callout-title">
+                                {selected.case_origin === "LEGACY"
+                                  ? "Historical review record"
+                                  : isMissingRequiredValue
+                                  ? "Missing Required Value"
+                                  : isWrongDocumentType
+                                  ? "Wrong Document Type"
+                                  : isUnreadableDocument
+                                  ? "Unreadable Document"
+                                  : isMissingAttachment
+                                  ? "Missing Attachment"
+                                  : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
+                              </strong>
+                              <p className="callout-desc" style={{ margin: "2px 0 0 0", fontSize: "12.5px" }}>
+                                {isMissingRequiredValue
+                                  ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
+                                  : isWrongDocumentType
+                                  ? "The attached file does not appear to be the required shipping document."
+                                  : isUnreadableDocument
+                                  ? "The attached document could not be read reliably."
+                                  : isMissingAttachment
+                                  ? (cleanExplanation || "A required shipping document is not available for comparison.")
+                                  : cleanExplanation}
+                              </p>
+                            </div>
+                          </div>
+
+                          {actuallyAffectedFields.length > 0 && (
+                            <div className="issue-banner-actions">
+                              <div className="chips-container">
+                                {actuallyAffectedFields.map((f) => (
+                                  <button
+                                    key={f}
+                                    type="button"
+                                    className="affected-field-chip"
+                                    onClick={() => {
+                                      setField(f);
+                                      setEditingField(f);
+                                      const el = document.getElementById(`row-${f}`);
+                                      if (el) el.scrollIntoView({ behavior: "smooth" });
+                                    }}
+                                    title={`Click to edit ${labelForField(f)}`}
+                                  >
+                                    {labelForField(f)}
+                                  </button>
+                                ))}
+                              </div>
+                              <button
+                                type="button"
+                                className="button-primary btn-sm btn-dark-charcoal review-jump-btn"
+                                onClick={() => {
+                                  const firstUnresolved = actuallyAffectedFields[0] || canonicalFields[0];
+                                  setField(firstUnresolved);
+                                  setEditingField(firstUnresolved);
+                                  const el = document.getElementById(`row-${firstUnresolved}`);
+                                  if (el) el.scrollIntoView({ behavior: "smooth" });
+                                }}
+                              >
+                                Review →
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        <details className="callout-pipeline-details">
+                          <summary>System diagnostics (Trigger · Stage · Code)</summary>
+                          <div className="callout-pipeline-meta">
+                            <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
+                            <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
+                            {selected.reason_code ? (
+                              <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
+                            ) : null}
+                          </div>
+                        </details>
+                      </div>
+
+                      <div className="detail-section" id="fields-table-section">
                         <div className="section-heading-row">
                           <div>
                             <h3>Seven reviewed fields</h3>
@@ -3193,73 +3263,199 @@ function HumanReviewPageView({
                                 const compared = selected.comparison?.fields.find((item) => item.field === name);
                                 const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
                                 const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                                const isEditingThisRow = editingField === name;
+                                const isMatched = compared?.status === "MATCH";
+
                                 return (
-                                  <tr
-                                    key={name}
-                                    className={cx(
-                                      compared?.status === "MISMATCH" && "field-mismatch",
-                                      compared?.status === "UNRESOLVED" && "field-unresolved"
-                                    )}
-                                  >
-                                    <th>{labelForField(name)}</th>
-                                    <td>
-                                      <span className="value-label">Original SI</span>
-                                      {displayValue(compared?.si.raw)}
-                                      {siOverride ? (
-                                        <span className="reviewed-value">
-                                          <span>Reviewed SI</span>
-                                          {displayValue(siOverride.corrected_value)}
-                                        </span>
-                                      ) : null}
-                                      <span className="effective-value">
-                                        Effective: {displayValue(siOverride?.corrected_value ?? compared?.si.canonical ?? compared?.si.raw)}
-                                      </span>
-                                    </td>
-                                    <td>
-                                      <span className="value-label">Original BL</span>
-                                      {displayValue(compared?.bl.raw)}
-                                      {blOverride ? (
-                                        <span className="reviewed-value">
-                                          <span>Reviewed BL</span>
-                                          {displayValue(blOverride.corrected_value)}
-                                        </span>
-                                      ) : null}
-                                      <span className="effective-value">
-                                        Effective: {displayValue(blOverride?.corrected_value ?? compared?.bl.canonical ?? compared?.bl.raw)}
-                                      </span>
-                                    </td>
-                                    <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                                      <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
-                                    </td>
-                                    <td style={{ textAlign: "center" }}>
-                                      {selected.case_origin === "ACTIVE" ? (
-                                        <button
-                                          type="button"
-                                          className={cx(
-                                            "row-edit-action-btn",
-                                            compared?.status === "MATCH" ? "is-matched" : "is-unresolved"
-                                          )}
-                                          title={`Quick edit ${labelForField(name)}`}
-                                          onClick={() => {
-                                            setField(name);
-                                            if (compared?.bl.raw == null && compared?.si.raw != null) {
-                                              setSide("BL");
-                                            } else if (compared?.si.raw == null && compared?.bl.raw != null) {
-                                              setSide("SI");
-                                            } else {
-                                              setSide("BL");
-                                            }
-                                            const el = document.getElementById("review-editor-box");
-                                            if (el) el.scrollIntoView({ behavior: "smooth" });
-                                          }}
-                                        >
-                                          Edit
-                                        </button>
-                                      ) : (
-                                        <span className="subtle">—</span>
+                                  <React.Fragment key={name}>
+                                    <tr
+                                      id={`row-${name}`}
+                                      className={cx(
+                                        compared?.status === "MISMATCH" && "field-mismatch",
+                                        compared?.status === "UNRESOLVED" && "field-unresolved",
+                                        isEditingThisRow && "row-is-editing"
                                       )}
-                                    </td>
-                                  </tr>
+                                    >
+                                      <th>{labelForField(name)}</th>
+                                      <td>
+                                        {siOverride ? (
+                                          <>
+                                            <span className="value-label">Original SI</span>
+                                            <span className="original-val-strike">{displayValue(compared?.si.raw)}</span>
+                                            <span className="reviewed-value">
+                                              <span>Reviewed SI</span>
+                                              {displayValue(siOverride.corrected_value)}
+                                            </span>
+                                            <span className="effective-value">
+                                              Effective: {displayValue(siOverride.corrected_value)}
+                                            </span>
+                                          </>
+                                        ) : !isMatched ? (
+                                          <>
+                                            <span className="value-label">Original SI</span>
+                                            {displayValue(compared?.si.raw)}
+                                            <span className="effective-value">
+                                              Effective: {displayValue(compared?.si.canonical ?? compared?.si.raw)}
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span>{displayValue(compared?.si.canonical ?? compared?.si.raw)}</span>
+                                        )}
+                                      </td>
+                                      <td>
+                                        {blOverride ? (
+                                          <>
+                                            <span className="value-label">Original BL</span>
+                                            <span className="original-val-strike">{displayValue(compared?.bl.raw)}</span>
+                                            <span className="reviewed-value">
+                                              <span>Reviewed BL</span>
+                                              {displayValue(blOverride.corrected_value)}
+                                            </span>
+                                            <span className="effective-value">
+                                              Effective: {displayValue(blOverride.corrected_value)}
+                                            </span>
+                                          </>
+                                        ) : !isMatched ? (
+                                          <>
+                                            <span className="value-label">Original BL</span>
+                                            {displayValue(compared?.bl.raw)}
+                                            <span className="effective-value">
+                                              Effective: {displayValue(compared?.bl.canonical ?? compared?.bl.raw)}
+                                            </span>
+                                          </>
+                                        ) : (
+                                          <span>{displayValue(compared?.bl.canonical ?? compared?.bl.raw)}</span>
+                                        )}
+                                      </td>
+                                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                                        <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
+                                      </td>
+                                      <td style={{ textAlign: "center" }}>
+                                        {selected.case_origin === "ACTIVE" ? (
+                                          <button
+                                            type="button"
+                                            className={cx(
+                                              "row-edit-action-btn",
+                                              isMatched ? "is-matched" : "is-unresolved"
+                                            )}
+                                            title={`Quick edit ${labelForField(name)}`}
+                                            onClick={() => {
+                                              if (isEditingThisRow) {
+                                                setEditingField(null);
+                                              } else {
+                                                setField(name);
+                                                setEditingField(name);
+                                                if (compared?.bl.raw == null && compared?.si.raw != null) {
+                                                  setSide("BL");
+                                                } else if (compared?.si.raw == null && compared?.bl.raw != null) {
+                                                  setSide("SI");
+                                                } else {
+                                                  setSide("BL");
+                                                }
+                                              }
+                                            }}
+                                          >
+                                            {isEditingThisRow ? "Close" : "Edit"}
+                                          </button>
+                                        ) : (
+                                          <span className="subtle">—</span>
+                                        )}
+                                      </td>
+                                    </tr>
+
+                                    {isEditingThisRow && selected.case_origin === "ACTIVE" && (
+                                      <tr className="inline-editor-row" key={`${name}-editor`}>
+                                        <td colSpan={5} className="inline-editor-cell">
+                                          <div id="review-editor-box" className="detail-section review-editor inline-editor-box">
+                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                                              <h3>Save a correction</h3>
+                                              <button
+                                                type="button"
+                                                className="button-secondary btn-sm"
+                                                onClick={() => setEditingField(null)}
+                                              >
+                                                Cancel
+                                              </button>
+                                            </div>
+                                            <p>Corrections are stored separately from original extraction evidence.</p>
+                                            <div className="form-grid">
+                                              <label>
+                                                Document side
+                                                <select
+                                                  aria-label="Override side"
+                                                  value={side}
+                                                  onChange={(event) => setSide(event.target.value as "SI" | "BL")}
+                                                >
+                                                  <option>SI</option>
+                                                  <option>BL</option>
+                                                </select>
+                                              </label>
+                                              <label>
+                                                Field
+                                                <select
+                                                  aria-label="Override field"
+                                                  value={field}
+                                                  onChange={(event) => {
+                                                    setField(event.target.value);
+                                                    setEditingField(event.target.value);
+                                                  }}
+                                                >
+                                                  {canonicalFields.map((fName) => (
+                                                    <option key={fName} value={fName}>{labelForField(fName)}</option>
+                                                  ))}
+                                                </select>
+                                              </label>
+                                              <label className="form-span">
+                                                Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
+                                                <input
+                                                  type={inputType}
+                                                  step={inputStep}
+                                                  min={inputType === "number" ? "0" : undefined}
+                                                  aria-label="Corrected value"
+                                                  aria-describedby="correction-help"
+                                                  value={correctedValue}
+                                                  onChange={(event) => setCorrectedValue(event.target.value)}
+                                                  placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
+                                                />
+                                              </label>
+                                              <label className="form-span">
+                                                Reviewer note
+                                                <textarea
+                                                  aria-label="Reviewer note"
+                                                  value={note}
+                                                  onChange={(event) => setNote(event.target.value)}
+                                                  placeholder="Explain the evidence for this correction"
+                                                />
+                                              </label>
+                                            </div>
+                                            <p id="correction-help" className="form-help">
+                                              The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
+                                            </p>
+                                            <div className="editor-button-row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                                              <button
+                                                className="button-primary btn-dark-charcoal"
+                                                type="button"
+                                                disabled={!correctedValue || actionState === "loading"}
+                                                onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
+                                              >
+                                                {actionState === "loading" ? "Saving…" : "Save Correction"}
+                                              </button>
+                                              <button
+                                                type="button"
+                                                className="button-secondary"
+                                                onClick={() => setEditingField(null)}
+                                              >
+                                                Cancel
+                                              </button>
+                                              {actionState === "ready" && activeOverrides.length ? (
+                                                <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
+                                              ) : null}
+                                            </div>
+                                          </div>
+                                        </td>
+                                      </tr>
+                                    )}
+                                  </React.Fragment>
                                 );
                               })}
                             </tbody>
@@ -3268,7 +3464,7 @@ function HumanReviewPageView({
                       </div>
 
                       {activeOverrides.length > 0 && (
-                        <div className="staged-overrides-card">
+                        <div className="staged-overrides-card" style={{ marginBottom: 16 }}>
                           <div className="staged-overrides-header">
                             <strong>Staged Overrides ({activeOverrides.length})</strong>
                             <span>Applied on Recomparison</span>
@@ -3287,73 +3483,141 @@ function HumanReviewPageView({
                       )}
 
                       {selected.case_origin === "ACTIVE" ? (
-                        <div id="review-editor-box" className="detail-section review-editor">
-                          <h3>Save a correction</h3>
-                          <p>Corrections are stored separately from original extraction evidence.</p>
-                          <div className="form-grid">
-                            <label>
-                              Document side
-                              <select
-                                aria-label="Override side"
-                                value={side}
-                                onChange={(event) => setSide(event.target.value as "SI" | "BL")}
-                              >
-                                <option>SI</option>
-                                <option>BL</option>
-                              </select>
-                            </label>
-                            <label>
-                              Field
-                              <select
-                                aria-label="Override field"
-                                value={field}
-                                onChange={(event) => setField(event.target.value)}
-                              >
-                                {canonicalFields.map((name) => (
-                                  <option key={name} value={name}>{labelForField(name)}</option>
-                                ))}
-                              </select>
-                            </label>
-                            <label className="form-span">
-                              Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
-                              <input
-                                type={inputType}
-                                step={inputStep}
-                                min={inputType === "number" ? "0" : undefined}
-                                aria-label="Corrected value"
-                                aria-describedby="correction-help"
-                                value={correctedValue}
-                                onChange={(event) => setCorrectedValue(event.target.value)}
-                                placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
-                              />
-                            </label>
-                            <label className="form-span">
-                              Reviewer note
-                              <textarea
-                                aria-label="Reviewer note"
-                                value={note}
-                                onChange={(event) => setNote(event.target.value)}
-                                placeholder="Explain the evidence for this correction"
-                              />
-                            </label>
+                        <AIReviewPanel
+                          review={selected}
+                          reviewerName={selected.reviewer_name || reviewer}
+                          onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
+                        />
+                      ) : null}
+
+                      <details className="collapsible-detail-card" id="evidence-docs-section">
+                        <summary className="collapsible-summary">
+                          <div className="collapsible-summary-left">
+                            <FileText size={16} className="text-orange" aria-hidden="true" />
+                            <strong>Evidence &amp; Source Documents</strong>
+                            <span className="badge badge-neutral">{selected.documents?.length || 0}</span>
                           </div>
-                          <p id="correction-help" className="form-help">
-                            The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
-                          </p>
-                          <div className="editor-button-row">
-                            <button
-                              className="button-primary"
-                              type="button"
-                              disabled={!correctedValue || actionState === "loading"}
-                              onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
-                            >
-                              {actionState === "loading" ? "Saving…" : "Save Correction"}
-                            </button>
-                            {actionState === "ready" && activeOverrides.length ? (
-                              <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
-                            ) : null}
+                          <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
+                        </summary>
+                        <div className="collapsible-content">
+                          {selected.documents?.length ? (
+                            <div className="documents-card-list">
+                              {selected.documents.map((doc) => (
+                                <div className="attachment-row document-card" key={doc.id}>
+                                  <FileText size={18} className="doc-icon" />
+                                  <div className="doc-info">
+                                    <strong>{doc.filename}</strong>
+                                    <div className="doc-badges">
+                                      <span className="badge badge-info">{displayLabel(doc.role)}</span>
+                                      <span className="badge badge-neutral">{displayLabel(doc.validation_outcome)}</span>
+                                      {doc.routing_outcome ? (
+                                        <span className="badge badge-muted">{displayLabel(doc.routing_outcome)}</span>
+                                      ) : null}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />
+                          )}
+                        </div>
+                      </details>
+
+                      <details className="collapsible-detail-card" id="email-context-section">
+                        <summary className="collapsible-summary">
+                          <div className="collapsible-summary-left">
+                            <Mail size={16} className="text-orange" aria-hidden="true" />
+                            <strong>Email Context</strong>
+                            <span className="subtle email-summary-preview" style={{ fontSize: "12px" }}>
+                              {selected.email?.subject || "No subject"} · {selected.email?.sender || "Unknown sender"}
+                            </span>
+                          </div>
+                          <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
+                        </summary>
+                        <div className="collapsible-content">
+                          <div className="email-meta-header" style={{ marginBottom: 12 }}>
+                            <div><strong>Subject:</strong> {selected.email?.subject || "No subject"}</div>
+                            <div><strong>From:</strong> {selected.email?.sender || "Unknown sender"}</div>
+                            <div><strong>Date:</strong> {formatDate(selected.created_at)}</div>
+                          </div>
+                          <div className="email-body-view" style={{ whiteSpace: "pre-wrap", fontSize: "12.5px", lineHeight: "1.6", color: "var(--color-grey-800)" }}>
+                            {selected.body || "No email body text captured."}
                           </div>
                         </div>
+                      </details>
+
+                      {selected.case_origin === "ACTIVE" ? (
+                        <div className="bottom-resolve-bar" id="resolve-action-section">
+                          <div className="resolve-bar-content">
+                            <div className="resolve-bar-info">
+                              <strong>Ready to verify?</strong>
+                              <p className="subtle" style={{ margin: "2px 0 0 0", fontSize: "12px" }}>Applying overrides and running recomparison against canonical shipping rules.</p>
+                            </div>
+                            <button
+                              className="button-primary btn-dark-charcoal resolve-final-btn"
+                              type="button"
+                              aria-label="Confirm Resolve & Recompare"
+                              disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                              onClick={() => void onResolve(reviewer, note)}
+                            >
+                              <CheckCircle2 size={16} />
+                              {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
+                            </button>
+                          </div>
+                        </div>
+                      ) : null}
+
+                      {selected.case_origin === "ACTIVE" ? (
+                        <details className="collapsible-detail-card danger-zone-collapsible" id="danger-zone-section">
+                          <summary className="collapsible-summary danger-summary">
+                            <div className="collapsible-summary-left">
+                              <AlertTriangle size={15} className="text-danger" aria-hidden="true" />
+                              <strong>Danger Zone</strong>
+                              <span className="subtle">Dismiss review without resolving</span>
+                            </div>
+                            <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
+                          </summary>
+                          <div className="collapsible-content">
+                            <div id="dismiss-zone-box" className="dismiss-zone" style={{ border: "none", padding: 0 }}>
+                              <p className="dismiss-subtitle" style={{ marginTop: 0 }}>
+                                Dismiss records an audited decision. It does not mark the comparison completed.
+                              </p>
+                              <div className="dismiss-form-grid">
+                                <label>
+                                  Dismiss reason
+                                  <input
+                                    aria-label="Dismiss reason"
+                                    value={dismissReason}
+                                    onChange={(event) => setDismissReason(event.target.value)}
+                                    placeholder="e.g. NOT_ACTIONABLE"
+                                  />
+                                </label>
+                                <button
+                                  className="button-danger-secondary"
+                                  type="button"
+                                  disabled={actionState === "loading" || !dismissReason.trim()}
+                                  onClick={() => void onDismiss(reviewer, dismissReason, note)}
+                                >
+                                  {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
+                                </button>
+                              </div>
+                              <div className="dismiss-presets">
+                                <span className="dismiss-presets-label">Quick presets:</span>
+                                {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
+                                  <button
+                                    key={preset}
+                                    type="button"
+                                    className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                    onClick={() => setDismissReason(preset)}
+                                  >
+                                    {preset}
+                                  </button>
+                                ))}
+                              </div>
+                            </div>
+                          </div>
+                        </details>
                       ) : (
                         <div className="detail-section">
                           <div className="state-note">
@@ -3363,54 +3627,6 @@ function HumanReviewPageView({
                           </div>
                         </div>
                       )}
-
-                      {selected.case_origin === "ACTIVE" ? (
-                        <div className="detail-section dismiss-section">
-                          <div id="dismiss-zone-box" className="dismiss-zone">
-                            <div className="dismiss-zone-header">
-                              <div className="dismiss-zone-title-row">
-                                <span className="dismiss-tag">Danger Zone</span>
-                                <strong className="dismiss-title">Dismiss without resolving</strong>
-                              </div>
-                              <p className="dismiss-subtitle">
-                                Dismiss records an audited decision. It does not mark the comparison completed.
-                              </p>
-                            </div>
-                            <div className="dismiss-form-grid">
-                              <label>
-                                Dismiss reason
-                                <input
-                                  aria-label="Dismiss reason"
-                                  value={dismissReason}
-                                  onChange={(event) => setDismissReason(event.target.value)}
-                                  placeholder="e.g. NOT_ACTIONABLE"
-                                />
-                              </label>
-                              <button
-                                className="button-danger-secondary"
-                                type="button"
-                                disabled={actionState === "loading" || !dismissReason.trim()}
-                                onClick={() => void onDismiss(reviewer, dismissReason, note)}
-                              >
-                                {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
-                              </button>
-                            </div>
-                            <div className="dismiss-presets">
-                              <span className="dismiss-presets-label">Quick presets:</span>
-                              {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
-                                <button
-                                  key={preset}
-                                  type="button"
-                                  className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
-                                  onClick={() => setDismissReason(preset)}
-                                >
-                                  {preset}
-                                </button>
-                              ))}
-                            </div>
-                          </div>
-                        </div>
-                      ) : null}
                     </>
                   )}
                 </div>
