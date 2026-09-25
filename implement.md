@@ -1724,3 +1724,10 @@ Current document-level limitations:
 - **Files:** `scripts/copy_presentation.mjs`, `frontend/package.json`, `outlook-addin/package.json`.
 - **Validation:** Frontend and Outlook Add-in production builds passed; generated `frontend/dist/presentation/holyship-presentation.html` and `outlook-addin/dist/presentation/holyship-presentation.html`, then verified the latter with a local static preview. The public Vercel URL is awaiting redeploy after the next push.
 - **Deployment note:** The existing `holy-ship-five.vercel.app` project still returns 404 for the presentation path after the push, so its Vercel project/account must be opened or redeployed with the appropriate access before claiming that URL as live. A GitHub-backed HTML preview is available as an interim share link.
+
+### 2026-09-25 — Measured outcomes slide readability
+
+- **Changed:** Reworked Slide 10 into a two-column benchmark layout for short-height wide screens, split the headline into two lines, enlarged KPI/stress-test labels and validation notes, and kept the content clear of the controls.
+- **Why:** The previous single-column composition made the page feel crowded and reduced supporting text below projector-readable size.
+- **Files:** `presentation/holyship-presentation.html` only.
+- **Validation:** Local Chrome preview checked Slide 10 at the target short-height viewport; title, cards, labels, benchmark footers, and bottom controls remain visibly separated. `git diff --check` passed.
