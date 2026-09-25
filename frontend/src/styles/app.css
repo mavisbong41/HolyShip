@@ -5444,42 +5444,191 @@ button:disabled {
   border-width: 0 !important;
 }
 
-/* In-Page Compact Anchor Navigation */
+/* Review Workspace Sub-Tabs Navigation (Strictly Single Horizontal Line) */
+.sub-tabs-bar,
 .in-page-anchor-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 6px 12px;
-  background: var(--color-grey-100);
-  border: 1px solid var(--color-grey-300);
-  border-radius: var(--radius-sm);
-  margin-bottom: 12px;
-  font-size: 12px;
-  flex-wrap: wrap;
+  display: flex !important;
+  align-items: center !important;
+  gap: 6px !important;
+  padding: 6px 10px !important;
+  background: var(--color-grey-100) !important;
+  border: 1px solid var(--color-grey-300) !important;
+  border-radius: var(--radius-sm) !important;
+  margin-bottom: 14px !important;
+  font-size: 12px !important;
+  flex-wrap: nowrap !important;
+  white-space: nowrap !important;
+  overflow-x: auto !important;
+  overflow-y: hidden !important;
+  scrollbar-width: thin;
 }
 
+.sub-tabs-bar .sub-tab-btn,
 .in-page-anchor-bar button {
-  background: none;
+  background: transparent;
   border: none;
   color: var(--color-grey-700);
   font-size: 12px;
   font-weight: 500;
   cursor: pointer;
-  padding: 2px 6px;
+  padding: 4px 10px;
   border-radius: 4px;
   transition: all 0.15s ease;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
 }
 
+.sub-tabs-bar .sub-tab-btn:hover,
 .in-page-anchor-bar button:hover {
   color: var(--color-orange-700);
   background: var(--color-orange-100);
 }
 
-.anchor-sep {
-  color: var(--color-grey-400);
+.sub-tabs-bar .sub-tab-btn.active,
+.in-page-anchor-bar button.active {
+  background: var(--color-orange-500) !important;
+  color: #ffffff !important;
+  font-weight: 600 !important;
+  box-shadow: 0 1px 2px rgba(249, 115, 22, 0.25);
 }
 
-/* Compact Unresolved Issue Banner */
+.sub-tabs-bar .sub-tab-btn.active .sub-tab-pill-badge {
+  background: rgba(255, 255, 255, 0.3) !important;
+  color: #ffffff !important;
+}
+
+.sub-tab-pill-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 6px;
+  height: 16px;
+  font-size: 10.5px;
+  font-weight: 700;
+  border-radius: 10px;
+  background: var(--color-orange-100);
+  color: var(--color-orange-800);
+}
+
+.anchor-sep {
+  color: var(--color-grey-400);
+  user-select: none;
+  flex-shrink: 0;
+}
+
+/* Sub-Tab Panel Visibility Rules */
+.sub-tab-panel {
+  display: block;
+}
+
+.sub-tab-panel-hidden {
+  display: none !important;
+}
+
+.sub-tab-assistant-active .review-actions-collapsible {
+  display: none !important;
+}
+
+.sub-tab-actions-active .ai-assistant-card {
+  display: none !important;
+}
+
+.sub-tab-actions-active .review-actions-collapsible .review-actions-body {
+  display: block !important;
+}
+
+/* Manual Correction Form & Review Plan Formatting (Image 2 Fix) */
+.manual-correction-card {
+  background: #ffffff !important;
+  border: 1px solid var(--color-grey-300) !important;
+  border-radius: var(--radius-md) !important;
+  padding: 16px !important;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06) !important;
+  margin-top: 12px !important;
+}
+
+.manual-correction-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-grey-900);
+  margin-bottom: 14px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.manual-form-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.manual-form-row-full {
+  grid-column: 1 / -1;
+}
+
+.manual-field-group {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.manual-field-label {
+  font-size: 11.5px;
+  font-weight: 600;
+  color: var(--color-grey-700);
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+}
+
+.manual-field-input,
+.manual-field-select,
+.manual-field-textarea {
+  width: 100%;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-sm);
+  background: #ffffff;
+  color: var(--color-grey-900);
+  transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  box-sizing: border-box;
+  font-family: inherit;
+}
+
+.manual-field-input:focus,
+.manual-field-select:focus,
+.manual-field-textarea:focus {
+  outline: none;
+  border-color: var(--color-orange-500);
+  box-shadow: 0 0 0 2px rgba(249, 115, 22, 0.15);
+}
+
+.manual-field-textarea {
+  min-height: 64px;
+  resize: vertical;
+}
+
+.manual-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-grey-200);
+}
+
+.suggestion-val-box {
+  background: var(--color-grey-50);
+  border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-sm);
+  padding: 12px;
+}
+
+/* Compact Unresolved Issue Banner (Full clean uniform border, no left bar) */
 .compact-issue-banner {
   display: flex;
   flex-direction: column;
@@ -5487,7 +5636,6 @@ button:disabled {
   padding: 10px 14px;
   background: #fff7ed;
   border: 1px solid #fed7aa;
-  border-left: 4px solid var(--color-orange-500);
   border-radius: var(--radius-md);
   margin-bottom: 14px;
 }
@@ -5535,7 +5683,6 @@ button:disabled {
   margin: 0 !important;
   background: #ffffff !important;
   border: 1px solid #cbd5e1 !important;
-  border-left: 3px solid var(--color-orange-500) !important;
   border-radius: var(--radius-sm) !important;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
   padding: 14px !important;
@@ -5550,7 +5697,46 @@ button:disabled {
 
 .row-is-editing {
   background: #fffbeb !important;
-  border-left: 3px solid var(--color-orange-500) !important;
+}
+
+/* Review Plan Styling */
+.review-plan-empty-card {
+  background: #ffffff;
+  border: 1px solid var(--color-grey-300);
+  border-radius: var(--radius-sm);
+  padding: 12px 14px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.review-plan-empty-text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.review-plan-confirm-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-top: 14px;
+  padding-top: 12px;
+  border-top: 1px solid var(--color-grey-200);
+  flex-wrap: wrap;
+}
+
+.badge-approved {
+  background: #ecfdf5 !important;
+  color: #047857 !important;
+  border: 1px solid #a7f3d0 !important;
+  font-weight: 600;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
 }
 
 /* Collapsible Detail Cards */

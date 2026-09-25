@@ -1955,8 +1955,13 @@ function HumanReviewPageView({
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
   const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
+  const [reviewSubTab, setReviewSubTab] = useState<"issue" | "compare" | "assistant" | "actions" | "resolve">("issue");
 
   const [showActionGuidance, setShowActionGuidance] = useState(false);
+
+  useEffect(() => {
+    setReviewSubTab("issue");
+  }, [selected?.id]);
 
   useEffect(() => {
     setShowActionGuidance(false);
@@ -3129,110 +3134,144 @@ function HumanReviewPageView({
                   </>
                 ) : (
                     <>
-                      <nav className="in-page-anchor-bar" aria-label="Review case quick navigation">
-                        <button type="button" onClick={() => document.getElementById("issue-banner-section")?.scrollIntoView({ behavior: "smooth" })}>
+                      <nav className="in-page-anchor-bar sub-tabs-bar" aria-label="Review case quick navigation">
+                        <button
+                          type="button"
+                          className={cx("sub-tab-btn", reviewSubTab === "issue" && "active")}
+                          onClick={() => setReviewSubTab("issue")}
+                        >
                           Review Issue
                         </button>
                         <span className="anchor-sep">·</span>
-                        <button type="button" onClick={() => document.getElementById("fields-table-section")?.scrollIntoView({ behavior: "smooth" })}>
+                        <button
+                          type="button"
+                          className={cx("sub-tab-btn", reviewSubTab === "compare" && "active")}
+                          onClick={() => setReviewSubTab("compare")}
+                        >
                           Compare Fields
+                          {selectedUnresolved > 0 ? (
+                            <span className="sub-tab-pill-badge">{selectedUnresolved}</span>
+                          ) : null}
                         </button>
                         <span className="anchor-sep">·</span>
-                        <button type="button" onClick={() => document.getElementById("ai-review-assistant-section")?.scrollIntoView({ behavior: "smooth" })}>
+                        <button
+                          type="button"
+                          className={cx("sub-tab-btn", reviewSubTab === "assistant" && "active")}
+                          onClick={() => setReviewSubTab("assistant")}
+                        >
                           AI Assistant
                         </button>
                         <span className="anchor-sep">·</span>
-                        <button type="button" onClick={() => document.getElementById("review-actions-section")?.scrollIntoView({ behavior: "smooth" })}>
+                        <button
+                          type="button"
+                          className={cx("sub-tab-btn", reviewSubTab === "actions" && "active")}
+                          onClick={() => setReviewSubTab("actions")}
+                        >
                           Review Actions
                         </button>
                         <span className="anchor-sep">·</span>
-                        <button type="button" onClick={() => document.getElementById("resolve-action-section")?.scrollIntoView({ behavior: "smooth" })}>
+                        <button
+                          type="button"
+                          className={cx("sub-tab-btn", reviewSubTab === "resolve" && "active")}
+                          onClick={() => setReviewSubTab("resolve")}
+                        >
                           Resolve
                         </button>
                       </nav>
 
-                      <div className="compact-issue-banner" id="issue-banner-section">
-                        <div className="issue-banner-main">
-                          <div className="issue-banner-lead">
-                            <AlertTriangle size={16} className="text-orange" aria-hidden="true" />
-                            <div>
-                              <strong className="callout-title">
-                                {selected.case_origin === "LEGACY"
-                                  ? "Historical review record"
-                                  : isMissingRequiredValue
-                                  ? "Missing Required Value"
-                                  : isWrongDocumentType
-                                  ? "Wrong Document Type"
-                                  : isUnreadableDocument
-                                  ? "Unreadable Document"
-                                  : isMissingAttachment
-                                  ? "Missing Attachment"
-                                  : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
-                              </strong>
-                              <p className="callout-desc" style={{ margin: "2px 0 0 0", fontSize: "12.5px" }}>
-                                {isMissingRequiredValue
-                                  ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
-                                  : isWrongDocumentType
-                                  ? "The attached file does not appear to be the required shipping document."
-                                  : isUnreadableDocument
-                                  ? "The attached document could not be read reliably."
-                                  : isMissingAttachment
-                                  ? (cleanExplanation || "A required shipping document is not available for comparison.")
-                                  : cleanExplanation}
-                              </p>
-                            </div>
-                          </div>
-
-                          {actuallyAffectedFields.length > 0 && (
-                            <div className="issue-banner-actions">
-                              <div className="chips-container">
-                                {actuallyAffectedFields.map((f) => (
-                                  <button
-                                    key={f}
-                                    type="button"
-                                    className="affected-field-chip"
-                                    onClick={() => {
-                                      setField(f);
-                                      setEditingField(f);
-                                      const el = document.getElementById(`row-${f}`);
-                                      if (el) el.scrollIntoView({ behavior: "smooth" });
-                                    }}
-                                    title={`Click to edit ${labelForField(f)}`}
-                                  >
-                                    {labelForField(f)}
-                                  </button>
-                                ))}
+                      <div
+                        className={cx("sub-tab-panel", reviewSubTab !== "issue" && "sub-tab-panel-hidden")}
+                        id="issue-banner-section"
+                      >
+                        <div className="compact-issue-banner">
+                          <div className="issue-banner-main">
+                            <div className="issue-banner-lead">
+                              <AlertTriangle size={16} className="text-orange" aria-hidden="true" />
+                              <div>
+                                <strong className="callout-title">
+                                  {selected.case_origin === "LEGACY"
+                                    ? "Historical review record"
+                                    : isMissingRequiredValue
+                                    ? "Missing Required Value"
+                                    : isWrongDocumentType
+                                    ? "Wrong Document Type"
+                                    : isUnreadableDocument
+                                    ? "Unreadable Document"
+                                    : isMissingAttachment
+                                    ? "Missing Attachment"
+                                    : (selected.canonical_reason || selected.presentation_title || reasonLabels[selected.reason_code] || selected.reason_text || displayLabel(selected.reason_code))}
+                                </strong>
+                                <p className="callout-desc" style={{ margin: "2px 0 0 0", fontSize: "12.5px" }}>
+                                  {isMissingRequiredValue
+                                    ? "The SI and BL evidence was not sufficient to determine one or more required field values confidently."
+                                    : isWrongDocumentType
+                                    ? "The attached file does not appear to be the required shipping document."
+                                    : isUnreadableDocument
+                                    ? "The attached document could not be read reliably."
+                                    : isMissingAttachment
+                                    ? (cleanExplanation || "A required shipping document is not available for comparison.")
+                                    : cleanExplanation}
+                                </p>
                               </div>
-                              <button
-                                type="button"
-                                className="button-primary btn-sm btn-dark-charcoal review-jump-btn"
-                                onClick={() => {
-                                  const firstUnresolved = actuallyAffectedFields[0] || canonicalFields[0];
-                                  setField(firstUnresolved);
-                                  setEditingField(firstUnresolved);
-                                  const el = document.getElementById(`row-${firstUnresolved}`);
-                                  if (el) el.scrollIntoView({ behavior: "smooth" });
-                                }}
-                              >
-                                Review →
-                              </button>
                             </div>
-                          )}
-                        </div>
 
-                        <details className="callout-pipeline-details">
-                          <summary>System diagnostics (Trigger · Stage · Code)</summary>
-                          <div className="callout-pipeline-meta">
-                            <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
-                            <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
-                            {selected.reason_code ? (
-                              <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
-                            ) : null}
+                            {actuallyAffectedFields.length > 0 && (
+                              <div className="issue-banner-actions">
+                                <div className="chips-container">
+                                  {actuallyAffectedFields.map((f) => (
+                                    <button
+                                      key={f}
+                                      type="button"
+                                      className="affected-field-chip"
+                                      onClick={() => {
+                                        setReviewSubTab("compare");
+                                        setField(f);
+                                        setEditingField(f);
+                                        const el = document.getElementById(`row-${f}`);
+                                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                                      }}
+                                      title={`Click to edit ${labelForField(f)}`}
+                                    >
+                                      {labelForField(f)}
+                                    </button>
+                                  ))}
+                                </div>
+                                <button
+                                  type="button"
+                                  className="button-primary btn-sm btn-dark-charcoal review-jump-btn"
+                                  onClick={() => {
+                                    const firstUnresolved = actuallyAffectedFields[0] || canonicalFields[0];
+                                    setReviewSubTab("compare");
+                                    setField(firstUnresolved);
+                                    setEditingField(firstUnresolved);
+                                    const el = document.getElementById(`row-${firstUnresolved}`);
+                                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                                  }}
+                                >
+                                  Review →
+                                </button>
+                              </div>
+                            )}
                           </div>
-                        </details>
+
+                          <details className="callout-pipeline-details">
+                            <summary>System diagnostics (Trigger · Stage · Code)</summary>
+                            <div className="callout-pipeline-meta">
+                              <span className="pipeline-pill"><strong>Trigger:</strong> {selected.trigger || "Uncertainty"}</span>
+                              <span className="pipeline-pill"><strong>Stage:</strong> {selected.stage || "Comparison"}</span>
+                              {selected.reason_code ? (
+                                <span className="pipeline-pill"><strong>Internal code:</strong> <small className="technical-code">{selected.reason_code}</small></span>
+                              ) : null}
+                            </div>
+                          </details>
+                        </div>
                       </div>
 
-                      <div className="detail-section" id="fields-table-section">
+                      <div
+                        className={cx("sub-tab-panel", reviewSubTab !== "compare" && "sub-tab-panel-hidden")}
+                        id="fields-table-section-panel"
+                      >
+                        <div className="detail-section" id="fields-table-section">
                         <div className="section-heading-row">
                           <div>
                             <h3>Seven reviewed fields</h3>
@@ -3481,152 +3520,110 @@ function HumanReviewPageView({
                           </div>
                         </div>
                       )}
+                      </div>
 
                       {selected.case_origin === "ACTIVE" ? (
-                        <AIReviewPanel
-                          review={selected}
-                          reviewerName={selected.reviewer_name || reviewer}
-                          onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
-                        />
-                      ) : null}
-
-                      <details className="collapsible-detail-card" id="evidence-docs-section">
-                        <summary className="collapsible-summary">
-                          <div className="collapsible-summary-left">
-                            <FileText size={16} className="text-orange" aria-hidden="true" />
-                            <strong>Evidence &amp; Source Documents</strong>
-                            <span className="badge badge-neutral">{selected.documents?.length || 0}</span>
-                          </div>
-                          <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
-                        </summary>
-                        <div className="collapsible-content">
-                          {selected.documents?.length ? (
-                            <div className="documents-card-list">
-                              {selected.documents.map((doc) => (
-                                <div className="attachment-row document-card" key={doc.id}>
-                                  <FileText size={18} className="doc-icon" />
-                                  <div className="doc-info">
-                                    <strong>{doc.filename}</strong>
-                                    <div className="doc-badges">
-                                      <span className="badge badge-info">{displayLabel(doc.role)}</span>
-                                      <span className="badge badge-neutral">{displayLabel(doc.validation_outcome)}</span>
-                                      {doc.routing_outcome ? (
-                                        <span className="badge badge-muted">{displayLabel(doc.routing_outcome)}</span>
-                                      ) : null}
-                                    </div>
-                                  </div>
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <EmptyState title="No documents available" body="Document evidence was not materialized for this review." />
+                        <div
+                          className={cx(
+                            "sub-tab-panel",
+                            reviewSubTab !== "assistant" && reviewSubTab !== "actions" && "sub-tab-panel-hidden",
+                            reviewSubTab === "assistant" && "sub-tab-assistant-active",
+                            reviewSubTab === "actions" && "sub-tab-actions-active"
                           )}
-                        </div>
-                      </details>
-
-                      <details className="collapsible-detail-card" id="email-context-section">
-                        <summary className="collapsible-summary">
-                          <div className="collapsible-summary-left">
-                            <Mail size={16} className="text-orange" aria-hidden="true" />
-                            <strong>Email Context</strong>
-                            <span className="subtle email-summary-preview" style={{ fontSize: "12px" }}>
-                              {selected.email?.subject || "No subject"} · {selected.email?.sender || "Unknown sender"}
-                            </span>
-                          </div>
-                          <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
-                        </summary>
-                        <div className="collapsible-content">
-                          <div className="email-meta-header" style={{ marginBottom: 12 }}>
-                            <div><strong>Subject:</strong> {selected.email?.subject || "No subject"}</div>
-                            <div><strong>From:</strong> {selected.email?.sender || "Unknown sender"}</div>
-                            <div><strong>Date:</strong> {formatDate(selected.created_at)}</div>
-                          </div>
-                          <div className="email-body-view" style={{ whiteSpace: "pre-wrap", fontSize: "12.5px", lineHeight: "1.6", color: "var(--color-grey-800)" }}>
-                            {selected.body || "No email body text captured."}
-                          </div>
-                        </div>
-                      </details>
-
-                      {selected.case_origin === "ACTIVE" ? (
-                        <div className="bottom-resolve-bar" id="resolve-action-section">
-                          <div className="resolve-bar-content">
-                            <div className="resolve-bar-info">
-                              <strong>Ready to verify?</strong>
-                              <p className="subtle" style={{ margin: "2px 0 0 0", fontSize: "12px" }}>Applying overrides and running recomparison against canonical shipping rules.</p>
-                            </div>
-                            <button
-                              className="button-primary btn-dark-charcoal resolve-final-btn"
-                              type="button"
-                              aria-label="Confirm Resolve & Recompare"
-                              disabled={actionState === "loading" || selected.status === "DISMISSED"}
-                              onClick={() => void onResolve(reviewer, note)}
-                            >
-                              <CheckCircle2 size={16} />
-                              {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
-                            </button>
-                          </div>
+                        >
+                          <AIReviewPanel
+                            review={selected}
+                            reviewerName={selected.reviewer_name || reviewer}
+                            onCaseUpdated={(updated) => onCaseUpdated?.(updated)}
+                          />
                         </div>
                       ) : null}
 
-                      {selected.case_origin === "ACTIVE" ? (
-                        <details className="collapsible-detail-card danger-zone-collapsible" id="danger-zone-section">
-                          <summary className="collapsible-summary danger-summary">
-                            <div className="collapsible-summary-left">
-                              <AlertTriangle size={15} className="text-danger" aria-hidden="true" />
-                              <strong>Danger Zone</strong>
-                              <span className="subtle">Dismiss review without resolving</span>
-                            </div>
-                            <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
-                          </summary>
-                          <div className="collapsible-content">
-                            <div id="dismiss-zone-box" className="dismiss-zone" style={{ border: "none", padding: 0 }}>
-                              <p className="dismiss-subtitle" style={{ marginTop: 0 }}>
-                                Dismiss records an audited decision. It does not mark the comparison completed.
-                              </p>
-                              <div className="dismiss-form-grid">
-                                <label>
-                                  Dismiss reason
-                                  <input
-                                    aria-label="Dismiss reason"
-                                    value={dismissReason}
-                                    onChange={(event) => setDismissReason(event.target.value)}
-                                    placeholder="e.g. NOT_ACTIONABLE"
-                                  />
-                                </label>
-                                <button
-                                  className="button-danger-secondary"
-                                  type="button"
-                                  disabled={actionState === "loading" || !dismissReason.trim()}
-                                  onClick={() => void onDismiss(reviewer, dismissReason, note)}
-                                >
-                                  {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
-                                </button>
+                      <div
+                        className={cx("sub-tab-panel", reviewSubTab !== "resolve" && "sub-tab-panel-hidden")}
+                        id="resolve-panel-section"
+                      >
+                        {selected.case_origin === "ACTIVE" ? (
+                          <div className="bottom-resolve-bar" id="resolve-action-section" style={{ marginTop: 0 }}>
+                            <div className="resolve-bar-content">
+                              <div className="resolve-bar-info">
+                                <strong>Ready to verify?</strong>
+                                <p className="subtle" style={{ margin: "2px 0 0 0", fontSize: "12px" }}>Applying overrides and running recomparison against canonical shipping rules.</p>
                               </div>
-                              <div className="dismiss-presets">
-                                <span className="dismiss-presets-label">Quick presets:</span>
-                                {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
+                              <button
+                                className="button-primary btn-dark-charcoal resolve-final-btn"
+                                type="button"
+                                aria-label="Confirm Resolve & Recompare"
+                                disabled={actionState === "loading" || selected.status === "DISMISSED"}
+                                onClick={() => void onResolve(reviewer, note)}
+                              >
+                                <CheckCircle2 size={16} />
+                                {actionState === "loading" ? "Recomparing…" : "Resolve & Recompare"}
+                              </button>
+                            </div>
+                          </div>
+                        ) : null}
+
+                        {selected.case_origin === "ACTIVE" ? (
+                          <details className="collapsible-detail-card danger-zone-collapsible" id="danger-zone-section" style={{ marginTop: 14 }}>
+                            <summary className="collapsible-summary danger-summary">
+                              <div className="collapsible-summary-left">
+                                <AlertTriangle size={15} className="text-danger" aria-hidden="true" />
+                                <strong>Danger Zone</strong>
+                                <span className="subtle">Dismiss review without resolving</span>
+                              </div>
+                              <span className="subtle" style={{ fontSize: "12px" }}>Click to expand/collapse</span>
+                            </summary>
+                            <div className="collapsible-content">
+                              <div id="dismiss-zone-box" className="dismiss-zone" style={{ border: "none", padding: 0 }}>
+                                <p className="dismiss-subtitle" style={{ marginTop: 0 }}>
+                                  Dismiss records an audited decision. It does not mark the comparison completed.
+                                </p>
+                                <div className="dismiss-form-grid">
+                                  <label>
+                                    Dismiss reason
+                                    <input
+                                      aria-label="Dismiss reason"
+                                      value={dismissReason}
+                                      onChange={(event) => setDismissReason(event.target.value)}
+                                      placeholder="e.g. NOT_ACTIONABLE"
+                                    />
+                                  </label>
                                   <button
-                                    key={preset}
+                                    className="button-danger-secondary"
                                     type="button"
-                                    className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
-                                    onClick={() => setDismissReason(preset)}
+                                    disabled={actionState === "loading" || !dismissReason.trim()}
+                                    onClick={() => void onDismiss(reviewer, dismissReason, note)}
                                   >
-                                    {preset}
+                                    {actionState === "loading" ? "Dismissing…" : "Dismiss Review"}
                                   </button>
-                                ))}
+                                </div>
+                                <div className="dismiss-presets">
+                                  <span className="dismiss-presets-label">Quick presets:</span>
+                                  {["NOT_ACTIONABLE", "DUPLICATE_CASE", "INCORRECT_ROUTING", "COMMERCIAL_SETTLEMENT"].map((preset) => (
+                                    <button
+                                      key={preset}
+                                      type="button"
+                                      className={cx("dismiss-preset-chip", dismissReason === preset && "active")}
+                                      onClick={() => setDismissReason(preset)}
+                                    >
+                                      {preset}
+                                    </button>
+                                  ))}
+                                </div>
                               </div>
                             </div>
+                          </details>
+                        ) : (
+                          <div className="detail-section">
+                            <div className="state-note">
+                              <strong>Historical review record</strong>
+                              <span>This record is retained for audit history and is read-only.</span>
+                              <small>No correction, claim, resolve, or dismiss action is available.</small>
+                            </div>
                           </div>
-                        </details>
-                      ) : (
-                        <div className="detail-section">
-                          <div className="state-note">
-                            <strong>Historical review record</strong>
-                            <span>This record is retained for audit history and is read-only.</span>
-                            <small>No correction, claim, resolve, or dismiss action is available.</small>
-                          </div>
-                        </div>
-                      )}
+                        )}
+                      </div>
                     </>
                   )}
                 </div>

@@ -441,42 +441,80 @@ export function AIReviewPanel({
             )}
 
             {showManualForm && (
-              <div className="suggestion-val-box" style={{ marginTop: 12 }} aria-label="Add Manual Correction">
-                <strong>Manual correction</strong>
-                <label>
-                  Document side
-                  <select value={manualSide} onChange={(event) => setManualSide(event.target.value as "SI" | "BL")}>
-                    <option value="SI">SI</option>
-                    <option value="BL">Draft BL</option>
-                  </select>
-                </label>
-                <label>
-                  Field
-                  <select
-                    value={manualField}
-                    onChange={(event) => {
-                      setManualField(event.target.value);
-                      setManualCurrentValue("");
-                    }}
-                  >
-                    {canonicalFields.map((field) => (
-                      <option key={field} value={field}>{field}</option>
-                    ))}
-                  </select>
-                </label>
-                <label>
-                  Current / Effective Value
-                  <input value={manualCurrentValue} onChange={(event) => setManualCurrentValue(event.target.value)} />
-                </label>
-                <label>
-                  Proposed Corrected Value
-                  <input value={manualProposedValue} onChange={(event) => setManualProposedValue(event.target.value)} />
-                </label>
-                <label>
-                  Reason / Note
-                  <textarea value={manualReason} onChange={(event) => setManualReason(event.target.value)} />
-                </label>
-                <div className="suggestion-actions">
+              <div className="suggestion-val-box manual-correction-card" style={{ marginTop: 12 }} aria-label="Add Manual Correction">
+                <div className="manual-correction-title">
+                  <Plus size={14} className="text-orange" aria-hidden="true" />
+                  <strong>Manual correction</strong>
+                </div>
+
+                <div className="manual-form-grid">
+                  <div className="manual-field-group">
+                    <label className="manual-field-label" htmlFor="manual-side-select">Document side</label>
+                    <select
+                      id="manual-side-select"
+                      className="manual-field-select"
+                      value={manualSide}
+                      onChange={(event) => setManualSide(event.target.value as "SI" | "BL")}
+                    >
+                      <option value="SI">SI</option>
+                      <option value="BL">Draft BL</option>
+                    </select>
+                  </div>
+
+                  <div className="manual-field-group">
+                    <label className="manual-field-label" htmlFor="manual-field-select">Field</label>
+                    <select
+                      id="manual-field-select"
+                      className="manual-field-select"
+                      value={manualField}
+                      onChange={(event) => {
+                        setManualField(event.target.value);
+                        setManualCurrentValue("");
+                      }}
+                    >
+                      {canonicalFields.map((field) => (
+                        <option key={field} value={field}>{field}</option>
+                      ))}
+                    </select>
+                  </div>
+
+                  <div className="manual-field-group manual-form-row-full">
+                    <label className="manual-field-label" htmlFor="manual-current-val">Current / Effective Value</label>
+                    <input
+                      id="manual-current-val"
+                      className="manual-field-input"
+                      value={manualCurrentValue}
+                      onChange={(event) => setManualCurrentValue(event.target.value)}
+                      placeholder="e.g. Current extracted value"
+                    />
+                  </div>
+
+                  <div className="manual-field-group manual-form-row-full">
+                    <label className="manual-field-label" htmlFor="manual-proposed-val">Proposed Corrected Value</label>
+                    <input
+                      id="manual-proposed-val"
+                      className="manual-field-input"
+                      aria-label="Proposed Corrected Value"
+                      value={manualProposedValue}
+                      onChange={(event) => setManualProposedValue(event.target.value)}
+                      placeholder="Enter proposed corrected value"
+                    />
+                  </div>
+
+                  <div className="manual-field-group manual-form-row-full">
+                    <label className="manual-field-label" htmlFor="manual-reason">Reason / Note</label>
+                    <textarea
+                      id="manual-reason"
+                      className="manual-field-textarea"
+                      aria-label="Reason / Note"
+                      value={manualReason}
+                      onChange={(event) => setManualReason(event.target.value)}
+                      placeholder="Explain the rationale for this manual correction..."
+                    />
+                  </div>
+                </div>
+
+                <div className="manual-form-actions">
                   <button
                     type="button"
                     className="button-primary btn-sm btn-dark-charcoal"
