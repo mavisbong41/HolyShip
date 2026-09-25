@@ -1563,3 +1563,11 @@ Current document-level limitations:
 - **Environment:** native Windows CPython 3.13.14 at `.venv_native\Scripts\python.exe`, Pydantic 2.13.5, SQLAlchemy 2.0.54, pytest, psycopg, and separate `holyship_dev`, `holyship_test`, `holyship_eval` databases. A clean `holyship_test` migration ran from base through `20260925_0019 (head)`.
 - **Validation:** backend full suite initially found one force-reclassification history defect; after fixing it and adding cursor-failure/subscription-expiry coverage, the final suite passed 410/410 with one Starlette deprecation warning, zero skips, and zero xfails. Dashboard `check`: 35/35, typecheck and production build passed. Outlook `check`: 74/74, typecheck and production build passed (one pre-existing React `act` warning).
 - **Evaluation:** repeated clean 520-email runs produced identical submission SHA-256 `D59FA8DA8651265D6FA08F2076DCA4ECEBEA6CA66CCC038F2161D85B8B28D4C1`. Latest: 520 success, 0 failed, 0 unhandled exceptions, 20.291 s, 25.627 emails/s, P50 0.043128 s, P95 0.160608 s, 5 unresolved comparisons, and 20 Human Review cases. Gemini calls were zero because no credential was present; live AI performance is not verified. Official labels remain unavailable, so no quality metric was fabricated.
+
+### 2026-09-25 — README product handoff
+
+- **Changed:** Rewrote the root README as a current-state product README covering the Outlook + Dashboard workflow, structured Human Review Plans, Smart Reply, Graph architecture, privacy gateway, canonical comparison contract, setup, validation evidence, and operational lifecycle.
+- **Why:** Align the judge/developer-facing documentation with the verified repository state and remove stale snapshot language and exposed demo credentials.
+- **Files:** `README.md`, `implement.md`.
+- **Validation:** Cross-checked claims against `docs/enhancement_completion.md`, `docs/microsoft_graph_setup.md`, `docs/requirements_matrix.md`, `reports/latest/eval.json`, `reports/latest/performance_paths.json`, package manifests, and client/backend READMEs. Ran `git diff --check`; no application-code tests were needed for this documentation-only task.
+- **Next:** Keep README metrics synchronized with the latest verified reports when evaluation evidence changes.
