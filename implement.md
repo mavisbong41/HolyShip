@@ -1719,7 +1719,7 @@ Current document-level limitations:
 
 ### 2026-09-25 — Vercel presentation deployment path
 
-- **Changed:** Added a build-time copy step so the canonical presentation HTML is emitted into the existing Vercel frontend build at `/presentation/holyship-presentation.html`; the deployed copy rewrites the logo path to the frontend public asset.
+- **Changed:** Added a build-time copy step so the canonical presentation HTML is emitted into the existing frontend and Outlook Add-in builds at `/presentation/holyship-presentation.html`; the deployed copy rewrites the logo path to the selected public asset.
 - **Why:** Make the deck available through the existing public Vercel deployment instead of relying on a local file or third-party HTML preview service.
-- **Files:** `scripts/copy_presentation.mjs`, `frontend/package.json`.
-- **Validation:** Run the frontend production build and verify the generated `frontend/dist/presentation/holyship-presentation.html` before checking the public Vercel URL.
+- **Files:** `scripts/copy_presentation.mjs`, `frontend/package.json`, `outlook-addin/package.json`.
+- **Validation:** Frontend and Outlook Add-in production builds passed; generated `frontend/dist/presentation/holyship-presentation.html` and `outlook-addin/dist/presentation/holyship-presentation.html`, then verified the latter with a local static preview. The public Vercel URL is awaiting redeploy after the next push.
