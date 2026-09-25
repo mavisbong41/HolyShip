@@ -85,7 +85,7 @@ export function AISuggestionCard({
             onClick={() => onAccept(sid)}
           >
             <Check size={14} aria-hidden="true" />
-            Accept & Recompare
+            Accept & Implement
           </button>
           <button
             type="button"
@@ -109,7 +109,7 @@ export function AISuggestionCard({
       ) : (
         <div className="suggestion-resolved-status">
           <span className={`badge badge-${status === "ACCEPTED" ? "good" : status === "EDITED_APPLIED" ? "info" : "muted"}`}>
-            {status === "ACCEPTED" ? "Accepted & Applied" : status === "EDITED_APPLIED" ? "Edited & Applied" : "Dismissed"}
+            {status === "ACCEPTED" ? "Accepted & Implemented" : status === "EDITED_APPLIED" ? "Edited & Implemented" : "Dismissed"}
           </span>
         </div>
       )}

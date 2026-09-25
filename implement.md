@@ -45,7 +45,7 @@ superseded historical restriction are recorded in
 ## Last Updated
 
 **Date:** 2026-09-25
-**Updated by:** Section 8 Delete and Restore Behaviour implementation
+**Updated by:** Dashboard AI Review Assistant concise responses and implementation action
 
 ### Section 8: Delete and Restore Behaviour Completed:
 - **8.1 Delete Detection & Evidence Preservation**:
@@ -1233,6 +1233,14 @@ Current document-level limitations:
 ---
 
 ## Recent Change Log
+
+### 2026-09-25 — Dashboard AI Review Assistant refinements
+- Changed: AI explanation messages now render as short labelled bullets (capped at five displayed lines), and the provider prompt requests concise bullet-style output.
+- Changed: concrete structured suggestions retain the existing accept/recompare API flow but now show `Accept & Implement`; explanation-only messages do not show the action.
+- Changed: accepted/edited suggestion state is synchronized into the current chat so controls do not remain pending after implementation.
+- Files: `frontend/src/components/ai-review/AIChatThread.tsx`, `AISuggestionCard.tsx`, `AIReviewPanel.tsx`, `AIChatThread.test.tsx`, `frontend/src/styles/app.css`, `backend/app/ai_review/providers.py`.
+- Validation: Dashboard typecheck passed; full frontend suite passed (37 tests); production build and `git diff --check` passed.
+- Next: None for this focused UI change.
 
 ### 2026-09-25 — Outlook ↔ Dashboard & Email Lifecycle Synchronisation (Sections 6 & 7)
 

@@ -277,7 +277,7 @@ describe("AI Review Assistant Dashboard UI", () => {
     expect(screen.getByText("SI Page 1: 3 x 40'HC containers")).toBeInTheDocument();
 
     // Verify action buttons
-    expect(screen.getByRole("button", { name: /Accept & Recompare/i })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /Accept & Implement/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: /Edit Before Applying/i })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Dismiss" })).toBeInTheDocument();
   });
@@ -293,7 +293,7 @@ describe("AI Review Assistant Dashboard UI", () => {
     await screen.findByText(/AI Proposed Override: BL · Container Count/i);
 
     // Click Accept Proposal
-    await user.click(screen.getByRole("button", { name: /Accept & Recompare/i }));
+    await user.click(screen.getByRole("button", { name: /Accept & Implement/i }));
 
     await waitFor(() => {
       expect(fetchMock).toHaveBeenCalledWith(

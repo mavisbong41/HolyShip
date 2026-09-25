@@ -22,6 +22,28 @@ interface AIChatThreadProps {
   isActionLoading?: boolean;
 }
 
+function assistantLines(text: string): string[] {
+  const normalized = text
+    .replace(/\r\n/g, "\n")
+    .replace(/\s+(?=(Status|Issue|BL evidence|Next action):)/gi, "\n")
+    .trim();
+  return normalized
+    .split("\n")
+    .map((line) => line.trim().replace(/^[-•*]\s*/, ""))
+    .filter(Boolean)
+    .slice(0, 5);
+}
+
+function renderAssistantLine(line: string, index: number): React.ReactNode {
+  const match = line.match(/^(Status|Issue|BL evidence|Next action):\s*(.*)$/i);
+  if (!match) return <li key={`${line}-${index}`}>{line}</li>;
+  return (
+    <li key={`${line}-${index}`}>
+      <strong>{match[1]}:</strong>{match[2] ? ` ${match[2]}` : null}
+    </li>
+  );
+}
+
 export function AIChatThread({
   messages,
   onAcceptSuggestion,
@@ -73,8 +95,12 @@ export function AIChatThread({
           </div>
 
           <div className="chat-bubble-content">
-            <p className="message-text">{msg.text}</p>
-            {msg.suggestion && (
+            {msg.sender === "ai" ? (
+              <ul className="message-text assistant-message-list">
+                {assistantLines(msg.text).map(renderAssistantLine)}
+              </ul>
+            ) : <p className="message-text">{msg.text}</p>}
+            {msg.suggestion && msg.suggestion.field && msg.suggestion.suggested_value != null && msg.suggestionId && (
               <AISuggestionCard
                 suggestion={msg.suggestion}
                 suggestionId={msg.suggestionId}

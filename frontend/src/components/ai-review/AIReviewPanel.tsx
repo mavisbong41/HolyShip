@@ -151,6 +151,11 @@ export function AIReviewPanel({
     setErrorMessage(null);
     try {
       const updatedReview = await acceptAISuggestion(review.id, suggestionId, reviewerName || "Reviewer");
+      setMessages((current) => current.map((message) => {
+        if (message.suggestionId !== suggestionId) return message;
+        const updatedSuggestion = updatedReview.ai_suggestions?.find((item) => item.id === suggestionId);
+        return updatedSuggestion ? { ...message, suggestion: updatedSuggestion } : message;
+      }));
       onCaseUpdated(updatedReview);
     } catch (caught) {
       setErrorMessage(caught instanceof Error ? caught.message : "Failed to accept AI suggestion");
@@ -184,6 +189,11 @@ export function AIReviewPanel({
         reviewerLabel,
         note,
       );
+      setMessages((current) => current.map((message) => {
+        if (message.suggestionId !== suggestionId) return message;
+        const updatedSuggestion = updatedReview.ai_suggestions?.find((item) => item.id === suggestionId);
+        return updatedSuggestion ? { ...message, suggestion: updatedSuggestion } : message;
+      }));
       onCaseUpdated(updatedReview);
     } catch (caught) {
       setErrorMessage(caught instanceof Error ? caught.message : "Failed to apply edited suggestion");

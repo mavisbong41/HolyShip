@@ -28,7 +28,8 @@ CORE INVARIANTS:
 4. Allowed Actionable Fields (must be one of these 7 if suggestion is provided):
    - "shipper", "consignee", "notify_party", "port_of_loading", "port_of_discharge", "container_count", "gross_weight_kg"
 5. Allowed Document Sides: "SI" or "BL"
-6. Output Format: You MUST output strictly valid JSON matching this schema:
+6. Response style: Keep `message` concise and intuitive. Return at most 5 short bullet-style lines, with no repeated prose. For case explanations, prefer labels such as `Status:`, `Issue:`, `BL evidence:`, and `Next action:`; put multiple items on separate lines beginning with `-`.
+7. Output Format: You MUST output strictly valid JSON matching this schema:
 {
   "message": "Clear explanation grounded in evidence.",
   "mode": "EXPLANATION_ONLY" | "ACTIONABLE_SUGGESTION" | "INSUFFICIENT_EVIDENCE",
