@@ -18,6 +18,7 @@ import {
   ShieldCheck,
   Sparkles,
   Tag,
+  Trash2,
   User,
   X,
 } from "lucide-react";
@@ -39,6 +40,14 @@ import {
   sendReplyDraft,
   saveHumanReviewOverride,
   updateEmailCategory,
+  listReviewPlans,
+  createReviewPlan,
+  createManualReviewPlan,
+  addManualReviewPlanItem,
+  updateReviewPlanItem,
+  removeManualReviewPlanItem,
+  confirmReviewPlan,
+  cancelReviewPlan,
 } from "../api/client";
 import { dashboardEmailUrl, dashboardReviewUrl } from "../lib/config";
 import { categoryLabels, displayLabel, displayValue, formatDate, labelForField, reasonLabels, statusLabels } from "../lib/labels";
@@ -53,6 +62,7 @@ import type {
   ProductCategory,
   ProductReplyWorkflow,
   ProductEmailLifecycle,
+  ProductReviewPlan,
 } from "../types/product";
 import { ComparisonTable } from "./ComparisonTable";
 import { StatusBadge } from "./StatusBadge";
@@ -1656,9 +1666,121 @@ function CaseDetailsCard({
   );
 }
 
+const REVIEW_PLAN_FIELDS = [
+  "shipper", "consignee", "notify_party", "port_of_loading",
+  "port_of_discharge", "container_count", "gross_weight_kg",
+] as const;
+
+function OutlookReviewPlanWorkflow({
+  review,
+  comparison,
+  onActionComplete,
+  onProceedToReply,
+}: {
+  review: ProductReview;
+  detail: ProductEmailDetail;
+  comparison: ProductComparison | null;
+  reviewUrl: string | null;
+  onActionComplete: () => Promise<void>;
+  onProceedToReply: () => void;
+  onExecuteRecompare: () => Promise<void>;
+  actionLoading: boolean;
+}): React.ReactElement {
+  const reviewer = review.reviewer_name || "Outlook reviewer";
+  const [plan, setPlan] = useState<ProductReviewPlan | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSide, setManualSide] = useState<"SI" | "BL">("BL");
+  const [manualField, setManualField] = useState<string>("shipper");
+  const [manualCurrent, setManualCurrent] = useState("");
+  const [manualProposed, setManualProposed] = useState("");
+  const [manualReason, setManualReason] = useState("");
+
+  useEffect(() => {
+    void listReviewPlans(review.id)
+      .then((plans) => setPlan(plans.find((item) => item.status !== "CANCELLED") ?? null))
+      .catch((caught) => setError(caught instanceof Error ? caught.message : "Could not load Review Plan"));
+  }, [review.id]);
+
+  const run = async (operation: () => Promise<ProductReviewPlan>): Promise<boolean> => {
+    setBusy(true);
+    setError(null);
+    try { setPlan(await operation()); return true; }
+    catch (caught) { setError(caught instanceof Error ? caught.message : "Review Plan action failed"); return false; }
+    finally { setBusy(false); }
+  };
+
+  const openManual = () => {
+    const field = comparison?.fields.find((item) => item.field === manualField);
+    const value = manualSide === "SI" ? field?.si : field?.bl;
+    setManualCurrent(displayValue(value?.canonical ?? value?.raw));
+    setManualOpen(true);
+  };
+
+  const addManual = async () => {
+    if (!manualProposed.trim() || !manualReason.trim()) return;
+    const item = {
+      document_side: manualSide, field: manualField, current_value: manualCurrent,
+      proposed_value: manualProposed, reason: manualReason,
+    };
+    await run(() => plan
+      ? addManualReviewPlanItem(review.id, plan.id, reviewer, item)
+      : createManualReviewPlan(review.id, reviewer, item));
+    setManualOpen(false);
+    setManualProposed("");
+    setManualReason("");
+  };
+
+  const pendingSuggestions = (review.ai_suggestions ?? []).filter((item) => item.status === "PENDING" && item.field && item.document_side);
+  return (
+    <section className="field-review-card" role="region" aria-label="Outlook Review Plan">
+      <div className="section-title-row"><p className="pane-section-label">Review Plan</p>{plan && <StatusBadge value={plan.status} />}</div>
+      <p className="mini-note">Approve, edit, or reject every action. HolyShip applies selected overrides together and runs one re-comparison only after confirmation.</p>
+      {error && <div className="ai-companion-error" role="alert"><AlertCircle size={13} />{error}</div>}
+      {!plan && pendingSuggestions.length > 0 && <button type="button" className="btn-primary" disabled={busy} onClick={() => void run(() => createReviewPlan(review, reviewer))}>Create Plan from {pendingSuggestions.length} Pending Suggestion{pendingSuggestions.length === 1 ? "" : "s"}</button>}
+      {plan?.items.map((item) => (
+        <article key={item.id} className="suggested-correction-card" style={{ marginTop: 8 }}>
+          <div className="section-title-row"><strong>{item.document_side} · {labelForField(item.field)}</strong><span className="badge badge-info">Source: {item.ai_suggestion_id ? "AI" : "Manual"}</span></div>
+          <dl className="review-card-facts">
+            <div><dt>Current value</dt><dd>{displayValue(item.current_value)}</dd></div>
+            <div><dt>Proposed value</dt><dd><input aria-label={`Proposed value for ${item.field}`} defaultValue={displayValue(item.human_edited_value ?? item.proposed_value)} disabled={plan.status !== "DRAFT"} onBlur={(event) => { if (event.target.value !== displayValue(item.proposed_value)) void run(() => updateReviewPlanItem(review.id, plan.id, item.id, "EDITED", event.target.value)); }} /></dd></div>
+            <div><dt>Reason</dt><dd>{item.reason || "—"}</dd></div>
+            {item.ai_suggestion_id && <div><dt>Confidence</dt><dd>{item.confidence == null ? "—" : `${Math.round(item.confidence * 100)}%`}</dd></div>}
+            <div><dt>Status</dt><dd><StatusBadge value={item.status} /></dd></div>
+          </dl>
+          {plan.status === "DRAFT" && <div className="decision-action-row">
+            <button type="button" className="decision-btn" onClick={() => void run(() => updateReviewPlanItem(review.id, plan.id, item.id, "APPROVED"))}><Check size={12} /> Approve</button>
+            <button type="button" className="decision-btn" onClick={() => void run(() => updateReviewPlanItem(review.id, plan.id, item.id, "REJECTED"))}><X size={12} /> Reject</button>
+            {!item.ai_suggestion_id && <button type="button" className="decision-btn" aria-label={`Remove manual correction ${item.field}`} onClick={() => void run(() => removeManualReviewPlanItem(review.id, plan.id, item.id, reviewer))}><Trash2 size={12} /> Remove</button>}
+          </div>}
+        </article>
+      ))}
+      {(!plan || plan.status === "DRAFT") && <button type="button" className="btn-secondary" style={{ marginTop: 8 }} onClick={openManual}><Plus size={12} /> Add Manual Correction</button>}
+      {manualOpen && <div className="review-plan-box" style={{ marginTop: 8 }} aria-label="Add Manual Correction">
+        <strong>Manual correction</strong>
+        <label className="form-field">Document side<select value={manualSide} onChange={(event) => setManualSide(event.target.value as "SI" | "BL")}><option value="SI">SI</option><option value="BL">Draft BL</option></select></label>
+        <label className="form-field">Field<select value={manualField} onChange={(event) => { setManualField(event.target.value); setManualCurrent(""); }}>{REVIEW_PLAN_FIELDS.map((field) => <option key={field} value={field}>{labelForField(field)}</option>)}</select></label>
+        <label className="form-field">Current / Effective Value<input value={manualCurrent} onChange={(event) => setManualCurrent(event.target.value)} /></label>
+        <label className="form-field">Proposed Corrected Value<input value={manualProposed} onChange={(event) => setManualProposed(event.target.value)} /></label>
+        <label className="form-field">Reason / Note<textarea value={manualReason} onChange={(event) => setManualReason(event.target.value)} rows={2} /></label>
+        <div className="decision-action-row"><button type="button" className="decision-btn primary" disabled={busy || !manualProposed.trim() || !manualReason.trim()} onClick={() => void addManual()}>Add to Plan</button><button type="button" className="decision-btn" onClick={() => setManualOpen(false)}>Back</button></div>
+      </div>}
+      {plan && (plan.status === "DRAFT" || plan.status === "APPLY_FAILED") && <div className="review-plan-box" style={{ marginTop: 10 }}>
+        <strong>Final plan: {plan.items.filter((item) => ["APPROVED", "EDITED", "APPLIED"].includes(item.status)).length} item(s) will be applied</strong>
+        {plan.error_message && <p className="mini-note">Overrides were preserved. Retry only runs re-comparison: {plan.error_message}</p>}
+        <button type="button" className="btn-primary" disabled={busy || (plan.status === "DRAFT" && !plan.items.some((item) => item.status === "APPROVED" || item.status === "EDITED"))} onClick={() => void (async () => { if (await run(() => confirmReviewPlan(review.id, plan.id, reviewer))) await onActionComplete(); })()}>{plan.status === "APPLY_FAILED" ? "Retry Re-comparison" : "Confirm Implementation"}</button>
+        {plan.status === "DRAFT" && <button type="button" className="btn-secondary" disabled={busy} onClick={() => void run(() => cancelReviewPlan(review.id, plan.id, reviewer)).then((succeeded) => { if (succeeded) setPlan(null); })}>Cancel / Back</button>}
+      </div>}
+      {plan?.status === "APPLIED" && <button type="button" className="btn-primary" onClick={onProceedToReply}>Continue to Smart Reply</button>}
+    </section>
+  );
+}
+
 type WorkflowView = "overview" | "review" | "reply" | "comparison";
 
-function HumanReviewWorkflow({
+/** @deprecated Retained only for compatibility tests; the task pane renders OutlookReviewPlanWorkflow. */
+export function HumanReviewWorkflow({
   review,
   detail,
   comparison,
@@ -2822,7 +2944,7 @@ export function TaskPane({
             {/* ══════════════ 2. SUBVIEW: HUMAN REVIEW ══════════════ */}
             <div className={`workflow-subview ${activeWorkflowView === "review" ? "active" : "visually-hidden"}`}>
               {activeReview ? (
-                <HumanReviewWorkflow
+                <OutlookReviewPlanWorkflow
                   review={activeReview}
                   detail={effectiveDetail}
                   comparison={effectiveDetail.comparison}

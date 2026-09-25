@@ -4,7 +4,7 @@ import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskPane } from "../src/components/TaskPane";
 import { FakeCurrentMailContextProvider } from "../src/office/FakeContextProvider";
 import type { MailContextItem, MailContextProvider, MailContextResult } from "../src/types/context";
-import type { ProductEmailDetail } from "../src/types/product";
+import type { ProductEmailDetail, ProductReviewPlan } from "../src/types/product";
 import * as clientModule from "../src/api/client";
 import { fixtures } from "./fixtures";
 
@@ -31,6 +31,39 @@ function setupAdapter(result: ResolveResult): void {
 
 const provider = new FakeCurrentMailContextProvider();
 
+function reviewPlan(overrides: Partial<ProductReviewPlan> = {}): ProductReviewPlan {
+  return {
+    id: "plan-001",
+    review_case_id: "review-001",
+    status: "DRAFT",
+    created_by: "Outlook reviewer",
+    confirmed_at: null,
+    confirmed_by: null,
+    applied_comparison_id: null,
+    error_message: null,
+    items: [
+      {
+        id: "item-001",
+        ai_suggestion_id: "suggestion-001",
+        document_side: "BL",
+        field: "gross_weight_kg",
+        current_value: "24850",
+        proposed_value: "22000",
+        human_edited_value: null,
+        reason: "SI states 22,000 KG.",
+        confidence: 0.94,
+        action: "FIELD_OVERRIDE",
+        status: "PROPOSED",
+        created_at: "2026-09-25T01:00:00Z",
+        updated_at: "2026-09-25T01:00:00Z",
+      },
+    ],
+    created_at: "2026-09-25T01:00:00Z",
+    updated_at: "2026-09-25T01:00:00Z",
+    ...overrides,
+  };
+}
+
 class MutableMailContextProvider implements MailContextProvider {
   constructor(private item: MailContextItem) {}
 
@@ -50,6 +83,7 @@ describe("TaskPane", () => {
     const testGlobal = globalThis as unknown as { Office?: unknown };
     delete testGlobal.Office;
     setupAdapter({ detail: null, strategy: "not_resolved", confidence: "none", limitationNote: "Test: not found" });
+    vi.spyOn(clientModule, "listReviewPlans").mockResolvedValue([]);
   });
 
   it("shows loading state initially", () => {
@@ -261,14 +295,8 @@ describe("TaskPane", () => {
       expect(heading).toBeInTheDocument();
     });
     expect(screen.getAllByText(/one or more document fields could not be verified/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/Jordan Lee/i)).toBeInTheDocument();
-    expect(screen.getByText(/affected field/i)).toBeInTheDocument();
-    expect(screen.getAllByText(/^notify party$/i).length).toBeGreaterThan(0);
-    expect(screen.getByText(/suggested action/i)).toBeInTheDocument();
-    expect(screen.getByText(/confirm notify party/i)).toBeInTheDocument();
-    expect(screen.queryByText(/0 affected field/i)).not.toBeInTheDocument();
-    const reviewLink = screen.getByRole("link", { name: /open human review/i });
-    expect(reviewLink.getAttribute("href")).toContain("review=review-001");
+    expect(screen.getByRole("region", { name: "Outlook Review Plan" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: /add manual correction/i })).toBeInTheDocument();
   });
 
   it("renders legacy review records as non-actionable context", async () => {
@@ -418,134 +446,105 @@ describe("TaskPane", () => {
 
     await user.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => {
-      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Captain Jack");
+      expect(mockGenerate).toHaveBeenCalledWith("email-001", [
+        "Request amendment of Container Count from 3 × 40'HC to 2 × 40'HC.",
+        "Update Gross Weight from 24,850 KG to 22,000 KG.",
+        "Insert Notify Party: Apex Customs Brokerage Inc.",
+      ], "Captain Jack");
     });
 
     await user.click(await screen.findByRole("button", { name: /confirm sent/i }));
     await waitFor(() => {
-      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Captain Jack");
+      expect(mockSend).toHaveBeenCalledWith(
+        "email-001",
+        expect.stringContaining("Container Count"),
+        "Captain Jack",
+      );
     });
   });
 
-  describe("AI Review Assistant Companion", () => {
-    it("renders AI Review Assistant section and chips when active review exists", async () => {
-      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+  describe("Outlook Review Plan", () => {
+    it("offers one shared plan for all pending AI suggestions", async () => {
+      setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
       render(<TaskPane contextProvider={provider} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole("region", { name: "AI Review Assistant Companion" })).toBeInTheDocument();
-      });
-      expect(screen.getByText("AI Review Assistant")).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Why does this need review?" })).toBeInTheDocument();
-      expect(screen.getByRole("button", { name: "Suggest field overrides" })).toBeInTheDocument();
+      expect(await screen.findByRole("region", { name: "Outlook Review Plan" })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /create plan from 1 pending suggestion/i })).toBeInTheDocument();
+      expect(screen.getByRole("button", { name: /add manual correction/i })).toBeInTheDocument();
     });
 
-    it("queries AI assistant on chip click, displays explanation and actionable suggestion with deep link", async () => {
-      const mockAsk = vi.spyOn(clientModule, "askAIAssistant").mockResolvedValue({
-        message: "The container count in Draft BL differs from SI.",
-        mode: "ACTIONABLE_SUGGESTION",
-        suggestion_id: "sugg-out-1",
-        provider_name: "test-provider",
-        provider_model: "test-model",
-        suggestion: {
-          action: "FIELD_OVERRIDE",
-          document_side: "BL",
-          field: "container_count",
-          current_value: "4",
-          suggested_value: "2",
-          confidence: 0.95,
-          reason: "SI explicitly states 2 x 40'HC.",
-          evidence_refs: ["SI Page 1: 2 x 40'HC"],
-        },
-      });
-
-      const user = userEvent.setup();
-      setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
-      render(<TaskPane contextProvider={provider} />);
-
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: "Suggest field overrides" })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole("button", { name: "Suggest field overrides" }));
-
-      expect(mockAsk).toHaveBeenCalledWith("review-001", "Suggest field overrides");
-
-      expect(await screen.findByText("The container count in Draft BL differs from SI.")).toBeInTheDocument();
-      expect(screen.getByText(/Proposed: BL · Container Count/i)).toBeInTheDocument();
-      expect(screen.getByText("95%")).toBeInTheDocument();
-      expect(screen.getByText("SI explicitly states 2 x 40'HC.")).toBeInTheDocument();
-      expect(screen.getByText("SI Page 1: 2 x 40'HC")).toBeInTheDocument();
-
-      const applyLink = screen.getByRole("link", { name: /Open Review & Apply in HolyShip/i });
-      expect(applyLink).toBeInTheDocument();
-      expect(applyLink.getAttribute("href")).toContain("review=review-001");
-    });
-
-    it("accepts an AI suggestion directly from Outlook and refreshes the case", async () => {
-      const mockAccept = vi.spyOn(clientModule, "acceptAISuggestion").mockResolvedValue(fixtures.aiSuggestion.review[0]);
+    it("creates and renders an AI-backed plan item", async () => {
+      const plan = reviewPlan();
+      const create = vi.spyOn(clientModule, "createReviewPlan").mockResolvedValue(plan);
       const user = userEvent.setup();
       setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
       render(<TaskPane contextProvider={provider} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole("region", { name: "Pending AI suggestions" })).toBeInTheDocument();
-      });
+      await user.click(await screen.findByRole("button", { name: /create plan from 1 pending suggestion/i }));
 
-      await user.click(screen.getByRole("button", { name: /^Approve$/i }));
-
-      await waitFor(() => {
-        expect(mockAccept).toHaveBeenCalledWith("review-001", "suggestion-001", "Outlook reviewer");
-      });
-      expect(MockAdapter).toHaveBeenCalledTimes(2);
+      await waitFor(() => expect(create).toHaveBeenCalledWith(fixtures.aiSuggestion.review[0], "Jordan Lee"));
+      expect(screen.getByText("Source: AI")).toBeInTheDocument();
+      expect(screen.getByText("SI states 22,000 KG.")).toBeInTheDocument();
+      expect(screen.getByText("94%")).toBeInTheDocument();
     });
 
-    it("saves a manual override and confirms backend recomparison from Outlook", async () => {
-      const mockOverride = vi.spyOn(clientModule, "saveHumanReviewOverride").mockResolvedValue(fixtures.blocked.review[0]);
-      const mockResolve = vi.spyOn(clientModule, "resolveHumanReview").mockResolvedValue(fixtures.blocked.review[0]);
+    it("supports approve, edit, reject, then confirms the plan once", async () => {
+      const base = reviewPlan();
+      const plan = reviewPlan({
+        items: [
+          { ...base.items[0], id: "item-approve", field: "gross_weight_kg", status: "APPROVED" },
+          { ...base.items[0], id: "item-edit", field: "container_count", status: "EDITED", human_edited_value: "2" },
+          { ...base.items[0], id: "item-reject", field: "notify_party", status: "REJECTED" },
+        ],
+      });
+      vi.mocked(clientModule.listReviewPlans).mockResolvedValue([plan]);
+      const update = vi.spyOn(clientModule, "updateReviewPlanItem").mockResolvedValue(plan);
+      const applied = reviewPlan({ ...plan, status: "APPLIED" });
+      const confirm = vi.spyOn(clientModule, "confirmReviewPlan").mockResolvedValue(applied);
+      const user = userEvent.setup();
+      setupAdapter({ detail: fixtures.aiSuggestion, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      const articles = await screen.findAllByRole("article");
+      await user.click(within(articles[0]).getByRole("button", { name: /approve/i }));
+      await user.click(within(articles[2]).getByRole("button", { name: /reject/i }));
+      await waitFor(() => expect(update).toHaveBeenCalledTimes(2));
+      await user.click(screen.getByRole("button", { name: /confirm implementation/i }));
+      await waitFor(() => expect(confirm).toHaveBeenCalledTimes(1));
+      expect(confirm).toHaveBeenCalledWith("review-001", "plan-001", "Jordan Lee");
+    });
+
+    it("creates a manual plan item with the canonical correction fields", async () => {
+      const manualPlan = reviewPlan({
+        items: [{ ...reviewPlan().items[0], id: "manual-001", ai_suggestion_id: null, field: "shipper", proposed_value: "Correct Shipper", confidence: null }],
+      });
+      const createManual = vi.spyOn(clientModule, "createManualReviewPlan").mockResolvedValue(manualPlan);
       const user = userEvent.setup();
       setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
       render(<TaskPane contextProvider={provider} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole("region", { name: "Outlook Human Review actions" })).toBeInTheDocument();
-      });
+      await user.click(await screen.findByRole("button", { name: /add manual correction/i }));
+      await user.clear(screen.getByLabelText("Current / Effective Value"));
+      await user.type(screen.getByLabelText("Current / Effective Value"), "Old Shipper");
+      await user.type(screen.getByLabelText("Proposed Corrected Value"), "Correct Shipper");
+      await user.type(screen.getByLabelText("Reason / Note"), "Verified against signed SI.");
+      await user.click(screen.getByRole("button", { name: /add to plan/i }));
 
-      await user.clear(screen.getByLabelText("Corrected value"));
-      await user.type(screen.getByLabelText("Corrected value"), "Same as consignee");
-      await user.click(screen.getByRole("button", { name: /save override/i }));
-
-      await waitFor(() => {
-        expect(mockOverride).toHaveBeenCalledWith("review-001", expect.objectContaining({
-          document_side: "BL",
-          field: "notify_party",
-          corrected_value: "Same as consignee",
-          reviewer_name: "Jordan Lee",
-        }));
-      });
-
-      await user.type(screen.getByLabelText("Confirmation notes"), "Confirmed in Outlook.");
-      await user.click(screen.getByRole("button", { name: /confirm & re-compare/i }));
-
-      await waitFor(() => {
-        expect(mockResolve).toHaveBeenCalledWith("review-001", "Jordan Lee", "Confirmed in Outlook.");
-      });
+      await waitFor(() => expect(createManual).toHaveBeenCalledWith(
+        "review-001",
+        "Jordan Lee",
+        expect.objectContaining({ field: "shipper", current_value: "Old Shipper", proposed_value: "Correct Shipper" }),
+      ));
+      expect(screen.getByText("Source: Manual")).toBeInTheDocument();
     });
 
-    it("displays error notice gracefully when AI assistant call fails", async () => {
-      vi.spyOn(clientModule, "askAIAssistant").mockRejectedValue(new Error("AI service timeout"));
-
-      const user = userEvent.setup();
+    it("shows a plan-loading failure without breaking the task pane", async () => {
+      vi.mocked(clientModule.listReviewPlans).mockRejectedValue(new Error("Plan service timeout"));
       setupAdapter({ detail: fixtures.blocked, strategy: "internet_message_id", confidence: "high", limitationNote: null });
       render(<TaskPane contextProvider={provider} />);
 
-      await waitFor(() => {
-        expect(screen.getByRole("button", { name: "Why does this need review?" })).toBeInTheDocument();
-      });
-
-      await user.click(screen.getByRole("button", { name: "Why does this need review?" }));
-
-      expect(await screen.findByRole("alert")).toHaveTextContent("AI service timeout");
+      expect(await screen.findByRole("alert")).toHaveTextContent("Plan service timeout");
+      expect(screen.getByRole("region", { name: "Outlook Review Plan" })).toBeInTheDocument();
     });
 
     it("renders deleted lifecycle banner and sync rail status", async () => {
