@@ -1142,57 +1142,6 @@ button:disabled {
   color: var(--color-warn);
 }
 
-/* ─── Timeline List (Screen 5 mockup) ─────────────────────────── */
-
-.timeline-card {
-  background: var(--color-white);
-  border: 1px solid var(--color-grey-200);
-  border-radius: var(--radius-md);
-  padding: 14px;
-  margin-bottom: 14px;
-}
-
-.timeline-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 0 0 16px;
-  position: relative;
-  border-left: 2px solid var(--color-grey-200);
-}
-
-.timeline-item {
-  position: relative;
-  margin-bottom: 14px;
-  padding-left: 10px;
-}
-
-.timeline-item:last-child {
-  margin-bottom: 0;
-}
-
-.timeline-dot {
-  position: absolute;
-  left: -21px;
-  top: 3px;
-  width: 8px;
-  height: 8px;
-  border-radius: 50%;
-  background: var(--color-success);
-  border: 2px solid var(--color-white);
-}
-
-.timeline-title {
-  font-size: 12px;
-  font-weight: 600;
-  color: var(--color-grey-900);
-  margin: 0 0 2px;
-}
-
-.timeline-time {
-  font-size: 10.5px;
-  color: var(--color-grey-500);
-}
-
 /* ─── Case Details Card (Screen 5 mockup) ─────────────────────── */
 
 .details-card {
@@ -1205,11 +1154,12 @@ button:disabled {
 
 .details-row {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   padding: 6px 0;
   font-size: 12px;
   border-bottom: 1px solid var(--color-grey-100);
+  gap: 12px;
 }
 
 .details-row:last-child {
@@ -1219,6 +1169,8 @@ button:disabled {
 .details-label {
   color: var(--color-grey-700);
   font-weight: 500;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .details-val {
@@ -1226,7 +1178,18 @@ button:disabled {
   color: var(--color-black);
   display: inline-flex;
   align-items: center;
+  justify-content: flex-end;
+  text-align: right;
   gap: 4px;
+  word-break: break-all;
+  overflow-wrap: anywhere;
+  margin-left: auto;
+}
+
+.details-val code {
+  text-align: right;
+  word-break: break-all;
+  font-size: 11px;
 }
 /* ─── Main content ────────────────────────────────────────────── */
 
@@ -2774,6 +2737,7 @@ button:disabled {
   padding: 2px 0 2px 8px;
   margin: 0;
   position: relative;
+  border-left: none;
 }
 .timeline-list::before {
   content: "";

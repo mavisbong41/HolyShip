@@ -91,7 +91,7 @@ describe("IdentityAdapter", () => {
 
     expect(result.strategy).toBe("subject_search");
     expect(result.confidence).toBe("low");
-    expect(result.limitationNote).not.toBeNull();
+    expect(result.limitationNote).toBeNull();
   });
 
   it("returns not_resolved when multiple subject matches exist", async () => {

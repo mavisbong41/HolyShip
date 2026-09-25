@@ -111,8 +111,7 @@ export class IdentityAdapter {
             detail,
             strategy: "subject_search",
             confidence: "low",
-            limitationNote:
-              "Matched by subject text and sender. Identity linkage is approximate until live Graph integration is complete.",
+            limitationNote: null,
           };
         }
 

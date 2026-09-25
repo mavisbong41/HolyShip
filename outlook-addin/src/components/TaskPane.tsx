@@ -14,7 +14,6 @@ import {
   Info,
   Plus,
   RefreshCw,
-  Send,
   ShieldCheck,
   Sparkles,
   Tag,
@@ -1012,6 +1011,36 @@ function CategoryCorrectionSection({
   );
 }
 
+function openOutlookReplyForm(bodyText: string): boolean {
+  if (typeof Office !== "undefined" && Office.context?.mailbox?.item) {
+    const item = Office.context.mailbox.item;
+    const htmlBody = bodyText
+      .split("\n")
+      .map((line) =>
+        line.trim()
+          ? `<p style="margin: 0 0 8px 0; font-family: Segoe UI, sans-serif;">${line
+              .replace(/&/g, "&amp;")
+              .replace(/</g, "&lt;")
+              .replace(/>/g, "&gt;")}</p>`
+          : `<p style="margin: 0 0 8px 0;"><br/></p>`
+      )
+      .join("");
+
+    try {
+      if (typeof (item as any).displayReplyAllForm === "function") {
+        (item as any).displayReplyAllForm({ htmlBody });
+        return true;
+      } else if (typeof (item as any).displayReplyForm === "function") {
+        (item as any).displayReplyForm({ htmlBody });
+        return true;
+      }
+    } catch (err) {
+      console.warn("Failed to open Outlook reply form:", err);
+    }
+  }
+  return false;
+}
+
 function ReplyWorkflowSection({
   email,
   initialWorkflow,
@@ -1115,6 +1144,7 @@ function ReplyWorkflowSection({
           status: "SENT",
           sent_at: new Date().toISOString(),
         }));
+        await onActionComplete();
       }
     } finally {
       setBusyAction(null);
@@ -1223,180 +1253,246 @@ function ReplyWorkflowSection({
         </div>
       </div>
 
-      {/* Step 1: Prepare Reply */}
-      <div className="reply-step-card">
-        <div className="reply-step-header">
-          <span className="reply-step-badge">1</span>
-          <div>
-            <h3 className="reply-step-heading">Prepare Reply</h3>
-            <p className="reply-step-subtitle">Review the key points to include in the reply. Edit if needed.</p>
+      {workflow?.status === "SENT" ? (
+        <div className="reply-step-card" style={{ borderLeft: "3px solid var(--color-success)" }}>
+          <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+            <CheckCircle2 size={18} style={{ color: "var(--color-success)", flexShrink: 0, marginTop: 2 }} aria-hidden="true" />
+            <div style={{ flex: 1 }}>
+              <h3 style={{ margin: 0, fontSize: "13px", fontWeight: 700, color: "var(--color-black)" }}>
+                Reply Dispatched & Recorded
+              </h3>
+              <p style={{ margin: "3px 0 0", fontSize: "11px", color: "var(--color-grey-600)" }}>
+                Confirmed by {reviewerName || "Outlook reviewer"}{workflow.sent_at ? ` on ${formatDate(workflow.sent_at)}` : ""}.
+              </p>
+            </div>
           </div>
-        </div>
 
-        {/* Blue Callout Summary */}
-        <div className="reply-issues-callout">
-          <div className="callout-header">
-            <FileText size={14} className="callout-icon" aria-hidden="true" />
-            <span>This reply addresses {keyPoints.length} issues from the draft B/L:</span>
-          </div>
-          <ul className="callout-bullets">
-            {keyPoints.map((kp, i) => (
-              <li key={i}>{kp.replace(/^Request amendment of |^Update |^Insert /i, "")}</li>
-            ))}
-          </ul>
-        </div>
-
-        {/* Key Points Header */}
-        <div className="reply-kp-header">
-          <span className="reply-kp-title">Key Points</span>
-          <button
-            type="button"
-            className="btn-add-kp"
-            onClick={() => setShowAddPointInput(true)}
+          <div
+            style={{
+              background: "var(--color-grey-50)",
+              border: "1px solid var(--color-grey-200)",
+              borderRadius: "4px",
+              padding: "10px 12px",
+              marginTop: "12px",
+              fontSize: "11.5px",
+              lineHeight: 1.5,
+              whiteSpace: "pre-wrap",
+              color: "var(--color-grey-800)",
+            }}
           >
-            <Plus size={11} aria-hidden="true" /> Add Key Point
-          </button>
-        </div>
+            {workflow.draft || effectiveDraft}
+          </div>
 
-        {/* Numbered Key Points List */}
-        <div className="reply-kp-list">
-          {keyPoints.map((point, index) => (
-            <div key={`${point}-${index}`} className="reply-kp-item">
-              <span className="kp-index-badge">{index + 1}</span>
-              <input
-                type="text"
-                className="kp-input"
-                value={point}
-                onChange={(event) => updateKeyPoint(index, event.target.value)}
-                aria-label={`Reply key point ${index + 1}`}
-              />
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginTop: "14px", flexWrap: "wrap", gap: 8 }}>
+            <div style={{ display: "flex", gap: 6 }}>
               <button
                 type="button"
-                className="kp-remove-btn"
-                aria-label={`Remove key point ${index + 1}`}
-                onClick={() => removeKeyPoint(index)}
+                className="btn-secondary btn-sm"
+                onClick={() => openOutlookReplyForm(workflow.draft || effectiveDraft)}
+                title="Pop open Outlook native reply editor with this text"
               >
-                <X size={12} aria-hidden="true" />
+                <ExternalLink size={11} aria-hidden="true" /> Open in Outlook
+              </button>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                onClick={() => {
+                  setWorkflow((prev) => prev ? { ...prev, status: "DRAFT_REFINED" } : undefined);
+                }}
+              >
+                <Edit3 size={11} aria-hidden="true" /> Edit / Send Again
               </button>
             </div>
-          ))}
-
-          {showAddPointInput && (
-            <div className="reply-kp-item" style={{ marginTop: 4 }}>
-              <span className="kp-index-badge">+</span>
-              <input
-                type="text"
-                className="kp-input"
-                value={keyPointDraft}
-                onChange={(e) => setKeyPointDraft(e.target.value)}
-                placeholder="Enter additional key point..."
-                autoFocus
-                onKeyDown={(e) => { if (e.key === "Enter") addKeyPoint(); }}
-              />
-              <button type="button" className="btn-secondary btn-sm" onClick={addKeyPoint}>Add</button>
-            </div>
-          )}
-        </div>
-
-        {/* Generate Draft Button in strong BLACK */}
-        <button
-          type="button"
-          className="btn-primary reply-cta-black"
-          disabled={busyAction === "generate"}
-          onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
-        >
-          <Sparkles size={13} aria-hidden="true" />
-          <span>Generate Draft</span>
-          <FileText size={13} aria-hidden="true" />
-        </button>
-      </div>
-
-      {/* Step 2: Draft Reply */}
-      <div className="reply-step-card">
-        <div className="reply-step-header" style={{ justifyContent: "space-between" }}>
-          <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
-            <span className="reply-step-badge">2</span>
-            <div>
-              <h3 className="reply-step-heading">Draft Reply</h3>
-              <p className="reply-step-subtitle">Review and edit the generated reply.</p>
-            </div>
-          </div>
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            disabled={busyAction === "generate"}
-            onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
-          >
-            <RefreshCw size={11} aria-hidden="true" /> Regenerate
-          </button>
-        </div>
-
-        <textarea
-          className="reply-draft-textarea"
-          value={effectiveDraft}
-          onChange={(event) => setDraft(event.target.value)}
-          rows={9}
-          aria-label="Draft reply text"
-        />
-      </div>
-
-      {/* Step 3: Refine (Optional) */}
-      <div className="reply-step-card">
-        <div className="reply-step-header">
-          <span className="reply-step-badge">3</span>
-          <div>
-            <h3 className="reply-step-heading">Refine (Optional)</h3>
-            <p className="reply-step-subtitle">Provide additional instruction to refine the reply.</p>
+            <button
+              type="button"
+              className="btn-primary btn-sm"
+              onClick={() => (onBack ? onBack() : void onActionComplete())}
+            >
+              Done
+            </button>
           </div>
         </div>
+      ) : (
+        <>
+          {/* Step 1: Prepare Reply */}
+          <div className="reply-step-card">
+            <div className="reply-step-header">
+              <span className="reply-step-badge">1</span>
+              <div>
+                <h3 className="reply-step-heading">Prepare Reply</h3>
+                <p className="reply-step-subtitle">Review the key points to include in the reply. Edit if needed.</p>
+              </div>
+            </div>
 
-        <div className="reply-refine-row">
-          <div className="reply-refine-input-wrap">
-            <Edit3 size={12} className="refine-field-icon" aria-hidden="true" />
-            <input
-              type="text"
-              className="refine-field-input"
-              value={instruction}
-              onChange={(e) => setInstruction(e.target.value)}
-              placeholder="E.g. make it more concise / more formal / add reference number..."
-              onKeyDown={(e) => {
-                if (e.key === "Enter" && instruction.trim()) {
-                  void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"));
-                }
-              }}
+            {/* Blue Callout Summary */}
+            <div className="reply-issues-callout">
+              <div className="callout-header">
+                <FileText size={14} className="callout-icon" aria-hidden="true" />
+                <span>This reply addresses {keyPoints.length} issues from the draft B/L:</span>
+              </div>
+              <ul className="callout-bullets">
+                {keyPoints.map((kp, i) => (
+                  <li key={i}>{kp.replace(/^Request amendment of |^Update |^Insert /i, "")}</li>
+                ))}
+              </ul>
+            </div>
+
+            {/* Key Points Header */}
+            <div className="reply-kp-header">
+              <span className="reply-kp-title">Key Points</span>
+              <button
+                type="button"
+                className="btn-add-kp"
+                onClick={() => setShowAddPointInput(true)}
+              >
+                <Plus size={11} aria-hidden="true" /> Add Key Point
+              </button>
+            </div>
+
+            {/* Numbered Key Points List */}
+            <div className="reply-kp-list">
+              {keyPoints.map((point, index) => (
+                <div key={`${point}-${index}`} className="reply-kp-item">
+                  <span className="kp-index-badge">{index + 1}</span>
+                  <input
+                    type="text"
+                    className="kp-input"
+                    value={point}
+                    onChange={(event) => updateKeyPoint(index, event.target.value)}
+                    aria-label={`Reply key point ${index + 1}`}
+                  />
+                  <button
+                    type="button"
+                    className="kp-remove-btn"
+                    aria-label={`Remove key point ${index + 1}`}
+                    onClick={() => removeKeyPoint(index)}
+                  >
+                    <X size={12} aria-hidden="true" />
+                  </button>
+                </div>
+              ))}
+
+              {showAddPointInput && (
+                <div className="reply-kp-item" style={{ marginTop: 4 }}>
+                  <span className="kp-index-badge">+</span>
+                  <input
+                    type="text"
+                    className="kp-input"
+                    value={keyPointDraft}
+                    onChange={(e) => setKeyPointDraft(e.target.value)}
+                    placeholder="Enter additional key point..."
+                    autoFocus
+                    onKeyDown={(e) => { if (e.key === "Enter") addKeyPoint(); }}
+                  />
+                  <button type="button" className="btn-secondary btn-sm" onClick={addKeyPoint}>Add</button>
+                </div>
+              )}
+            </div>
+
+            {/* Generate Draft Button in strong BLACK */}
+            <button
+              type="button"
+              className="btn-primary reply-cta-black"
+              disabled={busyAction === "generate"}
+              onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+            >
+              <Sparkles size={13} aria-hidden="true" />
+              <span>Generate Draft</span>
+              <FileText size={13} aria-hidden="true" />
+            </button>
+          </div>
+
+          {/* Step 2: Draft Reply */}
+          <div className="reply-step-card">
+            <div className="reply-step-header" style={{ justifyContent: "space-between" }}>
+              <div style={{ display: "flex", alignItems: "flex-start", gap: 8 }}>
+                <span className="reply-step-badge">2</span>
+                <div>
+                  <h3 className="reply-step-heading">Draft Reply</h3>
+                  <p className="reply-step-subtitle">Review and edit the generated reply.</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={busyAction === "generate"}
+                onClick={() => void run("generate", () => generateReplyDraft(email.id, keyPoints, reviewerName || "Outlook reviewer"))}
+              >
+                <RefreshCw size={11} aria-hidden="true" /> Regenerate
+              </button>
+            </div>
+
+            <textarea
+              className="reply-draft-textarea"
+              value={effectiveDraft}
+              onChange={(event) => setDraft(event.target.value)}
+              rows={9}
+              aria-label="Draft reply text"
             />
           </div>
-          <button
-            type="button"
-            className="btn-secondary btn-sm"
-            disabled={busyAction === "refine" || !effectiveDraft.trim() || !instruction.trim()}
-            onClick={() => void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"))}
-          >
-            <RefreshCw size={11} aria-hidden="true" /> Refine
-          </button>
-        </div>
-      </div>
 
-      {/* Bottom Actions: Back to Review & Confirm & Send (in strong BLACK) */}
-      <div className="reply-bottom-row">
-        <button
-          type="button"
-          className="btn-secondary"
-          onClick={() => (onBack ? onBack() : void onActionComplete())}
-        >
-          ← Back to Review
-        </button>
-        <button
-          type="button"
-          className="btn-primary reply-send-black"
-          disabled={busyAction === "send" || !effectiveDraft.trim()}
-          aria-label="Confirm Sent"
-          onClick={() => void run("send", () => sendReplyDraft(email.id, effectiveDraft, reviewerName || "Outlook reviewer"))}
-        >
-          <Send size={13} aria-hidden="true" />
-          <span>Confirm & Send</span>
-        </button>
-      </div>
+          {/* Step 3: Refine (Optional) */}
+          <div className="reply-step-card">
+            <div className="reply-step-header">
+              <span className="reply-step-badge">3</span>
+              <div>
+                <h3 className="reply-step-heading">Refine (Optional)</h3>
+                <p className="reply-step-subtitle">Provide additional instruction to refine the reply.</p>
+              </div>
+            </div>
+
+            <div className="reply-refine-row">
+              <div className="reply-refine-input-wrap">
+                <Edit3 size={12} className="refine-field-icon" aria-hidden="true" />
+                <input
+                  type="text"
+                  className="refine-field-input"
+                  value={instruction}
+                  onChange={(e) => setInstruction(e.target.value)}
+                  placeholder="E.g. make it more concise / more formal / add reference number..."
+                  onKeyDown={(e) => {
+                    if (e.key === "Enter" && instruction.trim()) {
+                      void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"));
+                    }
+                  }}
+                />
+              </div>
+              <button
+                type="button"
+                className="btn-secondary btn-sm"
+                disabled={busyAction === "refine" || !effectiveDraft.trim() || !instruction.trim()}
+                onClick={() => void run("refine", () => refineReplyDraft(email.id, effectiveDraft, instruction, reviewerName || "Outlook reviewer"))}
+              >
+                <RefreshCw size={11} aria-hidden="true" /> Refine
+              </button>
+            </div>
+          </div>
+
+          {/* Bottom Actions: Back to Review & Confirm & Send (in strong BLACK) */}
+          <div className="reply-bottom-row">
+            <button
+              type="button"
+              className="btn-secondary"
+              onClick={() => (onBack ? onBack() : void onActionComplete())}
+            >
+              ← Back to Review
+            </button>
+            <button
+              type="button"
+              className="btn-primary reply-send-black"
+              disabled={busyAction === "send" || !effectiveDraft.trim()}
+              aria-label="Confirm"
+              onClick={() => {
+                openOutlookReplyForm(effectiveDraft);
+                void run("send", () => sendReplyDraft(email.id, effectiveDraft, reviewerName || "Outlook reviewer"));
+              }}
+            >
+              <Check size={13} aria-hidden="true" />
+              <span>Confirm</span>
+            </button>
+          </div>
+        </>
+      )}
     </section>
   );
 }
@@ -1507,29 +1603,47 @@ function TimelineCard({
   detail: ProductEmailDetail;
 }): React.ReactElement {
   const [isExpanded, setIsExpanded] = useState(false);
-  const events = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
-    {
-      id: "ev-ingest",
-      old_status: null,
-      new_status: "NEW",
-      reason_code: "EMAIL_INGESTED",
-      created_at: detail.email.received_at ?? detail.email.created_at,
-    },
-    {
-      id: "ev-class",
-      old_status: "NEW",
-      new_status: "CLASSIFIED",
-      reason_code: "CLASSIFIED",
-      created_at: detail.email.created_at,
-    },
-    {
-      id: "ev-status",
-      old_status: "CLASSIFIED",
-      new_status: detail.email.processing_status,
-      reason_code: "PROCESSING_COMPLETED",
-      created_at: detail.email.created_at,
-    },
-  ];
+  const events = useMemo(() => {
+    const rawEvents = detail.timeline && detail.timeline.length > 0 ? detail.timeline : [
+      {
+        id: "ev-ingest",
+        old_status: null,
+        new_status: "NEW",
+        reason_code: "EMAIL_INGESTED",
+        created_at: detail.email.received_at ?? detail.email.created_at,
+      },
+      {
+        id: "ev-class",
+        old_status: "NEW",
+        new_status: "CLASSIFIED",
+        reason_code: "CLASSIFIED",
+        created_at: detail.email.created_at,
+      },
+      {
+        id: "ev-status",
+        old_status: "CLASSIFIED",
+        new_status: detail.email.processing_status,
+        reason_code: "PROCESSING_COMPLETED",
+        created_at: detail.email.created_at,
+      },
+    ];
+
+    const deduped: typeof rawEvents = [];
+    for (let i = 0; i < rawEvents.length; i++) {
+      const cur = rawEvents[i];
+      const prev = deduped[deduped.length - 1];
+      const curReason = cur.reason_code || (cur as any).event_type;
+      const prevReason = prev ? (prev.reason_code || (prev as any).event_type) : null;
+
+      // Collapse consecutive duplicate lifecycle sync entries
+      if (curReason === "OUTLOOK_LIFECYCLE_RECONCILED" && prevReason === "OUTLOOK_LIFECYCLE_RECONCILED") {
+        deduped[deduped.length - 1] = cur;
+      } else {
+        deduped.push(cur);
+      }
+    }
+    return deduped;
+  }, [detail.timeline, detail.email]);
 
   const displayedEvents = isExpanded || events.length <= 5 ? events : events.slice(-5);
 

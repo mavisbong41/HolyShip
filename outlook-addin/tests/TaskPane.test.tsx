@@ -453,7 +453,7 @@ describe("TaskPane", () => {
       ], "Captain Jack");
     });
 
-    await user.click(await screen.findByRole("button", { name: /confirm sent/i }));
+    await user.click(await screen.findByRole("button", { name: /confirm/i }));
     await waitFor(() => {
       expect(mockSend).toHaveBeenCalledWith(
         "email-001",
