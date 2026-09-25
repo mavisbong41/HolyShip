@@ -1716,3 +1716,10 @@ Current document-level limitations:
 - **Why:** Addressed screenshot feedback where dark labels disappeared on dark buttons, Benchmark footers met the controls, Slide 1 was clipped in narrow captures, and closing-slide text blended into the orange background.
 - **Files:** `presentation/holyship-presentation.html` only.
 - **Validation:** Local Chrome preview checked Slide 1, Human Review, Benchmark, and closing slides at the available narrow-height viewport; `git diff --check` and static structure checks remain required before commit.
+
+### 2026-09-25 — Vercel presentation deployment path
+
+- **Changed:** Added a build-time copy step so the canonical presentation HTML is emitted into the existing Vercel frontend build at `/presentation/holyship-presentation.html`; the deployed copy rewrites the logo path to the frontend public asset.
+- **Why:** Make the deck available through the existing public Vercel deployment instead of relying on a local file or third-party HTML preview service.
+- **Files:** `scripts/copy_presentation.mjs`, `frontend/package.json`.
+- **Validation:** Run the frontend production build and verify the generated `frontend/dist/presentation/holyship-presentation.html` before checking the public Vercel URL.
