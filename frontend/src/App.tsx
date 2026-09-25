@@ -1956,6 +1956,11 @@ function HumanReviewPageView({
     );
   }, [selected?.comparison?.fields]);
 
+  const matchedCount = useMemo(() => {
+    if (!selected?.comparison?.fields) return 0;
+    return selected.comparison.fields.filter((f) => f.status === "MATCH").length;
+  }, [selected?.comparison?.fields]);
+
   const firstProblematicField = useMemo(() => {
     if (problematicFields.length > 0) {
       return problematicFields[0].field;
@@ -3351,111 +3356,104 @@ function HumanReviewPageView({
                         className={cx("sub-tab-panel", reviewSubTab !== "compare" && "sub-tab-panel-hidden")}
                         id="fields-table-section-panel"
                       >
-                        {/* 1. TOP SECTION: CONFIRMED DIFFERENCES (Matching Figure 2) */}
+                        {/* 1. TOP SECTION: REQUIRES ATTENTION (Matching Figure 2) */}
                         <div className="detail-section" style={{ marginBottom: "14px" }}>
                           {problematicFields.length > 0 ? (
-                            <>
-                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
-                                <div>
-                                  <h3 style={{ fontSize: "14.5px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
-                                    <AlertTriangle size={16} color="var(--color-review)" />
-                                    Confirmed Differences ({problematicFields.length})
-                                  </h3>
-                                  <p style={{ fontSize: "11.5px", color: "var(--color-grey-500)", margin: "2px 0 0" }}>
-                                    SI is authoritative reference document; BL values differ.
-                                  </p>
-                                </div>
+                            <section className="attention-section">
+                              <div className="section-title-row" style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
+                                <p className="pane-section-label" style={{ margin: 0, fontSize: "11px", fontWeight: 700, letterSpacing: "0.05em", color: "var(--color-grey-500)", textTransform: "uppercase" }}>
+                                  — REQUIRES ATTENTION
+                                </p>
+                                <span className="badge badge-attention-count">
+                                  {problematicFields.length} {problematicFields.length > 1 ? "issues" : "issue"}
+                                </span>
                               </div>
 
-                              <div className="discrepancy-diff-grid">
-                                {problematicFields.map((diff) => (
-                                  <div
-                                    key={diff.field}
-                                    className="discrepancy-diff-card is-mismatch"
-                                  >
-                                    <div className="diff-card-header-row">
-                                      <div className="diff-card-field-info">
-                                        <strong className="diff-field-name">
-                                          {labelForField(diff.field)}
-                                        </strong>
-                                        <span className="badge badge-attention diff-reason-badge">
-                                          {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
-                                        </span>
-                                      </div>
-                                      {selected.case_origin === "ACTIVE" && (
-                                        <div className="diff-card-actions-row">
-                                          <button
-                                            type="button"
-                                            className="button-secondary"
-                                            onClick={() => {
-                                              setSide("BL");
-                                              setField(diff.field);
-                                              setEditingField(diff.field);
-                                              setCorrectedValue(String(diff.bl.canonical ?? diff.bl.raw ?? ""));
-                                              const el = document.getElementById("review-editor-box");
-                                              if (el) el.scrollIntoView({ behavior: "smooth" });
-                                            }}
-                                          >
-                                            Correct BL
-                                          </button>
-                                          <button
-                                            type="button"
-                                            className="button-secondary"
-                                            onClick={() => {
-                                              setSide("SI");
-                                              setField(diff.field);
-                                              setEditingField(diff.field);
-                                              setCorrectedValue(String(diff.si.canonical ?? diff.si.raw ?? ""));
-                                              const el = document.getElementById("review-editor-box");
-                                              if (el) el.scrollIntoView({ behavior: "smooth" });
-                                            }}
-                                          >
-                                            Correct SI
-                                          </button>
-                                        </div>
-                                      )}
-                                    </div>
+                              <div className="attention-rows-group">
+                                {problematicFields.map((fieldRow) => {
+                                  const siVal =
+                                    fieldRow.field === "container_count" && typeof (fieldRow.si.canonical ?? fieldRow.si.normalized) === "number"
+                                      ? `${fieldRow.si.canonical ?? fieldRow.si.normalized} containers`
+                                      : displayValue(fieldRow.si.canonical ?? fieldRow.si.normalized ?? fieldRow.si.raw);
+                                  const blVal =
+                                    fieldRow.field === "container_count" && typeof (fieldRow.bl.canonical ?? fieldRow.bl.normalized) === "number"
+                                      ? `${fieldRow.bl.canonical ?? fieldRow.bl.normalized} containers`
+                                      : displayValue(fieldRow.bl.canonical ?? fieldRow.bl.normalized ?? fieldRow.bl.raw);
+                                  const isMismatch = fieldRow.status === "MISMATCH";
 
-                                    {/* Side by side comparison cards */}
-                                    <div className="diff-side-by-side">
-                                      {/* SI Box */}
-                                      <div className="diff-box si-side">
-                                        <div className="diff-box-label">
-                                          SI (Reference Document)
+                                  return (
+                                    <div
+                                      key={fieldRow.field}
+                                      className="attention-item-row"
+                                      onClick={() => {
+                                        setSide("BL");
+                                        setField(fieldRow.field);
+                                        setEditingField(fieldRow.field);
+                                        setCorrectedValue(String(fieldRow.bl.canonical ?? fieldRow.bl.raw ?? ""));
+                                        const el = document.getElementById("review-editor-box");
+                                        if (el) el.scrollIntoView({ behavior: "smooth" });
+                                      }}
+                                      role="button"
+                                      tabIndex={0}
+                                      onKeyDown={(e) => {
+                                        if (e.key === "Enter" || e.key === " ") {
+                                          e.preventDefault();
+                                          setSide("BL");
+                                          setField(fieldRow.field);
+                                          setEditingField(fieldRow.field);
+                                          setCorrectedValue(String(fieldRow.bl.canonical ?? fieldRow.bl.raw ?? ""));
+                                          const el = document.getElementById("review-editor-box");
+                                          if (el) el.scrollIntoView({ behavior: "smooth" });
+                                        }
+                                      }}
+                                    >
+                                      <div className="attention-item-header">
+                                        <div className="attention-item-title-wrap">
+                                          <span className="attention-item-title">{labelForField(fieldRow.field)}</span>
+                                          <span className={`status-pill ${isMismatch ? "pill-mismatch" : "pill-unresolved"}`}>
+                                            {isMismatch ? "Mismatch" : "Unresolved"}
+                                          </span>
                                         </div>
-                                        <div className="diff-box-value">
-                                          {diff.field === "container_count" && typeof (diff.si.canonical ?? diff.si.normalized) === "number"
-                                            ? `${diff.si.canonical ?? diff.si.normalized} containers`
-                                            : displayValue(diff.si.canonical ?? diff.si.normalized ?? diff.si.raw)}
-                                        </div>
-                                        {diff.si.raw !== undefined && diff.si.raw !== diff.si.canonical && (
-                                          <div className="diff-box-raw">
-                                            Raw: <code>{displayValue(diff.si.raw)}</code>
-                                          </div>
-                                        )}
+                                        <ChevronRight size={14} className="attention-item-chevron" aria-hidden="true" />
                                       </div>
 
-                                      {/* BL Box */}
-                                      <div className="diff-box bl-side">
-                                        <div className="diff-box-label">
-                                          Draft BL (Document Checked)
-                                        </div>
-                                        <div className="diff-box-value">
-                                          {diff.field === "container_count" && typeof (diff.bl.canonical ?? diff.bl.normalized) === "number"
-                                            ? `${diff.bl.canonical ?? diff.bl.normalized} containers`
-                                            : displayValue(diff.bl.canonical ?? diff.bl.normalized ?? diff.bl.raw)}
-                                        </div>
-                                        {diff.bl.raw !== undefined && diff.bl.raw !== diff.bl.canonical && (
-                                          <div className="diff-box-raw">
-                                            Raw: <code>{displayValue(diff.bl.raw)}</code>
+                                      <div className="attention-columns-grid">
+                                        <div className="attention-col">
+                                          <span className="attention-col-label">SI REFERENCE</span>
+                                          <div className="attention-val-box box-si">
+                                            {siVal}
                                           </div>
-                                        )}
+                                        </div>
+                                        <div className="attention-col">
+                                          <span className="attention-col-label">DRAFT BL</span>
+                                          <div className={`attention-val-box ${isMismatch ? "box-bl-mismatch" : "box-bl-unresolved"}`}>
+                                            {blVal}
+                                          </div>
+                                        </div>
                                       </div>
                                     </div>
+                                  );
+                                })}
+
+                                {matchedCount > 0 && (
+                                  <div className="attention-card-footer">
+                                    <span className="attention-matched-summary">
+                                      ✓ {matchedCount} other field{matchedCount > 1 ? "s" : ""} matched
+                                    </span>
+                                    <button
+                                      type="button"
+                                      className="btn-view-comparison"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setShowAllFields((prev) => !prev);
+                                      }}
+                                    >
+                                      {showAllFields ? "Hide full comparison ↑" : "View full comparison →"}
+                                    </button>
                                   </div>
-                                ))}
+                                )}
                               </div>
-                            </>
+                            </section>
                           ) : (
                             <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", background: "var(--color-success-bg)", border: "1px solid rgba(34, 197, 94, 0.2)", borderRadius: "var(--radius-md)" }}>
                               <CheckCircle2 size={16} color="var(--color-success)" />

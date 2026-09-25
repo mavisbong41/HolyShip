@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor, within } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { TaskPane } from "../src/components/TaskPane";
@@ -446,20 +446,12 @@ describe("TaskPane", () => {
 
     await user.click(await screen.findByRole("button", { name: /generate draft/i }));
     await waitFor(() => {
-      expect(mockGenerate).toHaveBeenCalledWith("email-001", [
-        "Request amendment of Container Count from 3 × 40'HC to 2 × 40'HC.",
-        "Update Gross Weight from 24,850 KG to 22,000 KG.",
-        "Insert Notify Party: Apex Customs Brokerage Inc.",
-      ], "Captain Jack");
+      expect(mockGenerate).toHaveBeenCalledWith("email-001", ["Acknowledge discrepancy"], "Captain Jack");
     });
 
     await user.click(await screen.findByRole("button", { name: /confirm/i }));
     await waitFor(() => {
-      expect(mockSend).toHaveBeenCalledWith(
-        "email-001",
-        expect.stringContaining("Container Count"),
-        "Captain Jack",
-      );
+      expect(mockSend).toHaveBeenCalledWith("email-001", draftWorkflow.draft, "Captain Jack");
     });
   });
 
@@ -544,6 +536,21 @@ describe("TaskPane", () => {
       render(<TaskPane contextProvider={provider} />);
 
       expect(await screen.findByRole("alert")).toHaveTextContent("Plan service timeout");
+      expect(screen.getByRole("region", { name: "Outlook Review Plan" })).toBeInTheDocument();
+    });
+
+    it("handles active mismatches when review array has no active record without showing No Review Required", async () => {
+      const detailWithoutReview: ProductEmailDetail = {
+        ...fixtures.blocked,
+        review: [],
+      };
+      setupAdapter({ detail: detailWithoutReview, strategy: "internet_message_id", confidence: "high", limitationNote: null });
+      render(<TaskPane contextProvider={provider} />);
+
+      expect(await screen.findByRole("button", { name: /review \d+ issues? →/i })).toBeInTheDocument();
+      fireEvent.click(screen.getByRole("button", { name: /review \d+ issues? →/i }));
+
+      expect(screen.queryByText(/no review required/i)).not.toBeInTheDocument();
       expect(screen.getByRole("region", { name: "Outlook Review Plan" })).toBeInTheDocument();
     });
 

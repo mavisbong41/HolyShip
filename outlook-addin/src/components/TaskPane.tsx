@@ -1506,7 +1506,7 @@ function RequiresAttentionSection({
   onOpenFullComparison,
 }: {
   comparison: ProductComparison | null;
-  onOpenReview: () => void;
+  onOpenReview: (field?: string) => void;
   onOpenFullComparison: () => void;
 }): React.ReactElement | null {
   if (!comparison) return null;
@@ -1537,13 +1537,13 @@ function RequiresAttentionSection({
             <div
               key={fieldRow.field}
               className="attention-item-row"
-              onClick={onOpenReview}
+              onClick={() => onOpenReview(fieldRow.field)}
               role="button"
               tabIndex={0}
               onKeyDown={(e) => {
                 if (e.key === "Enter" || e.key === " ") {
                   e.preventDefault();
-                  onOpenReview();
+                  onOpenReview(fieldRow.field);
                 }
               }}
             >
@@ -1789,6 +1789,7 @@ function OutlookReviewPlanWorkflow({
   review,
   comparison,
   detail,
+  initialField,
   onActionComplete,
   onProceedToReply,
 }: {
@@ -1796,6 +1797,7 @@ function OutlookReviewPlanWorkflow({
   detail: ProductEmailDetail;
   comparison: ProductComparison | null;
   reviewUrl: string | null;
+  initialField?: string | null;
   onActionComplete: () => Promise<void>;
   onProceedToReply: () => void;
   onExecuteRecompare: () => Promise<void>;
@@ -1812,6 +1814,17 @@ function OutlookReviewPlanWorkflow({
   const [manualCurrent, setManualCurrent] = useState("");
   const [manualProposed, setManualProposed] = useState("");
   const [manualReason, setManualReason] = useState("");
+
+  useEffect(() => {
+    if (initialField) {
+      setManualField(initialField);
+      setManualSide("BL");
+      const fieldObj = comparison?.fields.find((item) => item.field === initialField);
+      const value = fieldObj?.bl;
+      setManualCurrent(displayValue(value?.canonical ?? value?.raw));
+      setManualOpen(true);
+    }
+  }, [initialField, comparison]);
 
   useEffect(() => {
     void listReviewPlans(review.id)
@@ -2548,6 +2561,7 @@ export function TaskPane({
   const [actionState, setActionState] = useState<"idle" | "loading" | "error">("idle");
   const [activeWorkflowView, setActiveWorkflowView] = useState<WorkflowView>("overview");
   const [showCategoryCorrection, setShowCategoryCorrection] = useState(false);
+  const [selectedReviewField, setSelectedReviewField] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
   const resolveGeneration = useRef(0);
   const lastItemIdRef = useRef<string | null>(null);
@@ -2696,13 +2710,53 @@ export function TaskPane({
   const activeReview = effectiveState.type === "ready" && effectiveDetail
     ? effectiveDetail.review.find((review) => ["OPEN", "IN_REVIEW"].includes(review.status) && review.case_origin !== "LEGACY")
     : null;
+
+  const activeComparisonIssues = useMemo(() => {
+    if (!effectiveDetail?.comparison?.fields) return [];
+    return effectiveDetail.comparison.fields.filter(
+      (f) => f.status === "MISMATCH" || f.status === "UNRESOLVED"
+    );
+  }, [effectiveDetail?.comparison?.fields]);
+
+  const synthesizedActiveReview: ProductReview | null = useMemo(() => {
+    if (activeReview || !effectiveDetail || activeComparisonIssues.length === 0) return null;
+    const fallbackId = effectiveDetail.review?.[0]?.id || `review-${effectiveDetail.email.id}`;
+    return {
+      id: fallbackId,
+      email_id: effectiveDetail.email.id,
+      email: effectiveDetail.email,
+      document_id: null,
+      field: activeComparisonIssues[0]?.field ?? null,
+      reason_code: "COMPARISON_MISMATCH",
+      reason_text: `${activeComparisonIssues.length} field mismatch${activeComparisonIssues.length > 1 ? "es" : ""} detected between SI and Draft BL`,
+      status: "OPEN",
+      case_origin: "ACTIVE",
+      reviewer_name: null,
+      confidence: 1.0,
+      evidence: [],
+      priority: "HIGH",
+      presentation_title: `${activeComparisonIssues.length} Field Mismatch${activeComparisonIssues.length > 1 ? "es" : ""}`,
+      human_explanation: `Mismatches detected in ${activeComparisonIssues.map((f) => labelForField(f.field)).join(", ")}. Human review and override required.`,
+      affected_fields: activeComparisonIssues.map((f) => f.field),
+      affected_area: "Document Comparison",
+      suggested_action: "Review mismatches and propose overrides",
+      comparison: effectiveDetail.comparison,
+      resolutions: effectiveDetail.resolutions || [],
+      overrides: [],
+      actions: [],
+      ai_suggestions: [],
+      created_at: effectiveDetail.email.received_at || new Date().toISOString(),
+    };
+  }, [activeReview, effectiveDetail, activeComparisonIssues]);
+
+  const effectiveReview = activeReview || synthesizedActiveReview;
   const historicalReview = effectiveState.type === "ready" && effectiveDetail
     ? effectiveDetail.review.find((review) => review.case_origin === "LEGACY")
     : null;
   const aiSuggestion = effectiveState.type === "ready" && effectiveDetail
     ? effectiveDetail.resolutions.find((resolution) => resolution.attempted)
     : null;
-  const reviewUrl = activeReview ? dashboardReviewUrl(activeReview.id) : null;
+  const reviewUrl = effectiveReview ? dashboardReviewUrl(effectiveReview.id) : null;
 
   const retryProcessing = async () => {
     if (!emailId) return;
@@ -2924,21 +2978,29 @@ export function TaskPane({
               {isDocumentComparison && effectiveDetail.comparison && (
                 <RequiresAttentionSection
                   comparison={effectiveDetail.comparison}
-                  onOpenReview={() => setActiveWorkflowView("review")}
+                  onOpenReview={(field) => {
+                    setSelectedReviewField(field || null);
+                    setActiveWorkflowView("review");
+                  }}
                   onOpenFullComparison={() => setActiveWorkflowView("comparison")}
                 />
               )}
 
               {/* Dominant Primary Next Action CTA */}
               <div className="overview-primary-cta-box">
-                {effectiveDetail.email.needs_review ? (
+                {activeComparisonIssues.length > 0 || effectiveDetail.email.needs_review ? (
                   <button
                     type="button"
                     className="btn-primary btn-cta-main"
-                    onClick={() => setActiveWorkflowView("review")}
+                    onClick={() => {
+                      if (activeComparisonIssues.length > 0) {
+                        setSelectedReviewField(activeComparisonIssues[0].field);
+                      }
+                      setActiveWorkflowView("review");
+                    }}
                   >
                     <Edit3 size={14} aria-hidden="true" />
-                    Review {effectiveDetail.comparison?.fields.filter((f) => f.status === "MISMATCH" || f.status === "UNRESOLVED").length || 1} Field(s) →
+                    Review {activeComparisonIssues.length || 1} {activeComparisonIssues.length === 1 ? "Issue" : "Issues"} →
                   </button>
           ) : isDocumentComparison && effectiveDetail.reply_policy?.allowed ? (
                   <button
@@ -3060,12 +3122,13 @@ export function TaskPane({
 
             {/* ══════════════ 2. SUBVIEW: HUMAN REVIEW ══════════════ */}
             <div className={`workflow-subview ${activeWorkflowView === "review" ? "active" : "visually-hidden"}`}>
-              {activeReview ? (
+              {effectiveReview ? (
                 <OutlookReviewPlanWorkflow
-                  review={activeReview}
+                  review={effectiveReview}
                   detail={effectiveDetail}
                   comparison={effectiveDetail.comparison}
                   reviewUrl={reviewUrl}
+                  initialField={selectedReviewField}
                   onActionComplete={refreshAfterMutation}
                   onProceedToReply={() => setActiveWorkflowView("reply")}
                   onExecuteRecompare={retryProcessing}
@@ -3105,7 +3168,7 @@ export function TaskPane({
                 email={effectiveDetail.email}
                 initialWorkflow={effectiveDetail.outlook_workflow}
                 onActionComplete={refreshAfterMutation}
-                onBack={() => setActiveWorkflowView(activeReview ? "review" : "overview")}
+                onBack={() => setActiveWorkflowView(effectiveReview ? "review" : "overview")}
               />
             </div>
 
@@ -3121,11 +3184,16 @@ export function TaskPane({
                     <ComparisonTable comparison={effectiveDetail.comparison} />
                   </div>
                   <div style={{ marginTop: 14, display: "flex", gap: 8 }}>
-                    {effectiveDetail.email.needs_review ? (
+                    {effectiveDetail.email.needs_review || activeComparisonIssues.length > 0 ? (
                       <button
                         type="button"
                         className="btn-primary"
-                        onClick={() => setActiveWorkflowView("review")}
+                        onClick={() => {
+                          if (activeComparisonIssues.length > 0) {
+                            setSelectedReviewField(activeComparisonIssues[0].field);
+                          }
+                          setActiveWorkflowView("review");
+                        }}
                         style={{ flex: 1, justifyContent: "center" }}
                       >
                         Proceed to Review →
