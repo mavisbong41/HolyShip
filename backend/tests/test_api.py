@@ -475,6 +475,20 @@ def test_v1_reply_endpoints_reject_ineligible_case_before_provider_call(client):
     graph.return_value.reply.assert_not_called()
 
 
+def test_v1_reply_send_records_confirmed_simulated_email_without_graph_identity(client):
+    tc, mock_session = client
+    email_id = uuid.uuid4()
+    record = EmailMessageRecord(id=email_id, external_message_id="simulated-1", source_type="simulated_api", recipients=[], subject="Draft BL", body="", content_hash="simulated", processing_status="COMPLETED", source_metadata={})
+    mock_session.get.return_value = record
+    eligible = ReplyPolicy(True, "RESOLUTION_REPLY", "clean", [])
+    with patch("backend.app.api.router._reply_policy_for_record", return_value=eligible), patch("backend.app.api.router.MicrosoftGraphClient") as graph:
+        response = tc.post(f"/api/v1/emails/{email_id}/reply/send", json={"final_message": "Confirmed", "confirmed": True, "idempotency_key": "simulated-001"})
+    assert response.status_code == 200
+    assert response.json()["provider"] == "simulated"
+    graph.return_value.reply.assert_not_called()
+    assert record.source_metadata["outlook_events"][-1]["reason_code"] == "REPLY_SENT_CONFIRMED"
+
+
 @pytest.mark.req("SYNC-06")
 @pytest.mark.req("LIFE-07")
 def test_v1_outlook_reconcile_marks_deleted_without_destroying_history(client):

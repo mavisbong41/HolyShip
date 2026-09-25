@@ -1082,24 +1082,24 @@ def product_reply_send(
     graph_message_id = (record.source_metadata or {}).get("graph_message_id") or (record.source_metadata or {}).get("outlook_item_id")
     if not graph_message_id and record.source_type == "MICROSOFT_GRAPH":
         graph_message_id = record.external_message_id
-    if not graph_message_id:
-        raise HTTPException(status_code=409, detail="This email has no Microsoft Graph message identity")
-    try:
-        MicrosoftGraphClient(settings).reply(str(graph_message_id), payload.final_message)
-    except GraphClientError as exc:
-        workflow = _workflow_payload(
-            record, status="SEND_FAILED", draft=payload.final_message,
-            send_error=str(exc), provider="microsoft_graph", idempotency_key=payload.idempotency_key,
-        )
-        _append_outlook_event(session, record, "REPLY_SEND_FAILED", details={"error_type": type(exc).__name__})
-        session.commit()
-        raise HTTPException(status_code=502, detail={"message": str(exc), "workflow": workflow.model_dump(mode="json")}) from exc
+    provider = "microsoft_graph" if graph_message_id else "simulated"
+    if graph_message_id:
+        try:
+            MicrosoftGraphClient(settings).reply(str(graph_message_id), payload.final_message)
+        except GraphClientError as exc:
+            workflow = _workflow_payload(
+                record, status="SEND_FAILED", draft=payload.final_message,
+                send_error=str(exc), provider="microsoft_graph", idempotency_key=payload.idempotency_key,
+            )
+            _append_outlook_event(session, record, "REPLY_SEND_FAILED", details={"error_type": type(exc).__name__})
+            session.commit()
+            raise HTTPException(status_code=502, detail={"message": str(exc), "workflow": workflow.model_dump(mode="json")}) from exc
     sent_at = utcnow()
     workflow = _workflow_payload(
         record, status="SENT", draft=payload.final_message, sent_at=sent_at.isoformat(),
-        send_error=None, provider="microsoft_graph", idempotency_key=payload.idempotency_key,
+        send_error=None, provider=provider, idempotency_key=payload.idempotency_key,
     )
-    _append_outlook_event(session, record, "REPLY_SENT_CONFIRMED", details={"reviewer_name": payload.reviewer_name, "provider": "microsoft_graph"})
+    _append_outlook_event(session, record, "REPLY_SENT_CONFIRMED", details={"reviewer_name": payload.reviewer_name, "provider": provider})
     session.commit()
     return workflow
 
