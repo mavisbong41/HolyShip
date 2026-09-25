@@ -304,7 +304,7 @@ describe("HolyShip dashboard", () => {
     await user.click(await screen.findByRole("button", { name: "Open Review" }));
     expect(await screen.findByRole("table", { name: "Human Review seven-field comparison" })).toBeInTheDocument();
 
-    await user.type(screen.getByLabelText("Corrected value"), "Same as consignee");
+    await user.type(screen.getByLabelText("Corrected value"), "3");
     await user.click(screen.getByRole("button", { name: "Save Correction" }));
 
     await waitFor(() => {

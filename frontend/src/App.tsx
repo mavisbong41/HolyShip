@@ -13,6 +13,7 @@ import {
   CircleCheck,
   ClipboardList,
   Clock,
+  FileCheck2,
   FileSearch,
   FileText,
   Inbox,
@@ -1948,21 +1949,62 @@ function HumanReviewPageView({
   const [reviewerFilter, setReviewerFilter] = useState("");
   const [searchFilter, setSearchFilter] = useState("");
   const [sortFilter, setSortFilter] = useState("newest");
+  const problematicFields = useMemo(() => {
+    if (!selected?.comparison?.fields) return [];
+    return selected.comparison.fields.filter(
+      (f) => f.status === "MISMATCH" || f.status === "UNRESOLVED"
+    );
+  }, [selected?.comparison?.fields]);
+
+  const firstProblematicField = useMemo(() => {
+    if (problematicFields.length > 0) {
+      return problematicFields[0].field;
+    }
+    if (selected?.affected_fields && selected.affected_fields.length > 0) {
+      const candidate = selected.affected_fields[0];
+      const comp = selected?.comparison?.fields?.find((f) => f.field === candidate);
+      if (!comp || comp.status !== "MATCH") {
+        return candidate;
+      }
+    }
+    return null;
+  }, [problematicFields, selected]);
+
   const [reviewer, setReviewer] = useState(defaultReviewerName);
   const [side, setSide] = useState<"SI" | "BL">("BL");
-  const [field, setField] = useState("notify_party");
-  const [editingField, setEditingField] = useState<string | null>("notify_party");
+  const [field, setField] = useState<string>(() => firstProblematicField || "gross_weight_kg");
+  const [editingField, setEditingField] = useState<string | null>(() => firstProblematicField);
+  const [prevReviewId, setPrevReviewId] = useState<string | undefined>(selected?.id);
   const [correctedValue, setCorrectedValue] = useState("");
   const [note, setNote] = useState("");
   const [dismissReason, setDismissReason] = useState("NOT_ACTIONABLE");
   const [detailTab, setDetailTab] = useState<"fields" | "context" | "audit">("fields");
   const [replyDetail, setReplyDetail] = useState<ProductEmailDetail | null>(null);
   const [reviewSubTab, setReviewSubTab] = useState<"issue" | "compare" | "assistant" | "actions" | "resolve">("issue");
+  const [showAllFields, setShowAllFields] = useState(false);
 
   const [showActionGuidance, setShowActionGuidance] = useState(false);
 
+  // Sync state cleanly when selected review changes
+  if (selected?.id !== prevReviewId) {
+    setPrevReviewId(selected?.id);
+    setEditingField(firstProblematicField);
+    if (firstProblematicField) {
+      setField(firstProblematicField);
+      const comp = selected?.comparison?.fields?.find((f) => f.field === firstProblematicField);
+      if (comp?.bl.raw == null && comp?.si.raw != null) {
+        setSide("BL");
+      } else if (comp?.si.raw == null && comp?.bl.raw != null) {
+        setSide("SI");
+      } else {
+        setSide("BL");
+      }
+    }
+  }
+
   useEffect(() => {
     setReviewSubTab("issue");
+    setShowAllFields(false);
   }, [selected?.id]);
 
   useEffect(() => {
@@ -2095,6 +2137,30 @@ function HumanReviewPageView({
       )
     ),
   ].sort();
+
+  const sortedFields = useMemo(() => {
+    if (!selected?.comparison?.fields) {
+      return canonicalFields;
+    }
+    return [...canonicalFields].sort((a, b) => {
+      const compA = selected.comparison?.fields.find((item) => item.field === a);
+      const compB = selected.comparison?.fields.find((item) => item.field === b);
+      const statusA = compA?.status ?? "UNRESOLVED";
+      const statusB = compB?.status ?? "UNRESOLVED";
+
+      const priority = (s: string) => {
+        if (s === "MISMATCH") return 0;
+        if (s === "UNRESOLVED") return 1;
+        if (s === "MATCH") return 2;
+        return 3;
+      };
+
+      const diff = priority(statusA) - priority(statusB);
+      if (diff !== 0) return diff;
+      return canonicalFields.indexOf(a) - canonicalFields.indexOf(b);
+    });
+  }, [selected?.comparison?.fields]);
+
   const activeOverrides = selected?.overrides?.filter((item) => item.active) ?? [];
   const selectedUnresolved = selected?.comparison?.unresolved_fields.length ?? 0;
   const inputType = field === "container_count" || field === "gross_weight_kg" ? "number" : "text";
@@ -3285,255 +3351,409 @@ function HumanReviewPageView({
                         className={cx("sub-tab-panel", reviewSubTab !== "compare" && "sub-tab-panel-hidden")}
                         id="fields-table-section-panel"
                       >
-                        <div className="detail-section" id="fields-table-section">
-                        <div className="section-heading-row">
-                          <div>
-                            <h3>Seven reviewed fields</h3>
-                            <p>Original extraction remains immutable. Reviewed values are applied only during recomparison.</p>
-                          </div>
-                          <span className="total-pill pill-unresolved">{selectedUnresolved} unresolved</span>
-                        </div>
-                        <div className="comparison-table-wrap">
-                          <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
-                            <colgroup>
-                              <col style={{ width: "18%", minWidth: "80px" }} />
-                              <col style={{ width: "28%", minWidth: "110px" }} />
-                              <col style={{ width: "26%", minWidth: "100px" }} />
-                              <col style={{ width: "18%", minWidth: "105px" }} />
-                              <col style={{ width: "10%", minWidth: "60px" }} />
-                            </colgroup>
-                            <thead>
-                              <tr>
-                                <th>Field</th>
-                                <th>Shipping Instruction</th>
-                                <th>Draft BL</th>
-                                <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>System result</th>
-                                <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
-                              </tr>
-                            </thead>
-                            <tbody>
-                              {canonicalFields.map((name) => {
-                                const compared = selected.comparison?.fields.find((item) => item.field === name);
-                                const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
-                                const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
-                                const isEditingThisRow = editingField === name;
-                                const isMatched = compared?.status === "MATCH";
+                        {/* 1. TOP SECTION: CONFIRMED DIFFERENCES (Matching Figure 2) */}
+                        <div className="detail-section" style={{ marginBottom: "14px" }}>
+                          {problematicFields.length > 0 ? (
+                            <>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "10px" }}>
+                                <div>
+                                  <h3 style={{ fontSize: "14.5px", fontWeight: 700, margin: 0, display: "flex", alignItems: "center", gap: "6px" }}>
+                                    <AlertTriangle size={16} color="var(--color-review)" />
+                                    Confirmed Differences ({problematicFields.length})
+                                  </h3>
+                                  <p style={{ fontSize: "11.5px", color: "var(--color-grey-500)", margin: "2px 0 0" }}>
+                                    SI is authoritative reference document; BL values differ.
+                                  </p>
+                                </div>
+                              </div>
 
-                                return (
-                                  <React.Fragment key={name}>
-                                    <tr
-                                      id={`row-${name}`}
-                                      className={cx(
-                                        compared?.status === "MISMATCH" && "field-mismatch",
-                                        compared?.status === "UNRESOLVED" && "field-unresolved",
-                                        isEditingThisRow && "row-is-editing"
-                                      )}
-                                    >
-                                      <th>{labelForField(name)}</th>
-                                      <td>
-                                        {siOverride ? (
-                                          <>
-                                            <span className="value-label">Original SI</span>
-                                            <span className="original-val-strike">{displayValue(compared?.si.raw)}</span>
-                                            <span className="reviewed-value">
-                                              <span>Reviewed SI</span>
-                                              {displayValue(siOverride.corrected_value)}
-                                            </span>
-                                            <span className="effective-value">
-                                              Effective: {displayValue(siOverride.corrected_value)}
-                                            </span>
-                                          </>
-                                        ) : !isMatched ? (
-                                          <>
-                                            <span className="value-label">Original SI</span>
-                                            {displayValue(compared?.si.raw)}
-                                            <span className="effective-value">
-                                              Effective: {displayValue(compared?.si.canonical ?? compared?.si.raw)}
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <span>{displayValue(compared?.si.canonical ?? compared?.si.raw)}</span>
-                                        )}
-                                      </td>
-                                      <td>
-                                        {blOverride ? (
-                                          <>
-                                            <span className="value-label">Original BL</span>
-                                            <span className="original-val-strike">{displayValue(compared?.bl.raw)}</span>
-                                            <span className="reviewed-value">
-                                              <span>Reviewed BL</span>
-                                              {displayValue(blOverride.corrected_value)}
-                                            </span>
-                                            <span className="effective-value">
-                                              Effective: {displayValue(blOverride.corrected_value)}
-                                            </span>
-                                          </>
-                                        ) : !isMatched ? (
-                                          <>
-                                            <span className="value-label">Original BL</span>
-                                            {displayValue(compared?.bl.raw)}
-                                            <span className="effective-value">
-                                              Effective: {displayValue(compared?.bl.canonical ?? compared?.bl.raw)}
-                                            </span>
-                                          </>
-                                        ) : (
-                                          <span>{displayValue(compared?.bl.canonical ?? compared?.bl.raw)}</span>
-                                        )}
-                                      </td>
-                                      <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
-                                        <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
-                                      </td>
-                                      <td style={{ textAlign: "center" }}>
-                                        {selected.case_origin === "ACTIVE" ? (
+                              <div className="discrepancy-diff-grid">
+                                {problematicFields.map((diff) => (
+                                  <div
+                                    key={diff.field}
+                                    className="discrepancy-diff-card is-mismatch"
+                                  >
+                                    <div className="diff-card-header-row">
+                                      <div className="diff-card-field-info">
+                                        <strong className="diff-field-name">
+                                          {labelForField(diff.field)}
+                                        </strong>
+                                        <span className="badge badge-attention diff-reason-badge">
+                                          {reasonLabels[diff.reason_code] || displayLabel(diff.reason_code)}
+                                        </span>
+                                      </div>
+                                      {selected.case_origin === "ACTIVE" && (
+                                        <div className="diff-card-actions-row">
                                           <button
                                             type="button"
-                                            className={cx(
-                                              "row-edit-action-btn",
-                                              isMatched ? "is-matched" : "is-unresolved"
-                                            )}
-                                            title={`Quick edit ${labelForField(name)}`}
+                                            className="button-secondary"
                                             onClick={() => {
-                                              if (isEditingThisRow) {
-                                                setEditingField(null);
-                                              } else {
-                                                setField(name);
-                                                setEditingField(name);
-                                                if (compared?.bl.raw == null && compared?.si.raw != null) {
-                                                  setSide("BL");
-                                                } else if (compared?.si.raw == null && compared?.bl.raw != null) {
-                                                  setSide("SI");
-                                                } else {
-                                                  setSide("BL");
-                                                }
-                                              }
+                                              setSide("BL");
+                                              setField(diff.field);
+                                              setEditingField(diff.field);
+                                              setCorrectedValue(String(diff.bl.canonical ?? diff.bl.raw ?? ""));
+                                              const el = document.getElementById("review-editor-box");
+                                              if (el) el.scrollIntoView({ behavior: "smooth" });
                                             }}
                                           >
-                                            {isEditingThisRow ? "Close" : "Edit"}
+                                            Correct BL
                                           </button>
-                                        ) : (
-                                          <span className="subtle">—</span>
-                                        )}
-                                      </td>
-                                    </tr>
+                                          <button
+                                            type="button"
+                                            className="button-secondary"
+                                            onClick={() => {
+                                              setSide("SI");
+                                              setField(diff.field);
+                                              setEditingField(diff.field);
+                                              setCorrectedValue(String(diff.si.canonical ?? diff.si.raw ?? ""));
+                                              const el = document.getElementById("review-editor-box");
+                                              if (el) el.scrollIntoView({ behavior: "smooth" });
+                                            }}
+                                          >
+                                            Correct SI
+                                          </button>
+                                        </div>
+                                      )}
+                                    </div>
 
-                                    {isEditingThisRow && selected.case_origin === "ACTIVE" && (
-                                      <tr className="inline-editor-row" key={`${name}-editor`}>
-                                        <td colSpan={5} className="inline-editor-cell">
-                                          <div id="review-editor-box" className="detail-section review-editor inline-editor-box">
-                                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                                              <h3>Save a correction</h3>
-                                              <button
-                                                type="button"
-                                                className="button-secondary btn-sm"
-                                                onClick={() => setEditingField(null)}
-                                              >
-                                                Cancel
-                                              </button>
-                                            </div>
-                                            <p>Corrections are stored separately from original extraction evidence.</p>
-                                            <div className="form-grid">
-                                              <label>
-                                                Document side
-                                                <select
-                                                  aria-label="Override side"
-                                                  value={side}
-                                                  onChange={(event) => setSide(event.target.value as "SI" | "BL")}
-                                                >
-                                                  <option>SI</option>
-                                                  <option>BL</option>
-                                                </select>
-                                              </label>
-                                              <label>
-                                                Field
-                                                <select
-                                                  aria-label="Override field"
-                                                  value={field}
-                                                  onChange={(event) => {
-                                                    setField(event.target.value);
-                                                    setEditingField(event.target.value);
-                                                  }}
-                                                >
-                                                  {canonicalFields.map((fName) => (
-                                                    <option key={fName} value={fName}>{labelForField(fName)}</option>
-                                                  ))}
-                                                </select>
-                                              </label>
-                                              <label className="form-span">
-                                                Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
-                                                <input
-                                                  type={inputType}
-                                                  step={inputStep}
-                                                  min={inputType === "number" ? "0" : undefined}
-                                                  aria-label="Corrected value"
-                                                  aria-describedby="correction-help"
-                                                  value={correctedValue}
-                                                  onChange={(event) => setCorrectedValue(event.target.value)}
-                                                  placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
-                                                />
-                                              </label>
-                                              <label className="form-span">
-                                                Reviewer note
-                                                <textarea
-                                                  aria-label="Reviewer note"
-                                                  value={note}
-                                                  onChange={(event) => setNote(event.target.value)}
-                                                  placeholder="Explain the evidence for this correction"
-                                                />
-                                              </label>
-                                            </div>
-                                            <p id="correction-help" className="form-help">
-                                              The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
-                                            </p>
-                                            <div className="editor-button-row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
-                                              <button
-                                                className="button-primary btn-dark-charcoal"
-                                                type="button"
-                                                disabled={!correctedValue || actionState === "loading"}
-                                                onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
-                                              >
-                                                {actionState === "loading" ? "Saving…" : "Save Correction"}
-                                              </button>
-                                              <button
-                                                type="button"
-                                                className="button-secondary"
-                                                onClick={() => setEditingField(null)}
-                                              >
-                                                Cancel
-                                              </button>
-                                              {actionState === "ready" && activeOverrides.length ? (
-                                                <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
-                                              ) : null}
-                                            </div>
+                                    {/* Side by side comparison cards */}
+                                    <div className="diff-side-by-side">
+                                      {/* SI Box */}
+                                      <div className="diff-box si-side">
+                                        <div className="diff-box-label">
+                                          SI (Reference Document)
+                                        </div>
+                                        <div className="diff-box-value">
+                                          {diff.field === "container_count" && typeof (diff.si.canonical ?? diff.si.normalized) === "number"
+                                            ? `${diff.si.canonical ?? diff.si.normalized} containers`
+                                            : displayValue(diff.si.canonical ?? diff.si.normalized ?? diff.si.raw)}
+                                        </div>
+                                        {diff.si.raw !== undefined && diff.si.raw !== diff.si.canonical && (
+                                          <div className="diff-box-raw">
+                                            Raw: <code>{displayValue(diff.si.raw)}</code>
                                           </div>
+                                        )}
+                                      </div>
+
+                                      {/* BL Box */}
+                                      <div className="diff-box bl-side">
+                                        <div className="diff-box-label">
+                                          Draft BL (Document Checked)
+                                        </div>
+                                        <div className="diff-box-value">
+                                          {diff.field === "container_count" && typeof (diff.bl.canonical ?? diff.bl.normalized) === "number"
+                                            ? `${diff.bl.canonical ?? diff.bl.normalized} containers`
+                                            : displayValue(diff.bl.canonical ?? diff.bl.normalized ?? diff.bl.raw)}
+                                        </div>
+                                        {diff.bl.raw !== undefined && diff.bl.raw !== diff.bl.canonical && (
+                                          <div className="diff-box-raw">
+                                            Raw: <code>{displayValue(diff.bl.raw)}</code>
+                                          </div>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                ))}
+                              </div>
+                            </>
+                          ) : (
+                            <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "12px", background: "var(--color-success-bg)", border: "1px solid rgba(34, 197, 94, 0.2)", borderRadius: "var(--radius-md)" }}>
+                              <CheckCircle2 size={16} color="var(--color-success)" />
+                              <span style={{ fontSize: "13px", fontWeight: 600, color: "var(--color-success)" }}>
+                                No mismatch detected. All 7 canonical fields match.
+                              </span>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* 2. DEDICATED FIELD CORRECTION CARD */}
+                        {editingField && selected.case_origin === "ACTIVE" && (
+                          <div id="review-editor-box" className="detail-section review-editor" style={{ marginBottom: "16px", border: "1px solid var(--color-orange-300)", borderRadius: "var(--radius-md)", background: "var(--color-white)", padding: "14px 16px", boxShadow: "0 2px 8px rgba(0,0,0,0.06)" }}>
+                            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "4px" }}>
+                              <h3 style={{ margin: 0, fontSize: "14px", fontWeight: 700 }}>Save a correction</h3>
+                              <button
+                                type="button"
+                                className="button-secondary btn-sm"
+                                onClick={() => setEditingField(null)}
+                              >
+                                Cancel
+                              </button>
+                            </div>
+                            <p style={{ margin: "0 0 12px", fontSize: "12px", color: "var(--color-grey-600)" }}>
+                              Corrections are stored separately from original extraction evidence.
+                            </p>
+                            <div className="form-grid">
+                              <label>
+                                Document side
+                                <select
+                                  aria-label="Override side"
+                                  value={side}
+                                  onChange={(event) => setSide(event.target.value as "SI" | "BL")}
+                                >
+                                  <option>SI</option>
+                                  <option>BL</option>
+                                </select>
+                              </label>
+                              <label>
+                                Field
+                                <select
+                                  aria-label="Override field"
+                                  value={field}
+                                  onChange={(event) => {
+                                    setField(event.target.value);
+                                    setEditingField(event.target.value);
+                                  }}
+                                >
+                                  {sortedFields.map((fName) => (
+                                    <option key={fName} value={fName}>{labelForField(fName)}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="form-span">
+                                Corrected value{field === "gross_weight_kg" ? " (kg)" : ""}
+                                <input
+                                  type={inputType}
+                                  step={inputStep}
+                                  min={inputType === "number" ? "0" : undefined}
+                                  aria-label="Corrected value"
+                                  aria-describedby="correction-help"
+                                  value={correctedValue}
+                                  onChange={(event) => setCorrectedValue(event.target.value)}
+                                  placeholder={field === "gross_weight_kg" ? "e.g. 22000" : field === "container_count" ? "e.g. 6" : "Enter reviewed value"}
+                                />
+                              </label>
+                              <label className="form-span">
+                                Reviewer note
+                                <textarea
+                                  aria-label="Reviewer note"
+                                  value={note}
+                                  onChange={(event) => setNote(event.target.value)}
+                                  placeholder="Explain the evidence for this correction"
+                                />
+                              </label>
+                            </div>
+                            <p id="correction-help" className="form-help">
+                              The saved correction is stored as a review override and used as the effective value during Resolve & Recompare. The original extraction remains unchanged.
+                            </p>
+                            <div className="editor-button-row" style={{ display: "flex", gap: 8, alignItems: "center" }}>
+                              <button
+                                className="button-primary btn-dark-charcoal"
+                                type="button"
+                                disabled={!correctedValue || actionState === "loading"}
+                                onClick={() => void onOverride({ document_side: side, field, corrected_value: correctedValue, reviewer_name: reviewer, note })}
+                              >
+                                {actionState === "loading" ? "Saving…" : "Save Correction"}
+                              </button>
+                              <button
+                                type="button"
+                                className="button-secondary"
+                                onClick={() => setEditingField(null)}
+                              >
+                                Cancel
+                              </button>
+                              {actionState === "ready" && activeOverrides.length ? (
+                                <span className="inline-success" role="status"><CheckCircle2 size={14} /> Saved</span>
+                              ) : null}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* 3. COMPLETE 7 CANONICAL FIELDS TABLE TOGGLE (Matching Figure 2) */}
+                        <div className="detail-section" style={{ marginTop: "16px" }}>
+                          <button
+                            type="button"
+                            className="toggle-all-fields-btn"
+                            onClick={() => setShowAllFields((prev) => !prev)}
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "space-between",
+                              width: "100%",
+                              padding: "10px 14px",
+                              background: "var(--color-grey-100)",
+                              border: "1px solid var(--color-grey-300)",
+                              borderRadius: "var(--radius-md)",
+                              fontSize: "12.5px",
+                              fontWeight: 650,
+                              color: "var(--color-black)",
+                              cursor: "pointer",
+                            }}
+                          >
+                            <span style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                              <FileCheck2 size={15} />
+                              {showAllFields ? "Hide Complete 7-Field Table" : "Show All 7 Canonical Comparison Fields"}
+                            </span>
+                            {showAllFields ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                          </button>
+
+                          <div
+                            className={cx(!showAllFields && "sub-tab-panel-hidden")}
+                            id="fields-table-section"
+                            style={{ marginTop: "10px" }}
+                          >
+                            <div className="section-heading-row" style={{ marginTop: "12px", marginBottom: "8px" }}>
+                              <div>
+                                <h3 style={{ margin: 0, fontSize: "14px" }}>Seven reviewed fields</h3>
+                                <p style={{ margin: "2px 0 0", fontSize: "12px", color: "var(--color-grey-600)" }}>
+                                  Original extraction remains immutable. Reviewed values are applied only during recomparison.
+                                </p>
+                              </div>
+                              <span className="total-pill pill-unresolved">{selectedUnresolved} unresolved</span>
+                            </div>
+                            <div className="comparison-table-wrap">
+                              <table className="comparison-table review-comparison" aria-label="Human Review seven-field comparison">
+                                <colgroup>
+                                  <col style={{ width: "18%", minWidth: "80px" }} />
+                                  <col style={{ width: "28%", minWidth: "110px" }} />
+                                  <col style={{ width: "26%", minWidth: "100px" }} />
+                                  <col style={{ width: "18%", minWidth: "105px" }} />
+                                  <col style={{ width: "10%", minWidth: "60px" }} />
+                                </colgroup>
+                                <thead>
+                                  <tr>
+                                    <th>Field</th>
+                                    <th>Shipping Instruction</th>
+                                    <th>Draft BL</th>
+                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>System result</th>
+                                    <th style={{ textAlign: "center", whiteSpace: "nowrap" }}>Action</th>
+                                  </tr>
+                                </thead>
+                                <tbody>
+                                  {sortedFields.map((name) => {
+                                    const compared = selected.comparison?.fields.find((item) => item.field === name);
+                                    const siOverride = activeOverrides.find((item) => item.field === name && item.document_side === "SI");
+                                    const blOverride = activeOverrides.find((item) => item.field === name && item.document_side === "BL");
+                                    const isEditingThisRow = editingField === name;
+                                    const isMatched = compared?.status === "MATCH";
+
+                                    return (
+                                      <tr
+                                        key={name}
+                                        id={`row-${name}`}
+                                        className={cx(
+                                          compared?.status === "MISMATCH" && "field-mismatch",
+                                          compared?.status === "UNRESOLVED" && "field-unresolved",
+                                          isEditingThisRow && "row-is-editing"
+                                        )}
+                                      >
+                                        <th>{labelForField(name)}</th>
+                                        <td>
+                                          {siOverride ? (
+                                            <>
+                                              <span className="value-label">Original SI</span>
+                                              <span className="original-val-strike">{displayValue(compared?.si.raw)}</span>
+                                              <span className="reviewed-value">
+                                                <span>Reviewed SI</span>
+                                                {displayValue(siOverride.corrected_value)}
+                                              </span>
+                                              <span className="effective-value">
+                                                Effective: {displayValue(siOverride.corrected_value)}
+                                              </span>
+                                            </>
+                                          ) : !isMatched ? (
+                                            <>
+                                              <span className="value-label">Original SI</span>
+                                              {displayValue(compared?.si.raw)}
+                                              <span className="effective-value">
+                                                Effective: {displayValue(compared?.si.canonical ?? compared?.si.raw)}
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <span>{displayValue(compared?.si.canonical ?? compared?.si.raw)}</span>
+                                          )}
+                                        </td>
+                                        <td>
+                                          {blOverride ? (
+                                            <>
+                                              <span className="value-label">Original BL</span>
+                                              <span className="original-val-strike">{displayValue(compared?.bl.raw)}</span>
+                                              <span className="reviewed-value">
+                                                <span>Reviewed BL</span>
+                                                {displayValue(blOverride.corrected_value)}
+                                              </span>
+                                              <span className="effective-value">
+                                                Effective: {displayValue(blOverride.corrected_value)}
+                                              </span>
+                                            </>
+                                          ) : !isMatched ? (
+                                            <>
+                                              <span className="value-label">Original BL</span>
+                                              {displayValue(compared?.bl.raw)}
+                                              <span className="effective-value">
+                                                Effective: {displayValue(compared?.bl.canonical ?? compared?.bl.raw)}
+                                              </span>
+                                            </>
+                                          ) : (
+                                            <span>{displayValue(compared?.bl.canonical ?? compared?.bl.raw)}</span>
+                                          )}
+                                        </td>
+                                        <td style={{ textAlign: "center", whiteSpace: "nowrap" }}>
+                                          <StatusBadge value={compared?.status ?? "UNRESOLVED"} />
+                                        </td>
+                                        <td style={{ textAlign: "center" }}>
+                                          {selected.case_origin === "ACTIVE" ? (
+                                            isMatched ? (
+                                              <span className="matched-verified-pill" title="Field matches between SI and BL">
+                                                <CheckCircle2 size={13} style={{ color: "#16a34a", marginRight: 4, verticalAlign: "-2px" }} />
+                                                <span style={{ color: "#15803d", fontSize: "11.5px", fontWeight: 600 }}>Verified</span>
+                                              </span>
+                                            ) : (
+                                              <button
+                                                type="button"
+                                                className="row-edit-action-btn is-unresolved"
+                                                title={`Quick edit ${labelForField(name)}`}
+                                                onClick={() => {
+                                                  if (isEditingThisRow) {
+                                                    setEditingField(null);
+                                                  } else {
+                                                    setField(name);
+                                                    setEditingField(name);
+                                                    if (compared?.bl.raw == null && compared?.si.raw != null) {
+                                                      setSide("BL");
+                                                    } else if (compared?.si.raw == null && compared?.bl.raw != null) {
+                                                      setSide("SI");
+                                                    } else {
+                                                      setSide("BL");
+                                                    }
+                                                    const el = document.getElementById("review-editor-box");
+                                                    if (el) el.scrollIntoView({ behavior: "smooth" });
+                                                  }
+                                                }}
+                                              >
+                                                {isEditingThisRow ? "Close" : "Correct"}
+                                              </button>
+                                            )
+                                          ) : (
+                                            <span className="subtle">—</span>
+                                          )}
                                         </td>
                                       </tr>
-                                    )}
-                                  </React.Fragment>
-                                );
-                              })}
-                            </tbody>
-                          </table>
+                                    );
+                                  })}
+                                </tbody>
+                              </table>
+                            </div>
+                          </div>
                         </div>
-                      </div>
 
-                      {activeOverrides.length > 0 && (
-                        <div className="staged-overrides-card" style={{ marginBottom: 16 }}>
-                          <div className="staged-overrides-header">
-                            <strong>Staged Overrides ({activeOverrides.length})</strong>
-                            <span>Applied on Recomparison</span>
+                        {activeOverrides.length > 0 && (
+                          <div className="staged-overrides-card" style={{ marginTop: 14, marginBottom: 16 }}>
+                            <div className="staged-overrides-header">
+                              <strong>Staged Overrides ({activeOverrides.length})</strong>
+                              <span>Applied on Recomparison</span>
+                            </div>
+                            <div className="staged-overrides-list">
+                              {activeOverrides.map((ov) => (
+                                <div key={ov.id || `${ov.document_side}-${ov.field}`} className="staged-override-chip">
+                                  <span className="override-side-tag">{ov.document_side}</span>
+                                  <span className="override-field-name">{labelForField(ov.field)}:</span>
+                                  <strong className="override-val">{displayValue(ov.corrected_value)}</strong>
+                                  {ov.reviewer_name && <small className="override-by">({ov.reviewer_name})</small>}
+                                </div>
+                              ))}
+                            </div>
                           </div>
-                          <div className="staged-overrides-list">
-                            {activeOverrides.map((ov) => (
-                              <div key={ov.id || `${ov.document_side}-${ov.field}`} className="staged-override-chip">
-                                <span className="override-side-tag">{ov.document_side}</span>
-                                <span className="override-field-name">{labelForField(ov.field)}:</span>
-                                <strong className="override-val">{displayValue(ov.corrected_value)}</strong>
-                                {ov.reviewer_name && <small className="override-by">({ov.reviewer_name})</small>}
-                              </div>
-                            ))}
-                          </div>
-                        </div>
-                      )}
+                        )}
                       </div>
 
                       {selected.case_origin === "ACTIVE" ? (
