@@ -6,6 +6,10 @@
 
 [🌐 Dashboard](https://holyship.onrender.com/) · [⚙️ Backend API](https://holyship-backend.onrender.com) · [📘 API Docs](https://holyship-backend.onrender.com/docs) · [📑 Presentation Slides](https://canva.link/kflchdm6qu1pslv) · [🎥 Demo Video](https://youtu.be/mnfbrDJyGaQ)
 
+**Outlook Add-in Demo Account:** `captain.holyship@outlook.com` · Password: `captain12`
+
+<br>
+
 > HolyShip automates what is certain, escalates what is uncertain, and keeps humans in control of business-critical decisions.
 
 ## Table of Contents
