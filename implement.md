@@ -1257,6 +1257,13 @@ Current document-level limitations:
 
 ## Recent Change Log
 
+### 2026-09-25 — Refresh discrepancy metrics after Human Review changes
+- **Changed:** Dashboard now refreshes the Discrepancies list and its Open/Acknowledged/Resolved counts after a Human Review mutation and recompare.
+- **Why:** Human Review corrections updated backend comparison data, but the Dashboard kept the previous discrepancy page state.
+- **Files:** `frontend/src/App.tsx`, `frontend/tests/App.test.tsx`
+- **Validation:** Pending for this change.
+- **Next:** None.
+
 ### 2026-09-25 — Dashboard Reply Email visibility fix
 - Changed: Mounted Reply Email in the actual Human Review `Email & Documents` tab instead of only the generic email inspector path.
 - Changed: Human Review now fetches the selected email detail for policy evaluation and renders `Reply Unavailable` while that detail is missing or fails to load; the section never disappears.

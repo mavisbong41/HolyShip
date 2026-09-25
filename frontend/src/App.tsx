@@ -4511,7 +4511,7 @@ export default function App() {
 
   const refreshAfterReview = async (updated: ProductReview) => {
     setSelectedReview(updated);
-    await Promise.all([loadReviews(), loadDashboard()]);
+    await Promise.all([loadReviews(), loadDashboard(), loadDiscrepancies()]);
     if (detail?.email.id === updated.email_id) setDetail(await getEmailDetail(updated.email_id));
   };
 

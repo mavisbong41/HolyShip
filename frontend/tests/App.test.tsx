@@ -24,6 +24,17 @@ function setupFetch(overrides?: Partial<Record<string, unknown>>) {
     if (url.includes("/emails?")) {
       return jsonResponse(overrides?.queue ?? demoQueue);
     }
+    if (url.includes("/discrepancies?")) {
+      return jsonResponse({
+        items: [],
+        total: 0,
+        open_count: 0,
+        acknowledged_count: 0,
+        resolved_count: 0,
+        skip: 0,
+        limit: 20,
+      });
+    }
     if (url.includes("/emails/22222222-2222-4222-8222-222222222222")) {
       return jsonResponse(overrides?.detail ?? demoDetail);
     }
@@ -313,6 +324,10 @@ describe("HolyShip dashboard", () => {
         expect.objectContaining({ method: "POST" }),
       );
     });
+    expect(fetchMock).toHaveBeenCalledWith(
+      expect.stringContaining("/discrepancies?"),
+      expect.anything(),
+    );
   });
 
   it("opens Human Review directly and keeps resolve and dismiss as distinct actions", async () => {
