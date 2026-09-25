@@ -4,6 +4,7 @@ import type {
   EmailLifecycleStatus,
   OutlookReadState,
   ProductCategory,
+  ProductDiscrepancyDetail,
   ProductEmailDetail,
   ProductReplyWorkflow,
   ProductReview,
@@ -367,4 +368,61 @@ export async function searchEmailQueue(query: string): Promise<EmailQueuePage> {
   appendParam(params, "search", query);
   appendParam(params, "limit", 10);
   return request<EmailQueuePage>(`/emails?${params.toString()}`);
+}
+
+export async function getDiscrepancyDetail(
+  discrepancyId: string,
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}`);
+}
+
+export async function saveDiscrepancyOverride(
+  discrepancyId: string,
+  payload: {
+    document_side: "SI" | "BL";
+    field_name: string;
+    corrected_value: unknown;
+    reviewer_name?: string;
+    note?: string;
+  },
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}/override`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  });
+}
+
+export async function recompareDiscrepancy(
+  discrepancyId: string,
+  reviewerName?: string,
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}/recompare`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ reviewer_name: reviewerName }),
+  });
+}
+
+export async function acknowledgeDiscrepancy(
+  discrepancyId: string,
+  operatorName?: string,
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}/acknowledge`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operator_name: operatorName }),
+  });
+}
+
+export async function resolveDiscrepancy(
+  discrepancyId: string,
+  operatorName?: string,
+  notes?: string,
+): Promise<ProductDiscrepancyDetail> {
+  return request<ProductDiscrepancyDetail>(`/discrepancies/${discrepancyId}/resolve`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ operator_name: operatorName, notes }),
+  });
 }

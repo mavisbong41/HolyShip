@@ -60,6 +60,8 @@ class ProductValue(BaseModel):
     raw: Any | None = None
     canonical: Any | None = None
     normalized: Any | None = None
+    human_override_value: Any | None = None
+    effective_value: Any | None = None
 
 
 class ProductFieldComparison(BaseModel):
@@ -113,6 +115,8 @@ class ProductDocument(BaseModel):
 
 
 class ProductComparison(BaseModel):
+    id: uuid.UUID | None = None
+    email_id: uuid.UUID | None = None
     state: Literal["COMPLETED", "BLOCKED"]
     mismatch_found: bool
     mismatched_fields: list[str] = Field(default_factory=list)
@@ -120,6 +124,12 @@ class ProductComparison(BaseModel):
     reason_code: str
     message: str
     fields: list[ProductFieldComparison] = Field(default_factory=list)
+    resolution_status: str | None = None
+    acknowledged_at: datetime | None = None
+    acknowledged_by: str | None = None
+    resolved_at: datetime | None = None
+    resolved_by: str | None = None
+    resolution_notes: str | None = None
 
 
 class ProductClassification(BaseModel):

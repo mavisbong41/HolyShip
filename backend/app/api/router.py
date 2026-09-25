@@ -860,12 +860,22 @@ def _draft_from_points(points: list[str]) -> str:
 
 
 def _reply_ai(settings: Settings, *, purpose: str, data: dict, instruction: str) -> tuple[dict | None, dict | None]:
-    secret = settings.gemini_api_key or settings.ai_review_api_key
-    if not settings.ai_review_enabled or secret is None:
+    secret_str = ""
+    if settings.gemini_api_key:
+        secret_str = settings.gemini_api_key.get_secret_value()
+    elif settings.ai_review_api_key:
+        secret_str = settings.ai_review_api_key.get_secret_value()
+    elif settings.ai_api_key:
+        secret_str = settings.ai_api_key.get_secret_value()
+    else:
+        fallback_keys = SecureAIGateway.collect_fallback_keys(None, provider="gemini")
+        if fallback_keys:
+            secret_str = ",".join(fallback_keys)
+    if not settings.ai_review_enabled or not secret_str:
         return None, {"fallback_used": True, "fallback_reason": "AI_NOT_CONFIGURED", "purpose": purpose}
     try:
         result = SecureAIGateway.from_settings(settings).invoke_gemini_json(
-            api_key=secret.get_secret_value(), model=settings.ai_review_model,
+            api_key=secret_str, model=settings.ai_review_model,
             purpose=purpose, feature="smart_reply", data=data,
             system_instruction=instruction, timeout_seconds=settings.ai_review_timeout_seconds,
             endpoint=settings.ai_review_endpoint, temperature=settings.ai_review_temperature,

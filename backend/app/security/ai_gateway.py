@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
+import os
 import re
 import time
 import urllib.error
@@ -11,6 +13,8 @@ from dataclasses import dataclass
 from typing import Any
 
 from backend.app.core.config import Settings
+
+logger = logging.getLogger(__name__)
 
 
 PURPOSE_FIELD_EXTRACTION = "FIELD_EXTRACTION"
@@ -182,10 +186,69 @@ class SecureAIGateway:
         }
         return minimized, audit
 
+    @staticmethod
+    def parse_api_keys(api_key: str | list[str] | tuple[str, ...] | None) -> list[str]:
+        """Extract a deduplicated, ordered list of API keys from strings or sequences."""
+        keys: list[str] = []
+        if isinstance(api_key, (list, tuple, set, frozenset)):
+            for item in api_key:
+                for k in SecureAIGateway.parse_api_keys(item):
+                    if k not in keys:
+                        keys.append(k)
+        elif isinstance(api_key, str) and api_key.strip():
+            for chunk in re.split(r"[,;\n\r]+", api_key):
+                cleaned = chunk.strip().strip("\"'").strip()
+                if cleaned and cleaned not in keys:
+                    keys.append(cleaned)
+        return keys
+
+    @classmethod
+    def collect_fallback_keys(
+        cls,
+        primary_key: str | list[str] | tuple[str, ...] | None,
+        provider: str = "gemini",
+    ) -> list[str]:
+        """Collect all available candidate keys in priority order (primary first, then env fallbacks)."""
+        keys = cls.parse_api_keys(primary_key)
+        env_names: list[str] = []
+        if provider in ("gemini", "google"):
+            env_names = [
+                "GEMINI_API_KEY",
+                "GEMINI_API_KEYS",
+                "GEMINI_API_KEY_1",
+                "GEMINI_API_KEY_2",
+                "GEMINI_API_KEY_3",
+                "GOOGLE_API_KEY",
+                "GOOGLE_API_KEY_1",
+                "GOOGLE_API_KEY_2",
+                "GOOGLE_API_KEY_3",
+                "AI_API_KEY",
+                "AI_API_KEYS",
+                "AI_API_KEY_1",
+                "AI_API_KEY_2",
+                "AI_API_KEY_3",
+                "AI_REVIEW_API_KEY",
+            ]
+        elif provider in ("openai", "azure_openai"):
+            env_names = [
+                "OPENAI_API_KEY",
+                "OPENAI_API_KEYS",
+                "OPENAI_API_KEY_1",
+                "OPENAI_API_KEY_2",
+                "OPENAI_API_KEY_3",
+            ]
+        for name in env_names:
+            raw = os.environ.get(name)
+            if raw:
+                for k in cls.parse_api_keys(raw):
+                    if k not in keys:
+                        keys.append(k)
+        return keys
+
     def invoke_gemini_json(
         self,
         *,
-        api_key: str,
+        api_key: str | list[str] | tuple[str, ...],
         model: str,
         purpose: str,
         feature: str,
@@ -196,7 +259,8 @@ class SecureAIGateway:
         temperature: float = 0.0,
         max_output_tokens: int = 1024,
     ) -> AIGatewayResult:
-        if not api_key or not api_key.strip():
+        candidate_keys = self.collect_fallback_keys(api_key, provider="gemini")
+        if not candidate_keys:
             raise AIGatewayPolicyError("Gemini API key is required")
         if timeout_seconds <= 0:
             raise ValueError("timeout_seconds must be positive")
@@ -237,45 +301,87 @@ class SecureAIGateway:
             }
 
         body = json.dumps(request_payload, default=str).encode("utf-8")
-        headers = {
-            "Content-Type": "application/json",
-            "x-goog-api-key": api_key,
-        }
-        request = urllib.request.Request(
-            resolved_endpoint,
-            data=body,
-            headers=headers,
-            method="POST",
-        )
 
         started = time.perf_counter()
-        try:
-            with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
-                response_body = response.read().decode("utf-8")
-        except urllib.error.HTTPError as exc:
-            raise AIGatewayHTTPError(exc.code) from exc
-        except (TimeoutError, ConnectionError, urllib.error.URLError) as exc:
-            raise AIGatewayTransportError("Gemini transport failure") from exc
+        last_http_exc: AIGatewayHTTPError | None = None
+        last_transport_exc: AIGatewayTransportError | None = None
+        total_keys = len(candidate_keys)
 
-        latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
-        try:
-            provider_payload = json.loads(response_body)
-            raw_text = provider_payload["candidates"][0]["content"]["parts"][0]["text"]
-            structured = json.loads(raw_text)
-            if not isinstance(structured, dict):
-                raise TypeError("Gemini structured response must be a JSON object")
-        except Exception as exc:
-            raise AIGatewayTransportError("Gemini response validation failed") from exc
+        for key_idx, current_key in enumerate(candidate_keys):
+            headers = {
+                "Content-Type": "application/json",
+                "x-goog-api-key": current_key,
+            }
+            request = urllib.request.Request(
+                resolved_endpoint,
+                data=body,
+                headers=headers,
+                method="POST",
+            )
+            has_next_key = (key_idx + 1) < total_keys
 
-        return AIGatewayResult(
-            structured_response=structured,
-            audit_metadata={
-                **audit,
-                "request_status": "SENT",
-                "response_status": "VALIDATED",
-                "latency_ms": latency_ms,
-            },
-        )
+            try:
+                with urllib.request.urlopen(request, timeout=timeout_seconds) as response:
+                    response_body = response.read().decode("utf-8")
+            except urllib.error.HTTPError as exc:
+                last_http_exc = AIGatewayHTTPError(exc.code)
+                if has_next_key:
+                    logger.warning(
+                        "Gemini API key %d/%d failed with HTTP %d. Switching to fallback key...",
+                        key_idx + 1,
+                        total_keys,
+                        exc.code,
+                    )
+                    continue
+                raise last_http_exc from exc
+            except (TimeoutError, ConnectionError, urllib.error.URLError) as exc:
+                last_transport_exc = AIGatewayTransportError("Gemini transport failure")
+                if has_next_key:
+                    logger.warning(
+                        "Gemini API transport failed on key %d/%d (%s). Switching to fallback key...",
+                        key_idx + 1,
+                        total_keys,
+                        type(exc).__name__,
+                    )
+                    continue
+                raise last_transport_exc from exc
+
+            latency_ms = round((time.perf_counter() - started) * 1000.0, 3)
+            try:
+                provider_payload = json.loads(response_body)
+                raw_text = provider_payload["candidates"][0]["content"]["parts"][0]["text"]
+                structured = json.loads(raw_text)
+                if not isinstance(structured, dict):
+                    raise TypeError("Gemini structured response must be a JSON object")
+            except Exception as exc:
+                last_transport_exc = AIGatewayTransportError("Gemini response validation failed")
+                if has_next_key:
+                    logger.warning(
+                        "Gemini API response validation failed on key %d/%d. Switching to fallback key...",
+                        key_idx + 1,
+                        total_keys,
+                    )
+                    continue
+                raise last_transport_exc from exc
+
+            return AIGatewayResult(
+                structured_response=structured,
+                audit_metadata={
+                    **audit,
+                    "request_status": "SENT",
+                    "response_status": "VALIDATED",
+                    "latency_ms": latency_ms,
+                    "key_attempt_index": key_idx,
+                    "total_keys_available": total_keys,
+                    "fallback_used": key_idx > 0,
+                },
+            )
+
+        if last_http_exc is not None:
+            raise last_http_exc
+        if last_transport_exc is not None:
+            raise last_transport_exc
+        raise AIGatewayTransportError("All candidate AI keys exhausted")
 
     def enforce_provider_policy(
         self,

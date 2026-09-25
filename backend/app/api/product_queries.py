@@ -618,15 +618,36 @@ def _document(document: DocumentRecord) -> ProductDocument:
     )
 
 
-def _comparison(record: ComparisonResultRecord | None) -> ProductComparison | None:
+def _comparison(
+    record: ComparisonResultRecord | None,
+    overrides_list: list | None = None,
+) -> ProductComparison | None:
     if record is None:
         return None
     fields = []
     by_name = {field.field_name: field for field in record.fields}
+
+    active_overrides_by_side_and_field: dict[tuple[str, str], Any] = {}
+    overrides_to_check = overrides_list
+    if overrides_to_check is None:
+        try:
+            overrides_to_check = getattr(record, "overrides", None)
+        except Exception:
+            overrides_to_check = None
+    if overrides_to_check:
+        for o in overrides_to_check:
+            if getattr(o, "active", True):
+                active_overrides_by_side_and_field[(getattr(o, "document_side", "").upper(), getattr(o, "field_name", ""))] = getattr(o, "corrected_value", None)
+
     for field_name in CANONICAL_FIELDS:
         field_record = by_name.get(field_name)
         if field_record is None:
             continue
+        si_override = active_overrides_by_side_and_field.get(("SI", field_name))
+        bl_override = active_overrides_by_side_and_field.get(("BL", field_name))
+        si_effective = si_override if si_override is not None else field_record.si_raw_value
+        bl_effective = bl_override if bl_override is not None else field_record.bl_raw_value
+
         fields.append(
             ProductFieldComparison(
                 field=field_name,
@@ -634,11 +655,15 @@ def _comparison(record: ComparisonResultRecord | None) -> ProductComparison | No
                     raw=field_record.si_raw_value,
                     canonical=field_record.si_canonical_value,
                     normalized=field_record.si_normalized_value,
+                    human_override_value=si_override,
+                    effective_value=si_effective,
                 ),
                 bl=ProductValue(
                     raw=field_record.bl_raw_value,
                     canonical=field_record.bl_canonical_value,
                     normalized=field_record.bl_normalized_value,
+                    human_override_value=bl_override,
+                    effective_value=bl_effective,
                 ),
                 status=field_record.status,
                 reason_code=field_record.reason_code,
@@ -646,6 +671,8 @@ def _comparison(record: ComparisonResultRecord | None) -> ProductComparison | No
             )
         )
     return ProductComparison(
+        id=record.id,
+        email_id=record.email_id,
         state=record.comparison_state,
         mismatch_found=record.mismatch_found,
         mismatched_fields=list(record.mismatched_fields or []),
@@ -653,6 +680,12 @@ def _comparison(record: ComparisonResultRecord | None) -> ProductComparison | No
         reason_code=record.reason_code,
         message=record.message,
         fields=fields,
+        resolution_status=record.resolution_status,
+        acknowledged_at=record.acknowledged_at,
+        acknowledged_by=record.acknowledged_by,
+        resolved_at=record.resolved_at,
+        resolved_by=record.resolved_by,
+        resolution_notes=record.resolution_notes,
     )
 
 
@@ -737,6 +770,7 @@ def _load_email_graph(session: Session, email_id: UUID) -> EmailMessageRecord | 
             selectinload(EmailMessageRecord.documents).selectinload(DocumentRecord.attachment),
             selectinload(EmailMessageRecord.classification_results),
             selectinload(EmailMessageRecord.comparison_results).selectinload(ComparisonResultRecord.fields),
+            selectinload(EmailMessageRecord.comparison_results).selectinload(ComparisonResultRecord.overrides),
             selectinload(EmailMessageRecord.processing_events),
             selectinload(EmailMessageRecord.human_review_cases),
         )
@@ -1177,7 +1211,7 @@ def get_product_discrepancy_detail(
         created_at=comp.created_at,
         mismatch_count=len(comp.mismatched_fields or []),
         mismatched_fields=list(comp.mismatched_fields or []),
-        resolution_status=comp.resolution_status or "OPEN",
+        resolution_status=comp.resolution_status or ("RESOLVED" if not comp.mismatch_found else "OPEN"),
         acknowledged_at=comp.acknowledged_at,
         acknowledged_by=comp.acknowledged_by,
         resolved_at=comp.resolved_at,
@@ -1186,7 +1220,7 @@ def get_product_discrepancy_detail(
         comparison_state=comp.comparison_state,
     )
 
-    comparison_data = _comparison(comp)
+    comparison_data = _comparison(comp, overrides_list=comp.overrides)
     mismatched_fields_detail = (
         [f for f in comparison_data.fields if f.status == "MISMATCH"]
         if comparison_data

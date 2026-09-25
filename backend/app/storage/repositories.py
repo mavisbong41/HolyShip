@@ -847,8 +847,16 @@ class ComparisonResultRepository:
                 self.session.add(field_record)
             field_record.si_field_id = si_source.id
             field_record.bl_field_id = bl_source.id
-            field_record.si_raw_value = result.si_field.raw_value
-            field_record.bl_raw_value = result.bl_field.raw_value
+            field_record.si_raw_value = (
+                si_source.raw_value_json
+                if si_source.raw_value_json is not None
+                else si_source.raw_value
+            )
+            field_record.bl_raw_value = (
+                bl_source.raw_value_json
+                if bl_source.raw_value_json is not None
+                else bl_source.raw_value
+            )
             field_record.si_canonical_value = result.si_field.canonical_value
             field_record.bl_canonical_value = result.bl_field.canonical_value
             field_record.si_normalized_value = result.normalized_si
