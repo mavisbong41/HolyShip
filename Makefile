@@ -5,7 +5,7 @@ else
 NPM ?= npm
 endif
 
-.PHONY: test check-fast frontend-check addin-check eval reliability perf trace check score
+.PHONY: test check-fast frontend-check addin-check eval official-eval performance-paths reliability perf trace check score
 
 test:
 	$(PYTHON) scripts/run_tests.py
@@ -27,6 +27,12 @@ addin-check:
 
 eval:
 	$(PYTHON) scripts/run_baseline.py
+
+official-eval:
+	$(PYTHON) scripts/evaluate_official.py --ground-truth $(GROUND_TRUTH)
+
+performance-paths:
+	$(PYTHON) scripts/performance_paths.py
 
 reliability:
 	$(PYTHON) scripts/run_tests.py backend/tests/test_sync_service.py backend/tests/test_repositories_postgres.py backend/tests/test_phase5_reliability_postgres.py -q

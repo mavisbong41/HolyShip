@@ -12,7 +12,7 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from sqlalchemy import create_engine, inspect, select
+from sqlalchemy import create_engine, func, inspect, select
 from sqlalchemy.orm import sessionmaker
 
 from backend.app.core.config import get_settings
@@ -21,6 +21,7 @@ from backend.app.storage.models import (
     ClassificationResultRecord,
     ComparisonResultRecord,
     EmailMessageRecord,
+    HumanReviewCaseRecord,
     ProcessingEventRecord,
 )
 from backend.app.submission_adapter import SubmissionWorkflowOutcome, build_submission
@@ -138,6 +139,9 @@ def main() -> None:
                     ProcessingEventRecord.id.desc(),
                 )
             ).all()
+            human_review_count = session.scalar(
+                select(func.count()).select_from(HumanReviewCaseRecord)
+            ) or 0
     finally:
         engine.dispose()
 
@@ -194,7 +198,8 @@ def main() -> None:
         "sync": report.__dict__ | {"outcomes": [item.__dict__ for item in report.outcomes], "source_failures": [item.__dict__ for item in report.source_failures]},
         "category_distribution": dict(Counter(item["category"] for item in submission.values())),
         "stage_counts": dict(stage_counts),
-        "human_review": report.human_review,
+        "human_review": human_review_count,
+        "unresolved_comparisons": sum(bool(row.unresolved_fields) for row in latest_comparison.values()),
         "low_confidence": sum(value < 0.8 for value in confidences),
         "attachment_audit": {
             "status": "PASS",
@@ -215,6 +220,13 @@ def main() -> None:
             "resolver_failures": report.resolver_failures,
             "resolver_malformed": report.resolver_malformed,
             "escalated_cases": report.escalated_cases,
+        },
+        "operational_failures": {
+            "reader": sum(event.reason_code in {
+                "DOCUMENT_READER_FAILED", "ATTACHMENT_READ_FAILED", "DOCUMENT_FIELD_EXTRACTION_FAILED"
+            } for event in event_rows),
+            "ocr": sum(event.reason_code == "OCR_ENGINE_FAILED" for event in event_rows),
+            "provider": report.resolver_failures,
         },
         "retries": report.retries,
         "source_retry_attempts": report.source_retry_attempts,

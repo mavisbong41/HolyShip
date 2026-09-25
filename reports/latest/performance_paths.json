@@ -1,0 +1,41 @@
+{
+  "ai_assisted": {
+    "count": 0,
+    "failure_count": 0,
+    "fallback_count": 0,
+    "gemini_calls": 0,
+    "gemini_failures": 0,
+    "mean_ms": null,
+    "measurement_status": "NOT_MEASURED_NO_PROVIDER_CALLS",
+    "p50_ms": null,
+    "p95_ms": null,
+    "success_count": 0,
+    "throughput_per_second": null
+  },
+  "deterministic": {
+    "count": 520,
+    "failure_count": 0,
+    "fallback_count": 0,
+    "gemini_calls": 0,
+    "gemini_failures": 0,
+    "mean_ms": 64.5501373056994,
+    "measurement_status": "MEASURED",
+    "p50_ms": 43.127950018970296,
+    "p95_ms": 160.60770998301447,
+    "success_count": 520,
+    "throughput_per_second": 25.627
+  },
+  "overall": {
+    "count": 520,
+    "failure_count": 0,
+    "fallback_count": 0,
+    "gemini_calls": 0,
+    "gemini_failures": 0,
+    "mean_ms": 64.5501373056994,
+    "measurement_status": "MEASURED",
+    "p50_ms": 43.127950018970296,
+    "p95_ms": 160.60770998301447,
+    "success_count": 520,
+    "throughput_per_second": 25.627
+  }
+}
