@@ -1678,3 +1678,34 @@ Current document-level limitations:
 - **Files:** `presentation/holyship-presentation.html` only. No application production code changed.
 - **Validation:** Local HTTP preview checked the opening slide and Slides 04, 05, 06, 07, 08, 10, and 11 at the available 16:9 viewport. Verified logo loading, keyboard navigation, animations, page-number placement, bottom-control safe areas, and no visible card/text overlap after animation completion. `git diff --check` passed. Static structure remains 11 balanced slides, 11 page numbers, one control bar, and one balanced script block.
 - **Preserved:** Verified metrics, technical claims, black/orange/light identity, navigation, and animations. The browser preview server was local-only and has been stopped after inspection.
+
+### 2026-09-25 — Final presentation readability polish
+
+- **Changed:** Removed duplicate gateway metrics from Slide 07; enlarged Human Review comparison rows and badges on Slide 08; shortened Outlook/Dashboard card and five-step strip copy on Slide 09; simplified Slide 10 benchmark footer into correctness and engineering-validation lines; reduced idle control opacity and kept keyboard navigation available.
+- **Why:** Finish the projector-readability pass without changing the 11-slide story, verified metrics, or accepted visual layouts.
+- **Files:** `presentation/holyship-presentation.html` only. No application production code changed.
+- **Validation:** Local HTTP preview checked Slides 01, 07, 08, 09, and 10 after animation completion; verified no visible clipping, card collisions, or control overlap. Keyboard `PageUp`, `PageDown`, `Home`, `End` navigation passed. Logo loaded. `git diff --check` and final static structure checks remain required before commit.
+- **Preserved:** All verified claims, 11-slide structure, black/orange identity, accepted layouts, core messaging, progress indicator, and animation behavior.
+
+### 2026-09-25 — Chrome fullscreen presentation mode
+
+- **Changed:** Added a Chrome-compatible Fullscreen API toggle in the presentation controls, plus the `F` shortcut; the control updates to an exit state while fullscreen and `Esc` exits through the browser.
+- **Why:** Let the HTML deck run as a distraction-free full-screen presentation without changing the slide story or visual system.
+- **Files:** `presentation/holyship-presentation.html` only. No application production code changed.
+- **Validation:** `git diff --check`; static checks for one fullscreen control, `requestFullscreen`, `fullscreenchange`, 11 slides, and one script block. Local HTTP preview remains the final browser verification target.
+- **Next:** Open the HTML in Chrome, click `⛶` or press `F`, and use `Esc` to exit.
+
+### 2026-09-25 — Opening slide safe-area fix
+
+- **Changed:** Added a dedicated top-aligned safe zone for Slide 1, reduced the opening title scale on wide screens, and reserved extra space below the lead copy so it cannot meet the bottom controls.
+- **Why:** Prevent the opening title or supporting sentence from appearing covered in narrow-height Chrome windows.
+- **Files:** `presentation/holyship-presentation.html` only. No application production code changed.
+- **Validation:** Local Chrome preview checked Slide 1 after the layout override; `git diff --check` and final static structure checks run before commit.
+- **Next:** Use the `⛶` button or `F` to present full screen in Chrome.
+
+### 2026-09-25 — Slide 1 narrow-height correction
+
+- **Changed:** Added a narrow-height Chrome breakpoint that moves Slide 1 upward, scales down only the opening composition, and lowers the control bar so the lead sentence clears it.
+- **Why:** The 1280×720 preview still showed the final lead line touching the progress bar.
+- **Files:** `presentation/holyship-presentation.html` only.
+- **Validation:** Rechecked the 1280×720 local Chrome preview; Slide 1 now has visible separation between the lead copy and controls. `git diff --check` and static structure checks pass.
