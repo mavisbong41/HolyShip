@@ -336,8 +336,8 @@ describe("Confirmed Discrepancies Workspace", () => {
 
     // Verify right pane differences-first card
     expect(await screen.findByText(/Confirmed Differences/i)).toBeInTheDocument();
-    expect(await screen.findByText("Beta Imports Corp")).toBeInTheDocument();
-    expect(await screen.findByText("Gamma Overseas Ltd")).toBeInTheDocument();
+    expect((await screen.findAllByText("Beta Imports Corp")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Gamma Overseas Ltd")).length).toBeGreaterThan(0);
     expect(await screen.findByText("SI (Reference Document)")).toBeInTheDocument();
     expect(await screen.findByText("Draft BL (Document Checked)")).toBeInTheDocument();
   });

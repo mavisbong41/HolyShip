@@ -1261,7 +1261,7 @@ Current document-level limitations:
 - **Changed:** Dashboard now refreshes the Discrepancies list and its Open/Acknowledged/Resolved counts after a Human Review mutation and recompare.
 - **Why:** Human Review corrections updated backend comparison data, but the Dashboard kept the previous discrepancy page state.
 - **Files:** `frontend/src/App.tsx`, `frontend/tests/App.test.tsx`
-- **Validation:** Pending for this change.
+- **Validation:** Dashboard `App.test.tsx` passed 24/24; `DiscrepancyWorkflow.test.tsx` passed 5/5 after updating two stale duplicate-text assertions caused by the merged discrepancy UI; TypeScript typecheck and production build passed after merge.
 - **Next:** None.
 
 ### 2026-09-25 — Dashboard Reply Email visibility fix
